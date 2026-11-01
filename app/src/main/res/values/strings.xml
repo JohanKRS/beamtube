@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_name vem de app.name no gradle.properties. -->
+    <string name="sign_in_title">Sign in to YouTube</string>
+    <string name="sign_in_requesting">Requesting a code…</string>
+    <string name="sign_in_instructions_touch">Open youtube.com/activate (this device works too) and enter the code:</string>
+    <string name="sign_in_open_site">Copy code and open the site</string>
+    <string name="sign_in_tv_open">On your phone or computer, open</string>
+    <string name="sign_in_tv_url">youtube.com/activate</string>
+    <string name="sign_in_tv_enter">and enter the code</string>
+    <string name="sign_in_waits">This screen moves on by itself once you confirm.</string>
+    <string name="sign_in_error">Couldn\'t get a code: %1$s</string>
+
+    <string name="playlists">Playlists</string>
+    <string name="sign_out">Sign out</string>
+    <string name="back">Back</string>
+    <string name="loading">Loading…</string>
+    <string name="error_generic">Something went wrong: %1$s</string>
+    <string name="retry">Try again</string>
+
+    <string name="player_unplayable">This video can\'t be played.</string>
+    <string name="player_error">Playback error: %1$s</string>
+    <string name="player_audio">audio: %1$s</string>
+    <string name="player_audio_single">single track</string>
+    <string name="player_no_history">not saved to history</string>
+    <string name="link_not_a_video">This isn\'t a YouTube video link.</string>
+</resources>
