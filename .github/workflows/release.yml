@@ -1,0 +1,86 @@
+name: Release
+
+# Um merge no main com um app.versionName (gradle.properties) que ainda não tem release gera a
+# release com o APK assinado. O Johan acompanha estas releases pelo Obtainium.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # Certificado da chave do Doorglow (o mesmo do APK 0.1.0). Uma release com outra chave
+      # não atualizaria o app instalado, então o job falha em vez de publicar.
+      CERT_SHA256: 886493669cd66096a4ddb811f751c1ba1ca82e0e8711cab36d063e6d1e92a108
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Versão
+        id: version
+        run: |
+          name=$(grep '^app.versionName=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          if gh release view "v$name" > /dev/null 2>&1; then
+            echo "A release v$name já existe; nada a fazer."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Chave de assinatura
+        if: steps.version.outputs.exists == 'false'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DOORGLOW_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Falta o secret DOORGLOW_KEYSTORE_BASE64 (ver a seção Atualizações do PLANO.md)."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/doorglow.keystore"
+          echo "DOORGLOW_KEYSTORE=$RUNNER_TEMP/doorglow.keystore" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        if: steps.version.outputs.exists == 'false'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.version.outputs.exists == 'false'
+
+      - name: Build e testes
+        if: steps.version.outputs.exists == 'false'
+        run: >
+          ./gradlew :app:assembleAppRelease :app:testAppDebugUnitTest
+          -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
+          -Pkotlin.compiler.execution.strategy=in-process
+
+      - name: Conferir a assinatura
+        if: steps.version.outputs.exists == 'false'
+        run: |
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner
+          "$apksigner" verify --print-certs app/build/outputs/apk/app/release/app-app-release.apk | tee certs.txt
+          grep -qi "$CERT_SHA256" certs.txt || { echo "::error::APK assinado com outra chave."; exit 1; }
+
+      - name: Publicar a release
+        if: steps.version.outputs.exists == 'false'
+        run: |
+          name=${{ steps.version.outputs.name }}
+          cp app/build/outputs/apk/app/release/app-app-release.apk "doorglow-$name.apk"
+          gh release create "v$name" "doorglow-$name.apk" \
+            --title "Doorglow $name" \
+            --target "$GITHUB_SHA" \
+            --generate-notes
