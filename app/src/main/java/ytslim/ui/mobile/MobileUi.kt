@@ -1,7 +1,5 @@
 package ytslim.ui.mobile
 
-import androidx.compose.ui.res.stringResource
-import ytslim.R
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -18,24 +16,38 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -47,8 +59,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -58,15 +75,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import ytslim.R
 import ytslim.data.AuthRepository
 import ytslim.data.Playlist
 import ytslim.data.Video
+import ytslim.ui.FeedViewModel
+import ytslim.ui.HomeTab
+import ytslim.ui.PlaylistViewModel
 import ytslim.ui.PlaylistsViewModel
 import ytslim.ui.Screens
+import ytslim.ui.SettingsViewModel
 import ytslim.ui.SignInViewModel
 import ytslim.ui.UiState
-import ytslim.ui.VideoListViewModel
+import ytslim.ui.VideoListContent
+import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
+import ytslim.ui.subtitleOf
 
 /** Interface de toque, para celular e tablet. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -128,110 +152,308 @@ object MobileUi : Screens {
         }
     }
 
+    private data class TabInfo(val tab: HomeTab, val label: Int, val icon: ImageVector)
+
+    private val tabs = listOf(
+        TabInfo(HomeTab.SUBSCRIPTIONS, R.string.tab_subscriptions, Icons.Filled.Subscriptions),
+        TabInfo(HomeTab.PLAYLISTS, R.string.tab_playlists, Icons.AutoMirrored.Filled.PlaylistPlay),
+        TabInfo(HomeTab.SETTINGS, R.string.tab_settings, Icons.Filled.Settings),
+    )
+
     @Composable
-    override fun Playlists(vm: PlaylistsViewModel, onOpen: (Playlist) -> Unit, onSignedOut: () -> Unit) {
-        val state by vm.state.collectAsStateWithLifecycle()
+    override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
+        val current = tabs.first { it.tab == tab }
         Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text(stringResource(R.string.playlists)) },
-                    actions = {
-                        IconButton(onClick = { vm.signOut(onSignedOut) }) {
-                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = stringResource(R.string.sign_out))
-                        }
-                    },
-                )
+            topBar = { TopAppBar(title = { Text(stringResource(current.label)) }) },
+            bottomBar = {
+                NavigationBar {
+                    tabs.forEach { info ->
+                        NavigationBarItem(
+                            selected = info.tab == tab,
+                            onClick = { onTab(info.tab) },
+                            icon = { Icon(info.icon, contentDescription = null) },
+                            label = { Text(stringResource(info.label)) },
+                        )
+                    }
+                }
             },
         ) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding)) {
-                Loadable(state, onRetry = vm::reload) { playlists ->
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 280.dp),
-                        contentPadding = PaddingValues(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        items(playlists, key = { it.browseId }) { playlist ->
-                            Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onOpen(playlist) },
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Thumbnail(playlist.thumbnailUrl, Modifier.width(160.dp))
-                                Column(Modifier.padding(horizontal = 12.dp)) {
-                                    Text(playlist.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    playlist.info?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2) }
-                                }
-                            }
-                        }
-                    }
+            Box(Modifier.fillMaxSize().padding(padding)) { content(tab) }
+        }
+    }
+
+    @Composable
+    override fun Feed(vm: FeedViewModel, onPlay: (Video) -> Unit) {
+        val state by vm.state.collectAsStateWithLifecycle()
+        Loadable(state, onRetry = vm::reload) { content ->
+            VideoGrid(content, emptyText = stringResource(R.string.feed_empty), onNearEnd = vm::loadMore, onPlay = onPlay)
+        }
+    }
+
+    @Composable
+    override fun Playlists(vm: PlaylistsViewModel, onOpen: (Playlist) -> Unit) {
+        val state by vm.state.collectAsStateWithLifecycle()
+        Loadable(state, onRetry = vm::reload) { playlists ->
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 280.dp),
+                contentPadding = PaddingValues(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(playlists, key = { it.browseId }) { playlist ->
+                    PlaylistRow(playlist, onClick = { onOpen(playlist) })
                 }
             }
         }
     }
 
     @Composable
-    override fun VideoList(title: String, vm: VideoListViewModel, onPlay: (Video) -> Unit, onBack: () -> Unit) {
+    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onSignedOut: () -> Unit) {
+        val settings by vm.settings.collectAsStateWithLifecycle()
+        val playlists by vm.playlists.collectAsStateWithLifecycle()
+        val error by vm.error.collectAsStateWithLifecycle()
+
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            item { SectionTitle(stringResource(R.string.settings_subscriptions)) }
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_show_lives)) },
+                    supportingContent = { Text(stringResource(R.string.settings_show_lives_desc)) },
+                    trailingContent = { Switch(checked = settings.showLives, onCheckedChange = null) },
+                    modifier = Modifier.clickable(role = Role.Switch) { vm.setShowLives(!settings.showLives) },
+                )
+            }
+
+            item { SectionTitle(stringResource(R.string.settings_links)) }
+            items(externalLinkOptions) { (mode, label) ->
+                ListItem(
+                    headlineContent = { Text(stringResource(label)) },
+                    leadingContent = { RadioButton(selected = settings.externalLinks == mode, onClick = null) },
+                    modifier = Modifier.selectable(
+                        selected = settings.externalLinks == mode,
+                        role = Role.RadioButton,
+                        onClick = { vm.setExternalLinks(mode) },
+                    ),
+                )
+            }
+
+            item { SectionTitle(stringResource(R.string.settings_playlists)) }
+            item {
+                Text(
+                    stringResource(R.string.settings_playlists_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            error?.let { message ->
+                item {
+                    Text(
+                        stringResource(R.string.action_failed, message),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+            }
+            when (val p = playlists) {
+                UiState.Loading -> item {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), Alignment.Center) { CircularProgressIndicator() }
+                }
+                is UiState.Error -> item {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.error_generic, p.message), Modifier.weight(1f))
+                        TextButton(onClick = vm::reloadPlaylists) { Text(stringResource(R.string.retry)) }
+                    }
+                }
+                is UiState.Ready -> {
+                    if (p.data.isEmpty()) {
+                        item {
+                            Text(stringResource(R.string.settings_playlists_empty), Modifier.padding(16.dp))
+                        }
+                    }
+                    items(p.data, key = { it.playlist.browseId }) { item ->
+                        ListItem(
+                            headlineContent = { Text(item.playlist.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = item.playlist.info?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                            leadingContent = { Thumbnail(item.playlist.thumbnailUrl, Modifier.width(96.dp)) },
+                            trailingContent = {
+                                if (item.busy) CircularProgressIndicator(Modifier.size(24.dp))
+                                else TextButton(onClick = { vm.unsubscribe(item.playlist) }) {
+                                    Text(stringResource(R.string.settings_unsubscribe))
+                                }
+                            },
+                            modifier = Modifier.clickable { onOpenPlaylist(item.playlist) },
+                        )
+                    }
+                }
+            }
+
+            item { SectionTitle(stringResource(R.string.settings_account)) }
+            item {
+                ListItem(
+                    headlineContent = { Text(vm.accountName?.let { stringResource(R.string.settings_signed_in_as, it) } ?: "") },
+                    trailingContent = {
+                        OutlinedButton(onClick = { vm.signOut(onSignedOut) }) { Text(stringResource(R.string.sign_out)) }
+                    },
+                )
+            }
+        }
+    }
+
+    @Composable
+    override fun PlaylistPage(title: String, vm: PlaylistViewModel, onPlay: (Video) -> Unit, onBack: () -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
+        val subscription by vm.subscription.collectAsStateWithLifecycle()
+        val loadedTitle = (state as? UiState.Ready)?.data?.title
+        val shownTitle = title.ifBlank { loadedTitle ?: stringResource(R.string.playlist_default_title) }
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    title = { Text(shownTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     navigationIcon = {
-                        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back)) }
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        }
                     },
                 )
             },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 Loadable(state, onRetry = vm::reload) { content ->
-                    val grid = rememberLazyGridState()
-                    val nearEnd by remember {
-                        derivedStateOf {
-                            val last = grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                            last >= grid.layoutInfo.totalItemsCount - 6
-                        }
-                    }
-                    LaunchedEffect(nearEnd, content.videos.size) { if (nearEnd) vm.loadMore() }
-                    LazyVerticalGrid(
-                        state = grid,
-                        columns = GridCells.Adaptive(minSize = 300.dp),
-                        contentPadding = PaddingValues(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        items(content.videos, key = { it.id + it.playlistIndex }) { video ->
-                            Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable { onPlay(video) }) {
-                                Box {
-                                    Thumbnail(video.thumbnailUrl, Modifier.fillMaxWidth())
-                                    if (video.durationMs > 0) {
-                                        Text(
-                                            formatDuration(video.durationMs),
-                                            color = androidx.compose.ui.graphics.Color.White,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)
-                                                .background(androidx.compose.ui.graphics.Color(0xCC000000), RoundedCornerShape(4.dp))
-                                                .padding(horizontal = 4.dp, vertical = 1.dp),
-                                        )
-                                    }
-                                }
-                                Text(
-                                    video.title,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = 8.dp),
-                                )
-                                (video.info ?: video.channelName)?.let {
-                                    Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                }
-                            }
-                        }
-                        if (content.loadingMore) {
-                            item { Box(Modifier.fillMaxWidth().padding(16.dp), Alignment.Center) { CircularProgressIndicator() } }
-                        }
-                    }
+                    VideoGrid(
+                        content = content,
+                        emptyText = stringResource(R.string.list_empty),
+                        onNearEnd = vm::loadMore,
+                        onPlay = onPlay,
+                        header = (subscription as? PlaylistViewModel.Subscription.Shown)?.let { shown ->
+                            { SubscribeHeader(shown) { vm.toggleSubscription(shownTitle) } }
+                        },
+                    )
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun SubscribeHeader(state: PlaylistViewModel.Subscription.Shown, onToggle: () -> Unit) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val label = stringResource(if (state.subscribed) R.string.playlist_subscribed else R.string.playlist_subscribe)
+                if (state.subscribed) {
+                    OutlinedButton(onClick = onToggle, enabled = !state.busy) { Text(label) }
+                } else {
+                    Button(onClick = onToggle, enabled = !state.busy) { Text(label) }
+                }
+                if (state.busy) {
+                    Spacer(Modifier.width(12.dp))
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                }
+            }
+            Text(
+                stringResource(R.string.playlist_subscribe_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            state.error?.let {
+                Text(stringResource(R.string.action_failed, it), color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+
+    @Composable
+    private fun VideoGrid(
+        content: VideoListContent,
+        emptyText: String,
+        onNearEnd: () -> Unit,
+        onPlay: (Video) -> Unit,
+        header: (@Composable () -> Unit)? = null,
+    ) {
+        val grid = rememberLazyGridState()
+        val nearEnd by remember {
+            derivedStateOf {
+                val last = grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                last >= grid.layoutInfo.totalItemsCount - 6
+            }
+        }
+        LaunchedEffect(nearEnd, content.videos.size) { if (nearEnd) onNearEnd() }
+        LazyVerticalGrid(
+            state = grid,
+            columns = GridCells.Adaptive(minSize = 300.dp),
+            contentPadding = PaddingValues(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (header != null) item(span = { GridItemSpan(maxLineSpan) }) { header() }
+            if (content.videos.isEmpty() && !content.hasMore) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(emptyText, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(32.dp))
+                }
+            }
+            items(content.videos, key = { it.id + it.playlistIndex }) { video ->
+                VideoCard(video, onClick = { onPlay(video) })
+            }
+            if (content.loadingMore) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), Alignment.Center) { CircularProgressIndicator() }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun VideoCard(video: Video, onClick: () -> Unit) {
+        Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick)) {
+            Box {
+                Thumbnail(video.thumbnailUrl, Modifier.fillMaxWidth())
+                if (video.durationMs > 0) {
+                    Text(
+                        formatDuration(video.durationMs),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)
+                            .background(Color(0xCC000000), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                    )
+                }
+            }
+            Text(
+                video.title,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            subtitleOf(video)?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+
+    @Composable
+    private fun PlaylistRow(playlist: Playlist, onClick: () -> Unit) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Thumbnail(playlist.thumbnailUrl, Modifier.width(160.dp))
+            Column(Modifier.padding(horizontal = 12.dp)) {
+                Text(playlist.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                playlist.info?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2) }
+            }
+        }
+    }
+
+    @Composable
+    private fun SectionTitle(text: String) {
+        Column {
+            HorizontalDivider()
+            Text(
+                text,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp),
+            )
         }
     }
 
@@ -242,7 +464,7 @@ object MobileUi : Screens {
             contentDescription = null,
             modifier = modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            contentScale = ContentScale.Crop,
         )
     }
 

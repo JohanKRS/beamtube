@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Controles do player: poucos botões, com foco bem visível para o D-pad da TV. -->
+<resources>
+    <color name="player_accent">@color/launcher_glow</color>
+    <color name="player_icon">#E6FFFFFF</color>
+    <color name="player_text_secondary">#CCFFFFFF</color>
+
+    <style name="PlayerButton">
+        <item name="android:layout_width">48dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_marginEnd">12dp</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:background">@drawable/player_button_bg</item>
+        <item name="android:scaleType">fitCenter</item>
+        <item name="android:focusable">true</item>
+        <item name="android:clickable">true</item>
+    </style>
+
+    <style name="PlayerTextButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_marginEnd">12dp</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">18dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:background">@drawable/player_button_bg</item>
+        <item name="android:textColor">@color/player_icon</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:drawablePadding">8dp</item>
+        <item name="android:focusable">true</item>
+        <item name="android:clickable">true</item>
+    </style>
+
+    <style name="PlayerTime">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingStart">4dp</item>
+        <item name="android:paddingEnd">4dp</item>
+        <item name="android:textColor">@color/player_text_secondary</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+    </style>
+</resources>

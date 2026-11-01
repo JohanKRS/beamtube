@@ -11,6 +11,34 @@
     <string name="sign_in_waits">This screen moves on by itself once you confirm.</string>
     <string name="sign_in_error">Couldn\'t get a code: %1$s</string>
 
+    <string name="tab_subscriptions">Subscriptions</string>
+    <string name="tab_playlists">Playlists</string>
+    <string name="tab_settings">Settings</string>
+
+    <string name="feed_empty">Nothing new from your subscriptions.</string>
+    <string name="from_playlist">%1$s • from %2$s</string>
+    <string name="from_playlist_no_channel">From %1$s</string>
+    <string name="list_empty">No videos here.</string>
+
+    <string name="playlist_default_title">Playlist</string>
+    <string name="playlist_subscribe">Subscribe</string>
+    <string name="playlist_subscribed">Subscribed</string>
+    <string name="playlist_subscribe_hint">New videos added to this playlist will show up in Subscriptions.</string>
+
+    <string name="settings_subscriptions">Subscriptions</string>
+    <string name="settings_show_lives">Show live streams</string>
+    <string name="settings_show_lives_desc">Live and upcoming streams from your channels</string>
+    <string name="settings_links">Links from other apps</string>
+    <string name="settings_links_no_history">Play without saving to history</string>
+    <string name="settings_links_save_history">Save to my history</string>
+    <string name="settings_links_ask">Ask every time</string>
+    <string name="settings_playlists">Subscribed playlists</string>
+    <string name="settings_playlists_hint">Playlists from other channels that are saved to your account. Save one on YouTube, or open a playlist link in Doorglow, to subscribe.</string>
+    <string name="settings_playlists_empty">No subscribed playlists yet.</string>
+    <string name="settings_unsubscribe">Unsubscribe</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_signed_in_as">Signed in as %1$s</string>
+
     <string name="playlists">Playlists</string>
     <string name="sign_out">Sign out</string>
     <string name="back">Back</string>
@@ -24,4 +52,19 @@
     <string name="player_audio_single">single track</string>
     <string name="player_no_history">not saved to history</string>
     <string name="link_not_a_video">This isn\'t a YouTube video link.</string>
+
+    <string name="player_play_pause">Play or pause</string>
+    <string name="player_like">Like</string>
+    <string name="player_dislike">Dislike</string>
+    <string name="player_subscribe">Subscribe</string>
+    <string name="player_subscribed">Subscribed</string>
+    <string name="player_skip">Skip ahead</string>
+    <string name="player_no_highlight">Nothing more to skip to.</string>
+    <string name="player_captions">Turn on captions</string>
+    <string name="player_captions_off">Turn off captions</string>
+    <string name="action_failed">Couldn\'t do that: %1$s</string>
+
+    <string name="ext_ask_title">Open this video</string>
+    <string name="ext_ask_no_history">Watch without saving to history</string>
+    <string name="ext_ask_save_history">Watch and save to my history</string>
 </resources>

@@ -1,5 +1,6 @@
 package ytslim.data
 
+import com.liskovsoft.googlecommon.common.helpers.YouTubeHelper
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItem
 
@@ -12,6 +13,8 @@ data class Video(
     val thumbnailUrl: String?,
     /** Linha secundária pronta do YouTube (canal, visualizações, data). */
     val info: String?,
+    /** Tempo relativo da publicação, como o YouTube escreve ("3 hours ago"). */
+    val published: String?,
     val durationMs: Long,
     val isLive: Boolean,
     val isUpcoming: Boolean,
@@ -19,6 +22,8 @@ data class Video(
     val percentWatched: Int,
     val playlistId: String?,
     val playlistIndex: Int,
+    /** No feed de Inscrições: o título da playlist inscrita de onde o vídeo veio. */
+    val fromPlaylist: String? = null,
 )
 
 /**
@@ -36,7 +41,7 @@ data class Playlist(
 )
 
 /** Uma página de vídeos. [next] é a continuação opaca do motor (null quando acabou). */
-class VideoPage(val videos: List<Video>, internal val next: MediaGroup?) {
+class VideoPage(val videos: List<Video>, internal val next: MediaGroup?, val title: String? = null) {
     val hasMore: Boolean get() = next != null
 }
 
@@ -49,10 +54,12 @@ internal fun MediaItem.toVideo(): Video? {
         channelId = channelId,
         thumbnailUrl = cardImageUrl,
         info = secondTitle?.toString(),
+        published = productionDate,
         durationMs = durationMs,
         isLive = isLive,
         isUpcoming = isUpcoming,
-        isShorts = isShorts,
+        // A marca do YouTube às vezes falta; a regra do motor olha duração, "#" no título e a capa.
+        isShorts = isShorts || YouTubeHelper.isShorts(this, false),
         percentWatched = percentWatched,
         playlistId = playlistId,
         playlistIndex = playlistIndex,
@@ -76,5 +83,6 @@ internal fun MediaGroup?.toPage(): VideoPage {
     return VideoPage(
         videos = items.mapNotNull { it.toVideo() },
         next = this?.takeIf { it.nextPageKey != null },
+        title = this?.title,
     )
 }

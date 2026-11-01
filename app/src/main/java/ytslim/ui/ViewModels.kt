@@ -4,14 +4,26 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ytslim.data.AuthRepository
 import ytslim.data.AuthRepository.SignInEvent
+import ytslim.data.ExternalLinks
+import ytslim.data.FeedMerge
+import ytslim.data.FeedRepository
+import ytslim.data.FeedRules
 import ytslim.data.LibraryRepository
 import ytslim.data.Playlist
+import ytslim.data.PlaylistSubscriptions
+import ytslim.data.Settings
+import ytslim.data.SettingsRepository
+import ytslim.data.Timed
 import ytslim.data.Video
 import ytslim.data.VideoPage
 
@@ -55,6 +67,95 @@ class SignInViewModel : ViewModel() {
     }
 }
 
+/** Uma lista de vídeos na tela, com paginação. */
+data class VideoListContent(val videos: List<Video>, val hasMore: Boolean, val loadingMore: Boolean, val title: String? = null)
+
+/**
+ * Feed de Inscrições: o feed dos canais mais os vídeos novos das playlists inscritas,
+ * filtrado pelas regras (sem Shorts; lives só com o toggle).
+ */
+class FeedViewModel : ViewModel() {
+    private sealed interface Raw {
+        data object Loading : Raw
+        data class Error(val message: String) : Raw
+        data class Loaded(val feed: List<Timed>, val lastPage: VideoPage, val loadingMore: Boolean) : Raw
+    }
+
+    private val raw = MutableStateFlow<Raw>(Raw.Loading)
+    private val extras = MutableStateFlow<List<Timed>>(emptyList())
+    private val settings = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
+
+    val state: StateFlow<UiState<VideoListContent>> = combine(raw, extras, settings, ::content)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
+
+    private fun content(raw: Raw, extras: List<Timed>, settings: Settings): UiState<VideoListContent> = when (raw) {
+        Raw.Loading -> UiState.Loading
+        is Raw.Error -> UiState.Error(raw.message)
+        is Raw.Loaded -> {
+            val keep = { t: Timed -> FeedRules.keep(t.video, settings.showLives) }
+            val videos = FeedMerge.merge(raw.feed.filter(keep), extras.filter(keep), feedComplete = !raw.lastPage.hasMore)
+            UiState.Ready(VideoListContent(videos, raw.lastPage.hasMore, raw.loadingMore))
+        }
+    }
+
+    private var loadJob: Job? = null
+    private var extrasJob: Job? = null
+
+    init {
+        reload()
+    }
+
+    fun reload() {
+        loadJob?.cancel()
+        extrasJob?.cancel()
+        autoPages = 0
+        raw.value = Raw.Loading
+        loadJob = viewModelScope.launch {
+            raw.value = runCatching { FeedRepository.subscriptions() }.fold(
+                { page -> Raw.Loaded(FeedMerge.estimate(page.videos, System.currentTimeMillis()), page, loadingMore = false) },
+                { Raw.Error(it.toMessage()) },
+            )
+            fillScreen()
+        }
+        // As playlists inscritas chegam depois, sem segurar o feed dos canais.
+        extrasJob = viewModelScope.launch {
+            val channels = FeedRepository.subscribedChannelIds().orEmpty()
+            extras.value = runCatching { PlaylistSubscriptions.newVideos(channels) }.getOrDefault(emptyList())
+        }
+    }
+
+    fun loadMore() {
+        val loaded = raw.value as? Raw.Loaded ?: return
+        if (!loaded.lastPage.hasMore || loaded.loadingMore) return
+        raw.value = loaded.copy(loadingMore = true)
+        loadJob = viewModelScope.launch {
+            val next = runCatching { LibraryRepository.more(loaded.lastPage) }.getOrNull()
+            val known = loaded.feed.mapTo(HashSet()) { it.video.id }
+            val startAt = loaded.feed.lastOrNull()?.atMs ?: System.currentTimeMillis()
+            val added = FeedMerge.estimate(next?.videos.orEmpty().filter { known.add(it.id) }, System.currentTimeMillis(), startAt)
+            raw.value = Raw.Loaded(loaded.feed + added, next ?: VideoPage(emptyList(), null), loadingMore = false)
+            fillScreen()
+        }
+    }
+
+    /** Se os filtros esvaziaram a página (ex.: muitos Shorts), busca mais sozinho. */
+    private fun fillScreen() {
+        val loaded = raw.value as? Raw.Loaded ?: return
+        val shown = (content(loaded, extras.value, settings.value) as? UiState.Ready)?.data?.videos?.size ?: 0
+        if (shown < MIN_ON_SCREEN && loaded.lastPage.hasMore && autoPages < MAX_AUTO_PAGES) {
+            autoPages++
+            loadMore()
+        }
+    }
+
+    private var autoPages = 0
+
+    private companion object {
+        const val MIN_ON_SCREEN = 12
+        const val MAX_AUTO_PAGES = 5
+    }
+}
+
 class PlaylistsViewModel : ViewModel() {
     private val _state = MutableStateFlow<UiState<List<Playlist>>>(UiState.Loading)
     val state: StateFlow<UiState<List<Playlist>>> = _state.asStateFlow()
@@ -70,21 +171,12 @@ class PlaylistsViewModel : ViewModel() {
                 .fold({ UiState.Ready(it) }, { UiState.Error(it.toMessage()) })
         }
     }
-
-    fun signOut(onDone: () -> Unit) {
-        viewModelScope.launch {
-            AuthRepository.signOut()
-            onDone()
-        }
-    }
 }
 
-/** Lista paginada de vídeos (aqui, os de uma playlist). */
-class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : ViewModel() {
-    data class Content(val videos: List<Video>, val hasMore: Boolean, val loadingMore: Boolean)
-
-    private val _state = MutableStateFlow<UiState<Content>>(UiState.Loading)
-    val state: StateFlow<UiState<Content>> = _state.asStateFlow()
+/** Lista paginada de vídeos (os de uma playlist). */
+open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : ViewModel() {
+    private val _state = MutableStateFlow<UiState<VideoListContent>>(UiState.Loading)
+    val state: StateFlow<UiState<VideoListContent>> = _state.asStateFlow()
     private var lastPage: VideoPage? = null
     private var moreJob: Job? = null
 
@@ -99,7 +191,7 @@ class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : ViewM
             _state.value = runCatching { firstPage() }.fold(
                 { page ->
                     lastPage = page
-                    UiState.Ready(Content(page.videos, page.hasMore, loadingMore = false))
+                    UiState.Ready(VideoListContent(page.videos, page.hasMore, loadingMore = false, title = page.title))
                 },
                 { UiState.Error(it.toMessage()) },
             )
@@ -117,12 +209,113 @@ class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : ViewM
             val known = current.videos.mapTo(HashSet()) { it.id }
             val added = next?.videos.orEmpty().filter { known.add(it.id) }
             _state.value = UiState.Ready(
-                Content(current.videos + added, hasMore = next?.hasMore == true, loadingMore = false),
+                current.copy(videos = current.videos + added, hasMore = next?.hasMore == true, loadingMore = false),
+            )
+        }
+    }
+}
+
+/** Página de uma playlist: os vídeos e, se for de outro canal, o botão de inscrição. */
+class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ LibraryRepository.playlistVideos(playlist) }) {
+    sealed interface Subscription {
+        data object Hidden : Subscription
+        data class Shown(val subscribed: Boolean, val busy: Boolean = false, val error: String? = null) : Subscription
+    }
+
+    private val _subscription = MutableStateFlow<Subscription>(Subscription.Hidden)
+    val subscription: StateFlow<Subscription> = _subscription.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            _subscription.value = when (val status = PlaylistSubscriptions.status(playlist.playlistId)) {
+                PlaylistSubscriptions.Status.NotApplicable -> Subscription.Hidden
+                is PlaylistSubscriptions.Status.Foreign -> Subscription.Shown(status.subscribed)
+            }
+        }
+    }
+
+    fun toggleSubscription(title: String?) {
+        val current = _subscription.value as? Subscription.Shown ?: return
+        if (current.busy) return
+        val id = playlist.playlistId ?: return
+        _subscription.value = current.copy(busy = true, error = null)
+        viewModelScope.launch {
+            val result = runCatching {
+                if (current.subscribed) PlaylistSubscriptions.unsubscribe(id)
+                else PlaylistSubscriptions.subscribe(playlist.copy(title = title?.takeIf { it.isNotBlank() } ?: playlist.title))
+            }
+            _subscription.value = result.fold(
+                { Subscription.Shown(subscribed = !current.subscribed) },
+                { current.copy(busy = false, error = it.toMessage()) },
+            )
+        }
+    }
+}
+
+/** Configurações mínimas: lives nas Inscrições, links externos, playlists inscritas e conta. */
+class SettingsViewModel : ViewModel() {
+    val settings: StateFlow<Settings> = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
+    val accountName: String? = AuthRepository.accountName()
+
+    data class SubscribedPlaylist(val playlist: Playlist, val busy: Boolean = false)
+
+    private val _playlists = MutableStateFlow<UiState<List<SubscribedPlaylist>>>(UiState.Loading)
+    val playlists: StateFlow<UiState<List<SubscribedPlaylist>>> = _playlists.asStateFlow()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
+    init {
+        reloadPlaylists()
+    }
+
+    fun reloadPlaylists() {
+        _playlists.value = UiState.Loading
+        viewModelScope.launch {
+            _playlists.value = runCatching { PlaylistSubscriptions.subscribed() }
+                .fold({ list -> UiState.Ready(list.map { SubscribedPlaylist(it) }) }, { UiState.Error(it.toMessage()) })
+        }
+    }
+
+    fun setShowLives(value: Boolean) {
+        viewModelScope.launch { SettingsRepository.setShowLives(value) }
+    }
+
+    fun setExternalLinks(value: ExternalLinks) {
+        viewModelScope.launch { SettingsRepository.setExternalLinks(value) }
+    }
+
+    fun unsubscribe(playlist: Playlist) {
+        val id = playlist.playlistId ?: return
+        markBusy(id, true)
+        _error.value = null
+        viewModelScope.launch {
+            runCatching { PlaylistSubscriptions.unsubscribe(id) }.fold(
+                {
+                    _playlists.update { state ->
+                        (state as? UiState.Ready)?.let { UiState.Ready(it.data.filterNot { p -> p.playlist.playlistId == id }) } ?: state
+                    }
+                },
+                {
+                    markBusy(id, false)
+                    _error.value = it.toMessage()
+                },
             )
         }
     }
 
-    companion object {
-        fun forPlaylist(playlist: Playlist) = VideoListViewModel { LibraryRepository.playlistVideos(playlist) }
+    private fun markBusy(id: String, busy: Boolean) {
+        _playlists.update { state ->
+            (state as? UiState.Ready)?.let { ready ->
+                UiState.Ready(ready.data.map { if (it.playlist.playlistId == id) it.copy(busy = busy) else it })
+            } ?: state
+        }
+    }
+
+    fun signOut(onDone: () -> Unit) {
+        viewModelScope.launch {
+            AuthRepository.signOut()
+            onDone()
+        }
     }
 }

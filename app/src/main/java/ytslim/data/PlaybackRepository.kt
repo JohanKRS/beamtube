@@ -28,6 +28,7 @@ data class PlaybackInfo(
     val originalAudioLabel: String?,
     val audioLabels: List<String>,
     val clientName: String?,
+    val captions: List<Caption>,
 )
 
 sealed interface PlaybackResult {
@@ -98,6 +99,15 @@ object PlaybackRepository {
             originalAudioLabel = AudioRules.originalLabel(labels),
             audioLabels = labels,
             clientName = clientInfo?.clientName,
+            captions = subtitles.orEmpty().mapNotNull { sub ->
+                Caption(
+                    url = sub.baseUrl ?: return@mapNotNull null,
+                    mimeType = sub.mimeType,
+                    language = sub.languageCode,
+                    name = sub.name,
+                    auto = sub.type == "asr" || sub.vssId?.startsWith("a.") == true,
+                )
+            },
         )
     }
 }

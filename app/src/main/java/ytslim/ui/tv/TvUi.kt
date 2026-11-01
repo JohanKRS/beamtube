@@ -1,7 +1,6 @@
 package ytslim.ui.tv
 
-import androidx.compose.ui.res.stringResource
-import ytslim.R
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,20 +13,32 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,20 +47,38 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.Card
+import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
+import androidx.tv.material3.RadioButton
 import androidx.tv.material3.Surface
+import androidx.tv.material3.Switch
+import androidx.tv.material3.Tab
+import androidx.tv.material3.TabRow
 import androidx.tv.material3.Text
 import androidx.tv.material3.darkColorScheme
 import coil3.compose.AsyncImage
+import ytslim.R
 import ytslim.data.Playlist
 import ytslim.data.Video
+import ytslim.ui.FeedViewModel
+import ytslim.ui.HomeTab
+import ytslim.ui.PlaylistViewModel
 import ytslim.ui.PlaylistsViewModel
 import ytslim.ui.Screens
+import ytslim.ui.SettingsViewModel
 import ytslim.ui.SignInViewModel
 import ytslim.ui.UiState
-import ytslim.ui.VideoListViewModel
+import ytslim.ui.VideoListContent
+import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
+import ytslim.ui.subtitleOf
+
+/**
+ * Na abertura do app o foco vai para o primeiro vídeo das Inscrições. Depois disso, as abas não
+ * puxam o foco: andar pelas abas com o D-pad troca o conteúdo sem tirar o foco das abas.
+ */
+private val LocalInitialFocus = compositionLocalOf<MutableState<Boolean>> { mutableStateOf(false) }
 
 /** Interface da Android TV: D-pad, foco visível e cards maiores (Compose for TV). */
 object TvUi : Screens {
@@ -98,66 +127,263 @@ object TvUi : Screens {
         }
     }
 
+    private val tabs = listOf(
+        HomeTab.SUBSCRIPTIONS to R.string.tab_subscriptions,
+        HomeTab.PLAYLISTS to R.string.tab_playlists,
+        HomeTab.SETTINGS to R.string.tab_settings,
+    )
+
     @Composable
-    override fun Playlists(vm: PlaylistsViewModel, onOpen: (Playlist) -> Unit, onSignedOut: () -> Unit) {
-        val state by vm.state.collectAsStateWithLifecycle()
+    override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
+        val initialFocus = rememberSaveable { mutableStateOf(true) }
+        var tabsFocused by remember { mutableStateOf(false) }
+        val selectedTab = remember { FocusRequester() }
+        // Voltar, de dentro do conteúdo, sobe para as abas; nas abas, sai do app.
+        BackHandler(enabled = !tabsFocused) { runCatching { selectedTab.requestFocus() } }
+
         Column(Modifier.fillMaxSize().padding(screenPadding)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.playlists), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = { vm.signOut(onSignedOut) }) { Text(stringResource(R.string.sign_out)) }
-            }
-            Spacer(Modifier.height(24.dp))
-            Loadable(state, onRetry = vm::reload) { playlists ->
-                val firstFocus = remember { FocusRequester() }
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(4),
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                    contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
-                ) {
-                    itemsIndexed(playlists, key = { _, p -> p.browseId }) { index, playlist ->
-                        MediaCard(
-                            title = playlist.title,
-                            subtitle = playlist.info,
-                            imageUrl = playlist.thumbnailUrl,
-                            badge = null,
-                            onClick = { onOpen(playlist) },
-                            modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+            TabRow(
+                selectedTabIndex = tabs.indexOfFirst { it.first == tab },
+                modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus },
+            ) {
+                tabs.forEach { (item, label) ->
+                    Tab(
+                        selected = item == tab,
+                        onFocus = { onTab(item) },
+                        onClick = { onTab(item) },
+                        modifier = if (item == tab) Modifier.focusRequester(selectedTab) else Modifier,
+                    ) {
+                        Text(
+                            stringResource(label),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         )
                     }
                 }
-                LaunchedEffect(playlists) { if (playlists.isNotEmpty()) runCatching { firstFocus.requestFocus() } }
+            }
+            Spacer(Modifier.height(24.dp))
+            CompositionLocalProvider(LocalInitialFocus provides initialFocus) {
+                Box(Modifier.fillMaxSize()) { content(tab) }
             }
         }
     }
 
     @Composable
-    override fun VideoList(title: String, vm: VideoListViewModel, onPlay: (Video) -> Unit, onBack: () -> Unit) {
+    override fun Feed(vm: FeedViewModel, onPlay: (Video) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
-        Column(Modifier.fillMaxSize().padding(screenPadding)) {
-            Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(24.dp))
-            Loadable(state, onRetry = vm::reload) { content ->
-                val firstFocus = remember { FocusRequester() }
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(4),
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                    contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
-                ) {
-                    itemsIndexed(content.videos, key = { _, v -> v.id + v.playlistIndex }) { index, video ->
-                        if (index >= content.videos.size - 8) LaunchedEffect(Unit) { vm.loadMore() }
-                        MediaCard(
-                            title = video.title,
-                            subtitle = video.info ?: video.channelName,
-                            imageUrl = video.thumbnailUrl,
-                            badge = video.durationMs.takeIf { it > 0 }?.let(::formatDuration),
-                            onClick = { onPlay(video) },
-                            modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
-                        )
+        val initialFocus = LocalInitialFocus.current
+        Loadable(state, onRetry = vm::reload) { content ->
+            VideoGrid(
+                content = content,
+                emptyText = stringResource(R.string.feed_empty),
+                onNearEnd = vm::loadMore,
+                onPlay = onPlay,
+                takeFocus = initialFocus.value,
+                onFocusTaken = { initialFocus.value = false },
+            )
+        }
+    }
+
+    @Composable
+    override fun Playlists(vm: PlaylistsViewModel, onOpen: (Playlist) -> Unit) {
+        val state by vm.state.collectAsStateWithLifecycle()
+        Loadable(state, onRetry = vm::reload) { playlists ->
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
+            ) {
+                itemsIndexed(playlists, key = { _, p -> p.browseId }) { _, playlist ->
+                    MediaCard(
+                        title = playlist.title,
+                        subtitle = playlist.info,
+                        imageUrl = playlist.thumbnailUrl,
+                        badge = null,
+                        onClick = { onOpen(playlist) },
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onSignedOut: () -> Unit) {
+        val settings by vm.settings.collectAsStateWithLifecycle()
+        val playlists by vm.playlists.collectAsStateWithLifecycle()
+        val error by vm.error.collectAsStateWithLifecycle()
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(0.7f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            contentPadding = PaddingValues(bottom = 48.dp),
+        ) {
+            item { SectionTitle(stringResource(R.string.settings_subscriptions)) }
+            item {
+                ListItem(
+                    selected = false,
+                    onClick = { vm.setShowLives(!settings.showLives) },
+                    headlineContent = { Text(stringResource(R.string.settings_show_lives)) },
+                    supportingContent = { Text(stringResource(R.string.settings_show_lives_desc)) },
+                    trailingContent = { Switch(checked = settings.showLives, onCheckedChange = null) },
+                )
+            }
+
+            item { SectionTitle(stringResource(R.string.settings_links)) }
+            items(externalLinkOptions) { (mode, label) ->
+                ListItem(
+                    selected = false,
+                    onClick = { vm.setExternalLinks(mode) },
+                    headlineContent = { Text(stringResource(label)) },
+                    leadingContent = { RadioButton(selected = settings.externalLinks == mode, onClick = null) },
+                )
+            }
+
+            item { SectionTitle(stringResource(R.string.settings_playlists)) }
+            item {
+                Text(
+                    stringResource(R.string.settings_playlists_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            error?.let { message ->
+                item {
+                    Text(
+                        stringResource(R.string.action_failed, message),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+            }
+            when (val p = playlists) {
+                UiState.Loading -> item { Text(stringResource(R.string.loading), Modifier.padding(16.dp)) }
+                is UiState.Error -> item {
+                    ListItem(
+                        selected = false,
+                        onClick = vm::reloadPlaylists,
+                        headlineContent = { Text(stringResource(R.string.error_generic, p.message)) },
+                        trailingContent = { Text(stringResource(R.string.retry)) },
+                    )
+                }
+                is UiState.Ready -> {
+                    if (p.data.isEmpty()) {
+                        item { Text(stringResource(R.string.settings_playlists_empty), Modifier.padding(16.dp)) }
+                    }
+                    items(p.data, key = { it.playlist.browseId }) { item ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ListItem(
+                                selected = false,
+                                onClick = { onOpenPlaylist(item.playlist) },
+                                headlineContent = { Text(item.playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                supportingContent = item.playlist.info?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                                modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            OutlinedButton(onClick = { vm.unsubscribe(item.playlist) }, enabled = !item.busy) {
+                                Text(stringResource(R.string.settings_unsubscribe))
+                            }
+                        }
                     }
                 }
-                LaunchedEffect(Unit) { if (content.videos.isNotEmpty()) runCatching { firstFocus.requestFocus() } }
+            }
+
+            item { SectionTitle(stringResource(R.string.settings_account)) }
+            item {
+                ListItem(
+                    selected = false,
+                    onClick = { vm.signOut(onSignedOut) },
+                    headlineContent = { Text(stringResource(R.string.sign_out)) },
+                    supportingContent = vm.accountName?.let { { Text(stringResource(R.string.settings_signed_in_as, it)) } },
+                )
+            }
+        }
+    }
+
+    @Composable
+    override fun PlaylistPage(title: String, vm: PlaylistViewModel, onPlay: (Video) -> Unit, onBack: () -> Unit) {
+        val state by vm.state.collectAsStateWithLifecycle()
+        val subscription by vm.subscription.collectAsStateWithLifecycle()
+        val loadedTitle = (state as? UiState.Ready)?.data?.title
+        val shownTitle = title.ifBlank { loadedTitle ?: stringResource(R.string.playlist_default_title) }
+
+        Column(Modifier.fillMaxSize().padding(screenPadding)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    shownTitle,
+                    style = MaterialTheme.typography.headlineMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                (subscription as? PlaylistViewModel.Subscription.Shown)?.let { shown ->
+                    Spacer(Modifier.width(24.dp))
+                    val label = stringResource(if (shown.subscribed) R.string.playlist_subscribed else R.string.playlist_subscribe)
+                    val toggle = { vm.toggleSubscription(shownTitle) }
+                    if (shown.subscribed) OutlinedButton(onClick = toggle, enabled = !shown.busy) { Text(label) }
+                    else Button(onClick = toggle, enabled = !shown.busy) { Text(label) }
+                }
+            }
+            (subscription as? PlaylistViewModel.Subscription.Shown)?.let { shown ->
+                Text(
+                    shown.error?.let { stringResource(R.string.action_failed, it) } ?: stringResource(R.string.playlist_subscribe_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (shown.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            Spacer(Modifier.height(24.dp))
+            Loadable(state, onRetry = vm::reload) { content ->
+                VideoGrid(
+                    content = content,
+                    emptyText = stringResource(R.string.list_empty),
+                    onNearEnd = vm::loadMore,
+                    onPlay = onPlay,
+                    takeFocus = true,
+                    onFocusTaken = {},
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun VideoGrid(
+        content: VideoListContent,
+        emptyText: String,
+        onNearEnd: () -> Unit,
+        onPlay: (Video) -> Unit,
+        takeFocus: Boolean,
+        onFocusTaken: () -> Unit,
+    ) {
+        val firstFocus = remember { FocusRequester() }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
+        ) {
+            if (content.videos.isEmpty() && !content.hasMore) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(emptyText, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(24.dp))
+                }
+            }
+            itemsIndexed(content.videos, key = { _, v -> v.id + v.playlistIndex }) { index, video ->
+                if (index >= content.videos.size - 8) LaunchedEffect(Unit) { onNearEnd() }
+                MediaCard(
+                    title = video.title,
+                    subtitle = subtitleOf(video),
+                    imageUrl = video.thumbnailUrl,
+                    badge = video.durationMs.takeIf { it > 0 }?.let(::formatDuration),
+                    onClick = { onPlay(video) },
+                    modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                )
+            }
+        }
+        LaunchedEffect(content.videos.isNotEmpty()) {
+            if (takeFocus && content.videos.isNotEmpty()) {
+                runCatching { firstFocus.requestFocus() }
+                onFocusTaken()
             }
         }
     }
@@ -212,6 +438,16 @@ object TvUi : Screens {
     }
 
     @Composable
+    private fun SectionTitle(text: String) {
+        Text(
+            text,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 4.dp),
+        )
+    }
+
+    @Composable
     private fun <T> Loadable(state: UiState<T>, onRetry: () -> Unit, content: @Composable (T) -> Unit) {
         when (state) {
             UiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
@@ -224,9 +460,7 @@ object TvUi : Screens {
             ) {
                 Text(stringResource(R.string.error_generic, state.message), style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(24.dp))
-                val focus = remember { FocusRequester() }
-                Button(onClick = onRetry, modifier = Modifier.focusRequester(focus)) { Text(stringResource(R.string.retry)) }
-                LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+                Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
             }
             is UiState.Ready -> content(state.data)
         }

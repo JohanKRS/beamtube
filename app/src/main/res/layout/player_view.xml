@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- O PlayerView com os nossos controles (player_controls), em vez dos padrões do Media3. -->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/player_view"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:focusable="true"
+    android:keepScreenOn="true"
+    app:animation_enabled="false"
+    app:controller_layout_id="@layout/player_controls"
+    app:pause_icon="@drawable/ic_pause"
+    app:play_icon="@drawable/ic_play"
+    app:show_buffering="always"
+    app:show_timeout="4000" />
