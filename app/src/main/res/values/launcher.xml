@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Cores do ícone do Doorglow. Desenhos: drawable/ic_launcher_*.xml e drawable-xhdpi/tv_banner.png. -->
+<!-- Gerado por tools/make_icons.py; não editar à mão. -->
 <resources>
-    <color name="launcher_background_top">#FF1B1F3B</color>
-    <color name="launcher_background_bottom">#FF2A3060</color>
-    <color name="launcher_light">#FFFFE3A3</color>
-    <color name="launcher_glow">#FFFFC861</color>
+    <color name="launcher_night_top">#FF1B1F3B</color>
+    <color name="launcher_night_bottom">#FF2A3060</color>
+    <color name="launcher_night_light">#FFFFE3A3</color>
+    <color name="launcher_night_glow">#FFFFC861</color>
+    <color name="launcher_black_top">#FF050506</color>
+    <color name="launcher_black_bottom">#FF050506</color>
+    <color name="launcher_black_light">#FFF5F7FA</color>
+    <color name="launcher_black_glow">#FFA9C1FF</color>
+    <color name="launcher_teal_top">#FF0B3D44</color>
+    <color name="launcher_teal_bottom">#FF11606A</color>
+    <color name="launcher_teal_light">#FFCFFFF0</color>
+    <color name="launcher_teal_glow">#FF7FF0CF</color>
+    <color name="launcher_plum_top">#FF2B1638</color>
+    <color name="launcher_plum_bottom">#FF4A2350</color>
+    <color name="launcher_plum_light">#FFFFE0CC</color>
+    <color name="launcher_plum_glow">#FFFF9E7A</color>
+    <color name="launcher_mustard_top">#FFB7791F</color>
+    <color name="launcher_mustard_bottom">#FF8A5A12</color>
+    <color name="launcher_mustard_light">#FFFFF6DF</color>
+    <color name="launcher_mustard_glow">#FFFFF6DF</color>
+    <color name="launcher_vivid_top">#FFFF6A5C</color>
+    <color name="launcher_vivid_bottom">#FF7B3FE4</color>
+    <color name="launcher_vivid_light">#FFFFFFFF</color>
+    <color name="launcher_vivid_glow">#FFFFE6F0</color>
 </resources>

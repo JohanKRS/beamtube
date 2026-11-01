@@ -15,7 +15,9 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - Atualizar os submódulos de tempos em tempos para receber as correções.
 - **Login:** pelo código de TV (youtube.com/activate), o mesmo fluxo em todos os aparelhos.
 - **Fora do app:** envio de vídeos (upload), Shorts, comentários, chat ao vivo e notificações.
-- **Nome e ícone:** **Doorglow**. Ícone: a porta entreaberta (fresta de luz) em fundo azul-noite. `applicationId` = `app.doorglow`. Nome e ID ficam no `gradle.properties`; ícone em `app/src/main/res/drawable/ic_launcher_*.xml`; o banner da TV é gerado por `tools/make_tv_banner.py`.
+- **Nome e ícone:** **Doorglow**. Ícone: a porta entreaberta (fresta de luz) em fundo azul-noite. `applicationId` = `app.doorglow`. Nome e ID ficam no `gradle.properties`.
+  - **Cor do ícone à escolha** (decidido em 2026-11-01): o desenho é sempre a porta original, e nas Configurações ("App icon") dá para escolher uma de seis cores: azul-noite (padrão), preto, verde-azulado, ameixa, mostarda e gradiente vivo. São as versões 01 a 06 de `/mnt/project-files/nome-e-icone/versoes/`.
+  - Ícones, banners da TV e cores saem de `tools/make_icons.py` (não editar os XMLs gerados à mão). A tabela de cores fica no script.
 - **Interface em inglês.** (A conversa com o Claude continua em português.)
 - **Interações com a conta:** só **like/dislike** e **inscrever/cancelar inscrição**. O botão de inscrição fica na página do vídeo e vale para o canal do vídeo.
 - **Inscrição em playlists**, guardada nas playlists salvas da conta (o YouTube não tem isso; ver a seção própria).
@@ -32,7 +34,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 | Playlists | Inclui **Assistir mais tarde** (o real, que o motor acessa). Reordenar vídeos, inclusive pela TV. |
 | Histórico | Lista do que foi assistido. |
 | Canal | Página básica do canal (vídeos, playlists). |
-| Configurações | Mínimas: filtros, tópicos, canais bloqueados, conta, **mostrar lives nas Inscrições**, playlists inscritas, comportamento dos links externos. |
+| Configurações | Mínimas: filtros, tópicos, canais bloqueados, conta, **mostrar lives nas Inscrições**, playlists inscritas, comportamento dos links externos, **cor do ícone**. |
 
 ## Filtragem
 
@@ -101,6 +103,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Validado no aparelho pelo Johan em 2026-11-01:* login, playlists, reprodução, áudio original num vídeo dublado e link externo fora do histórico.
 2. **Inscrições (Início) + player completo:** controles mínimos, legenda, regra de qualidade, pular partes. Junto: toggle de lives, inscrição em playlists, like/dislike e inscrever/cancelar no vídeo, e a tela de Configurações mínima.
    - *Implementado em 2026-11-01 (versão 0.2.0), aguardando o teste no aparelho* (ver "Como testar a etapa 2"). O início tem três abas: Subscriptions, Playlists e Settings. Configurações: mostrar lives (inclui as agendadas), links de outros apps, playlists inscritas e conta.
+   - *Versão 0.2.1:* seletor da cor do ícone nas Configurações.
 3. **Playlists:** salvar com um toque, reordenar (inclusive na TV).
 4. **Busca com filtros, Histórico e Canal.**
 5. **Recomendações** com exclusão e preferência de tópicos.
@@ -120,6 +123,8 @@ Nenhuma no momento.
 4. Playlists inscritas: abrir um link `youtube.com/playlist?list=` de uma playlist de outro canal, tocar "Subscribe" e ver a playlist em Settings. Os vídeos que entrarem nela depois aparecem nas Inscrições (só os de canais em que você não é inscrito).
 5. Links de outros apps: trocar para "Ask every time" e abrir um link pelo WhatsApp.
 6. Na TV: andar pelas abas com o D-pad, voltar do conteúdo para as abas com "voltar", e usar os botões do player.
+7. Cor do ícone (0.2.1): em Settings > App icon, escolher outra cor. Em alguns segundos o ícone do celular e o banner da TV mudam. Se o atalho da tela inicial sumir, é só pôr de novo pela lista de apps.
+   - A própria atualização para a 0.2.1 pode tirar o atalho da tela inicial uma vez, porque a entrada do launcher mudou de lugar (ver as notas técnicas).
 
 ## Como testar a etapa 1
 
@@ -167,4 +172,7 @@ Nenhuma no momento.
   - Teste online: `./gradlew :app:testAppDebugUnitTest -Pytslim.online=true --tests '*EngineOnlineTest*'`.
 - **Busca:** playlists vêm com tipo indefinido (-1), sem `playlistId` e com `channelId` = `VL<id da playlist>`.
 - **APK:** ~52 MB em debug e ~43 MB em release, só com arm64-v8a e armeabi-v7a (o j2v8 tem ~30 MB por ABI). Para emulador, acrescentar x86_64 em `app.abis`.
+- **Cor do ícone:** cada cor é um `activity-alias` da `MainActivity` no manifest, com o próprio ícone e o banner da TV, e só um fica ligado (`data/AppIcons.kt`, com `PackageManager.setComponentEnabledSetting` e `DONT_KILL_APP`). O alias ligado é a própria escolha: o app não guarda a cor em outro lugar.
+  - **Nunca renomear nem tirar um alias:** quem estivesse com ele ligado ficaria sem o app no launcher.
+  - Até a 0.2.0 a entrada do launcher era a própria `MainActivity`; a partir da 0.2.1 é o alias. Por isso alguns launchers tiram o atalho da tela inicial nessa atualização, e também a cada troca de cor.
 - **Compilar:** `./gradlew :app:assembleAppRelease` gera `app/build/outputs/apk/app/release/app-app-release.apk`, assinado com a chave de debug (uso pessoal). Os submódulos precisam estar baixados: `git submodule update --init`.

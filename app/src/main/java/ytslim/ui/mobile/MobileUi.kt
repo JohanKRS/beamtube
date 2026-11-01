@@ -76,9 +76,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import ytslim.R
+import ytslim.data.AppIcon
 import ytslim.data.AuthRepository
 import ytslim.data.Playlist
 import ytslim.data.Video
+import ytslim.ui.AppIconPreview
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HomeTab
 import ytslim.ui.PlaylistViewModel
@@ -212,6 +214,7 @@ object MobileUi : Screens {
         val settings by vm.settings.collectAsStateWithLifecycle()
         val playlists by vm.playlists.collectAsStateWithLifecycle()
         val error by vm.error.collectAsStateWithLifecycle()
+        val appIcon by vm.appIcon.collectAsStateWithLifecycle()
 
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item { SectionTitle(stringResource(R.string.settings_subscriptions)) }
@@ -286,6 +289,28 @@ object MobileUi : Screens {
                         )
                     }
                 }
+            }
+
+            item { SectionTitle(stringResource(R.string.settings_app_icon)) }
+            item {
+                Text(
+                    stringResource(R.string.settings_app_icon_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            items(AppIcon.entries) { icon ->
+                ListItem(
+                    headlineContent = { Text(stringResource(icon.label)) },
+                    leadingContent = { AppIconPreview(icon) },
+                    trailingContent = { RadioButton(selected = appIcon == icon, onClick = null) },
+                    modifier = Modifier.selectable(
+                        selected = appIcon == icon,
+                        role = Role.RadioButton,
+                        onClick = { vm.setAppIcon(icon) },
+                    ),
+                )
             }
 
             item { SectionTitle(stringResource(R.string.settings_account)) }

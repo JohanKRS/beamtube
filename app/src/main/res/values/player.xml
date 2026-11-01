@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Controles do player: poucos botões, com foco bem visível para o D-pad da TV. -->
 <resources>
-    <color name="player_accent">@color/launcher_glow</color>
+    <color name="player_accent">@color/launcher_night_glow</color>
     <color name="player_icon">#E6FFFFFF</color>
     <color name="player_text_secondary">#CCFFFFFF</color>
 

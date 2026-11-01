@@ -36,6 +36,14 @@
     <string name="settings_playlists_hint">Playlists from other channels that are saved to your account. Save one on YouTube, or open a playlist link in Doorglow, to subscribe.</string>
     <string name="settings_playlists_empty">No subscribed playlists yet.</string>
     <string name="settings_unsubscribe">Unsubscribe</string>
+    <string name="settings_app_icon">App icon</string>
+    <string name="settings_app_icon_hint">The new icon can take a few seconds to show up. Some launchers remove the home screen shortcut when it changes; add Doorglow again from the app list.</string>
+    <string name="icon_night">Night blue</string>
+    <string name="icon_black">Black</string>
+    <string name="icon_teal">Teal</string>
+    <string name="icon_plum">Plum</string>
+    <string name="icon_mustard">Mustard</string>
+    <string name="icon_vivid">Vivid</string>
     <string name="settings_account">Account</string>
     <string name="settings_signed_in_as">Signed in as %1$s</string>
 
