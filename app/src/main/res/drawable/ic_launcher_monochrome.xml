@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Versão de uma cor (ícones temáticos do Android 13+): só a fresta e a luz no chão. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillAlpha="0.5"
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M50,78L58,78L76,92L32,92Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M52,30h4a2,2 0,0 1,2 2v44a2,2 0,0 1,-2 2h-4a2,2 0,0 1,-2 -2v-44a2,2 0,0 1,2 -2z" />
+</vector>

@@ -1,4 +1,4 @@
-# ytslim — cliente do YouTube enxuto (celular, tablet e TV)
+# Doorglow (repo ytslim) — cliente do YouTube enxuto (celular, tablet e TV)
 
 Plano vivo do projeto. Atualize este arquivo sempre que uma decisão mudar.
 
@@ -14,7 +14,12 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - **Não editar os submódulos.** Toda adaptação fica no nosso código, numa camada própria (`data/`).
   - Atualizar os submódulos de tempos em tempos para receber as correções.
 - **Login:** pelo código de TV (youtube.com/activate), o mesmo fluxo em todos os aparelhos.
-- **Fora do app:** envio de vídeos (upload), Shorts.
+- **Fora do app:** envio de vídeos (upload), Shorts, comentários, chat ao vivo e notificações.
+- **Nome e ícone:** **Doorglow**. Ícone: a porta entreaberta (fresta de luz) em fundo azul-noite. `applicationId` = `app.doorglow`. Nome e ID ficam no `gradle.properties`; ícone em `app/src/main/res/drawable/ic_launcher_*.xml`; o banner da TV é gerado por `tools/make_tv_banner.py`.
+- **Interface em inglês.** (A conversa com o Claude continua em português.)
+- **Interações com a conta:** só **like/dislike** e **inscrever/cancelar inscrição**. O botão de inscrição fica na página do vídeo e vale para o canal do vídeo.
+- **Inscrição em playlists** (o YouTube não tem isso; ver a seção própria).
+- **Links externos** (WhatsApp, navegador, "Compartilhar"): abrem no Doorglow e tocam **sem ir para o histórico** (ver a seção própria).
 
 ## Telas
 
@@ -26,12 +31,13 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 | Playlists | Inclui **Assistir mais tarde** (o real, que o motor acessa). Reordenar vídeos, inclusive pela TV. |
 | Histórico | Lista do que foi assistido. |
 | Canal | Página básica do canal (vídeos, playlists). |
-| Configurações | Mínimas: filtros, tópicos, canais bloqueados, conta. |
+| Configurações | Mínimas: filtros, tópicos, canais bloqueados, conta, **mostrar lives nas Inscrições**, playlists inscritas, comportamento dos links externos. |
 
 ## Filtragem
 
 - **Shorts:** nunca aparecem, em lugar nenhum.
-- **Lives:** só nos resultados de busca, nunca nas recomendações. Inscrições: *a definir* (padrão proposto: esconder, com opção para mostrar).
+- **Lives:** nos resultados de busca e, se o usuário quiser, nas Inscrições; nunca nas recomendações.
+  - Inscrições: **toggle nas configurações** ("mostrar lives nas Inscrições"), desligado por padrão.
 - **Tópicos excluídos** (lista editável): esportes, política, etc.
 - **Tópicos preferidos** (lista editável): engenharia, tecnologia, computação, IA, conteúdo técnico. Ganham prioridade nas recomendações.
 - **Como classificar:** combinar a categoria oficial do vídeo (Esportes, Notícias e política, Ciência e tecnologia, Educação…), palavras-chave no título e na descrição, e listas de canais.
@@ -55,11 +61,30 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - **Reordenar vídeos dentro das playlists**, principalmente o Assistir mais tarde. Na TV, isso funciona com um modo "mover", em que o D-pad sobe e desce o item. As mudanças vão para a conta, então aparecem em todos os aparelhos.
   - O MediaServiceCore já tem adicionar, remover, criar e renomear, mas **não tem mover**. Isso precisa ser implementado na nossa camada usando a ação de mover vídeo do endpoint interno `browse/edit_playlist`.
 
+## Inscrição em playlists
+
+O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. Então o Doorglow guarda as playlists inscritas **no próprio app**.
+
+- Botão "Inscrever" na página da playlist; lista para gerenciar nas Configurações.
+- O feed de Inscrições junta o feed dos canais com os vídeos das playlists inscritas.
+- **Sem duplicados:** um vídeo de playlist inscrita só entra no feed se o usuário **não** estiver inscrito no canal do vídeo (se estiver, o vídeo já vem pelo canal).
+- Ordenação junto com o resto do feed, pela data de publicação; vídeos de playlists respeitam os mesmos filtros (Shorts, lives, tópicos, canais bloqueados).
+- Validado fora do aparelho (2026-11-01): o motor abre uma playlist pública só pelo id (`VL<id>`), com paginação, e cada vídeo traz o canal, que é o que a regra de duplicados precisa.
+- *Em aberto:* guardar só no aparelho (cada aparelho tem a sua lista) ou sincronizar pela conta. Ver Perguntas em aberto.
+
+## Links externos
+
+- O Doorglow abre links `youtube.com/watch`, `youtu.be`, `/live/`, `/embed/` e `music.youtube.com`, e textos com link recebidos por "Compartilhar". Shorts ficam de fora.
+- Esses vídeos tocam com a conta (qualidade do Premium), mas **o progresso não é enviado ao histórico** do YouTube. A tela mostra "not saved to history".
+- Para virar o app padrão de links do YouTube (Android 12+), o usuário precisa: desligar "Abrir links compatíveis" no app do YouTube e ligar, no Doorglow, Configurações > Apps > Doorglow > Abrir por padrão (youtube.com, m.youtube.com, youtu.be). Só o dono do domínio pode fazer isso automaticamente.
+- Depois, na tela de Configurações: opção "Links externos: sem histórico / na minha conta / perguntar", com padrão "sem histórico".
+
 ## Etapas
 
-0. **Base do projeto:** submódulos, build Gradle e um APK que abre no celular e na TV.
+0. **Base do projeto:** submódulos, build Gradle e um APK que abre no celular e na TV. *Feito em 2026-11-01.*
 1. **Protótipo do motor:** login por código, listar as playlists e tocar um vídeo em qualidade máxima com áudio original. *Valida o MediaServiceCore + Media3 antes de construir telas.*
-2. **Inscrições (Início) + player completo:** controles mínimos, legenda, regra de qualidade, pular partes.
+   - *Implementado em 2026-11-01, aguardando o teste no aparelho* (login, playlists, abrir um vídeo; ver "Como testar a etapa 1"). Inclui a abertura de links externos sem histórico, que serve para testar qualquer vídeo.
+2. **Inscrições (Início) + player completo:** controles mínimos, legenda, regra de qualidade, pular partes. Junto: toggle de lives, inscrição em playlists, like/dislike e inscrever/cancelar no vídeo, e a tela de Configurações mínima.
 3. **Playlists:** salvar com um toque, reordenar (inclusive na TV).
 4. **Busca com filtros, Histórico e Canal.**
 5. **Recomendações** com exclusão e preferência de tópicos.
@@ -69,9 +94,16 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 
 ## Perguntas em aberto
 
-- Lives no feed de Inscrições: esconder ou mostrar?
-- Comentários, chat ao vivo, notificações, like/dislike, inscrever/cancelar inscrição: quais ficam?
-- Nome e ícone do app.
+- Inscrições em playlists: guardar só no aparelho ou sincronizar entre celular, tablet e TV?
+- Confirmar no aparelho que um vídeo aberto por link externo não aparece no histórico (o app não envia o progresso; falta ver se o YouTube registra a visualização por outro caminho).
+
+## Como testar a etapa 1
+
+1. Instalar o APK no celular e na TV.
+2. Entrar com o código (youtube.com/activate).
+3. Abrir uma playlist (por exemplo, Watch later) e tocar um vídeo. Na barra de cima do player aparecem a resolução, o codec e a faixa de áudio escolhida.
+4. Testar um vídeo dublado (ex.: um do MrBeast): a faixa deve ser a marcada como "original".
+5. Abrir um link do YouTube pelo WhatsApp ou pelo "Compartilhar" do navegador: deve tocar e mostrar "not saved to history".
 
 ## Notas técnicas (da análise do SmartTube em 2026-11-01)
 
@@ -90,3 +122,25 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 - **Referência de filtro no SmartTube:** todo vídeo passa por `VideoGroup.add()`, onde ficam o bloqueio de canais e os filtros de vistos.
 - **Recursos do SmartTube que servem de referência:** esconder Shorts, mixes, lives e agendados, canais bloqueados, SponsorBlock, "adicionar à playlist recente" e fixar playlist na barra lateral.
 - **O Android SDK baixa normalmente** de `dl.google.com` (command-line tools, build-tools até 36.1).
+
+## Notas técnicas (do build, 2026-11-01)
+
+- **Ferramentas:** AGP 8.13.2, Gradle 8.14.3 (wrapper), Kotlin 2.3.21, compileSdk/targetSdk 36, minSdk 23. Roda com JDK 17 ou 21.
+  - Ficamos no AGP 8 porque o AGP 9 muda o Kotlin embutido e a DSL antiga que os módulos do motor usam.
+  - As versões mais novas do AndroidX (Compose 1.12, Navigation 2.10, Activity 1.13+ com core 1.18) já pedem AGP 9 e compileSdk 37. Por isso: Compose BOM 2026.06.01, Navigation 2.9.8. Ver `gradle/libs.versions.toml`.
+- **Adaptação do motor ao AGP 8, sem tocar nos submódulos** (`build.gradle.kts` da raiz):
+  - `namespace` de cada módulo lido do `package=` do manifest dele;
+  - `android.nonTransitiveRClass=false` e BuildConfig ligado (o motor usa os dois);
+  - Kotlin dos módulos do motor com `jvmTarget` 1.8, igual ao Java deles;
+  - OkHttp forçado em 3.12.13 e cronet-api em 105, como no build do SmartTube (o okhttp-brotli puxaria o OkHttp 4, que quebra a compilação);
+  - kotlinx-coroutines forçado (o youtubeapi pede a versão "1.8.10", que não existe).
+- **Imagens:** Coil 3 com Ktor (HttpURLConnection). O `coil-network-okhttp` exigiria OkHttp 4+, que conflita com o motor.
+- **Player (Media3):** o motor gera um MPD (`createMpdStream`) com os formatos DASH; o app faz o parse com o `DashManifestParser` e toca. Ordem de escolha igual à do SmartTube: lives por HLS ou DASH do YouTube; vídeos pelo MPD; depois arquivo único.
+  - **SABR:** o Media3 não toca (o SmartTube usa um fork próprio do ExoPlayer). Se um cliente do YouTube só entrega SABR, ou falha, o app troca de cliente (até 6 tentativas). Erros de rede no player (ex.: 403) também trocam de cliente e retomam do mesmo ponto (até 3 vezes).
+  - **Áudio original:** o motor rotula cada faixa como "idioma (tipo)", com tipo original, dubbed, dubbed-auto, descriptive. O Media3 preferiria o idioma do sistema (a dublagem em português), então o app define a faixa original como preferida e, se ainda assim vier outra, força a original.
+  - **Qualidade máxima:** `forceHighestSupportedBitrate`, sem limite de tamanho de tela. Os parâmetros voltam ao padrão a cada vídeo.
+- **V8 só no aparelho:** o motor decifra as URLs com o j2v8, que só tem binários para Android. Nos testes no JVM (Robolectric) dá para validar busca e playlists, mas não os formatos de vídeo.
+  - Teste online: `./gradlew :app:testAppDebugUnitTest -Pytslim.online=true --tests '*EngineOnlineTest*'`.
+- **Busca:** playlists vêm com tipo indefinido (-1), sem `playlistId` e com `channelId` = `VL<id da playlist>`.
+- **APK:** ~52 MB em debug e ~43 MB em release, só com arm64-v8a e armeabi-v7a (o j2v8 tem ~30 MB por ABI). Para emulador, acrescentar x86_64 em `app.abis`.
+- **Compilar:** `./gradlew :app:assembleAppRelease` gera `app/build/outputs/apk/app/release/app-app-release.apk`, assinado com a chave de debug (uso pessoal). Os submódulos precisam estar baixados: `git submodule update --init`.

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cores do ícone do Doorglow. Desenhos: drawable/ic_launcher_*.xml e drawable-xhdpi/tv_banner.png. -->
+<resources>
+    <color name="launcher_background_top">#FF1B1F3B</color>
+    <color name="launcher_background_bottom">#FF2A3060</color>
+    <color name="launcher_light">#FFFFE3A3</color>
+    <color name="launcher_glow">#FFFFC861</color>
+</resources>
