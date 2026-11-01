@@ -8,6 +8,7 @@ enum class Rating { NONE, LIKED, DISLIKED }
 /** O que a página do vídeo mostra além do player: avaliação, inscrição no canal e capítulos. */
 data class VideoState(
     val channelId: String?,
+    val channelName: String?,
     val subscribed: Boolean,
     val rating: Rating,
     val chapterStartsMs: List<Long>,
@@ -20,6 +21,7 @@ object VideoActions {
     }.getOrNull()?.let { m ->
         VideoState(
             channelId = m.channelId,
+            channelName = m.author,
             subscribed = m.isSubscribed,
             rating = when (m.likeStatus) {
                 MediaItemMetadata.LIKE_STATUS_LIKE -> Rating.LIKED

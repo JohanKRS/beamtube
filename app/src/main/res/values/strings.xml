@@ -10,20 +10,71 @@
     <string name="sign_in_tv_enter">and enter the code</string>
     <string name="sign_in_waits">This screen moves on by itself once you confirm.</string>
     <string name="sign_in_error">Couldn\'t get a code: %1$s</string>
+    <string name="sign_in_tv_scan">Or scan this with your phone. The code is already filled in.</string>
 
     <string name="tab_subscriptions">Subscriptions</string>
+    <string name="tab_recommended">Recommended</string>
+    <string name="tab_search">Search</string>
     <string name="tab_playlists">Playlists</string>
+    <string name="tab_history">History</string>
     <string name="tab_settings">Settings</string>
 
     <string name="feed_empty">Nothing new from your subscriptions.</string>
     <string name="from_playlist">%1$s • from %2$s</string>
     <string name="from_playlist_no_channel">From %1$s</string>
     <string name="list_empty">No videos here.</string>
+    <string name="recommended_empty">Nothing to recommend right now. Topics you left out and blocked channels don\'t show up here.</string>
+    <string name="history_empty">Nothing in your history yet.</string>
+
+    <string name="search_hint">Search YouTube</string>
+    <string name="search_clear">Clear</string>
+    <string name="search_empty">No results.</string>
+    <string name="search_live">LIVE</string>
+    <string name="search_filter_date">Upload date</string>
+    <string name="search_filter_duration">Duration</string>
+    <string name="search_filter_type">Type</string>
+    <string name="search_filter_sort">Sort by</string>
+    <string name="search_filter_value">%1$s: %2$s</string>
+    <string name="date_any">Any time</string>
+    <string name="date_hour">Last hour</string>
+    <string name="date_today">Today</string>
+    <string name="date_week">This week</string>
+    <string name="date_month">This month</string>
+    <string name="date_year">This year</string>
+    <string name="duration_any">Any length</string>
+    <string name="duration_under_4">Under 4 minutes</string>
+    <string name="duration_4_20">4 to 20 minutes</string>
+    <string name="duration_over_20">Over 20 minutes</string>
+    <string name="type_any">Everything</string>
+    <string name="type_video">Videos</string>
+    <string name="type_channel">Channels</string>
+    <string name="type_playlist">Playlists</string>
+    <string name="sort_relevance">Relevance</string>
+    <string name="sort_date">Newest</string>
+    <string name="sort_views">Most viewed</string>
+    <string name="sort_rating">Rating</string>
+
+    <string name="channel_default_title">Channel</string>
+    <string name="channel_videos">Videos</string>
+    <string name="channel_playlists">Playlists</string>
+    <string name="channel_block">Block channel</string>
+    <string name="channel_unblock">Unblock channel</string>
+    <string name="channel_blocked_hint">Blocked: this channel doesn\'t show up in Recommended, Search or videos from subscribed playlists.</string>
 
     <string name="playlist_default_title">Playlist</string>
     <string name="playlist_subscribe">Subscribe</string>
     <string name="playlist_subscribed">Subscribed</string>
     <string name="playlist_subscribe_hint">New videos added to this playlist will show up in Subscriptions.</string>
+    <string name="reorder">Reorder</string>
+    <string name="reorder_preparing">Loading the whole playlist…</string>
+    <string name="reorder_load_failed">Couldn\'t load the whole playlist, so it can\'t be reordered here.</string>
+    <string name="reorder_save">Save order</string>
+    <string name="reorder_saving">Saving…</string>
+    <string name="reorder_move_up">Move up</string>
+    <string name="reorder_move_down">Move down</string>
+    <string name="reorder_hint_touch">Move videos with the arrows. The new order goes to your account when you save.</string>
+    <string name="reorder_hint_tv">Press OK on a video to pick it up, move it with up and down, and press OK again to drop it. The new order goes to your account when you save.</string>
+    <string name="reorder_failed">Couldn\'t save the new order: %1$s</string>
 
     <string name="settings_subscriptions">Subscriptions</string>
     <string name="settings_show_lives">Show live streams</string>
@@ -36,6 +87,23 @@
     <string name="settings_playlists_hint">Playlists from other channels that are saved to your account. Save one on YouTube, or open a playlist link in Doorglow, to subscribe.</string>
     <string name="settings_playlists_empty">No subscribed playlists yet.</string>
     <string name="settings_unsubscribe">Unsubscribe</string>
+    <string name="settings_save_target">Save button</string>
+    <string name="settings_save_target_current">The Save button in the player adds videos to %1$s.</string>
+    <string name="settings_save_target_choose">Choose a playlist</string>
+    <string name="settings_excluded">Topics to leave out</string>
+    <string name="settings_excluded_hint">Videos about these topics don\'t show up in Recommended or in videos from subscribed playlists. A video matches a topic when its title or channel name has one of the keywords.</string>
+    <string name="settings_preferred">Preferred topics</string>
+    <string name="settings_preferred_hint">Videos about these topics come first in Recommended.</string>
+    <string name="settings_topics_empty">No topics.</string>
+    <string name="topic_add">Add topic</string>
+    <string name="topic_edit">Edit topic</string>
+    <string name="topic_name">Name</string>
+    <string name="topic_keywords">Keywords, separated by commas</string>
+    <string name="topic_remove">Remove</string>
+    <string name="settings_blocked">Blocked channels</string>
+    <string name="settings_blocked_hint">Block a channel from its page (open it from Search or from the player).</string>
+    <string name="settings_blocked_empty">No blocked channels.</string>
+    <string name="unblock">Unblock</string>
     <string name="settings_app_icon">App icon</string>
     <string name="settings_app_icon_hint">The new icon can take a few seconds to show up. Some launchers remove the home screen shortcut when it changes; add Doorglow again from the app list.</string>
     <string name="icon_night">Night blue</string>
@@ -53,6 +121,9 @@
     <string name="loading">Loading…</string>
     <string name="error_generic">Something went wrong: %1$s</string>
     <string name="retry">Try again</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="watch_later">Watch later</string>
 
     <string name="player_unplayable">This video can\'t be played.</string>
     <string name="player_error">Playback error: %1$s</string>
@@ -66,6 +137,10 @@
     <string name="player_dislike">Dislike</string>
     <string name="player_subscribe">Subscribe</string>
     <string name="player_subscribed">Subscribed</string>
+    <string name="player_save">Save</string>
+    <string name="player_saved">Saved</string>
+    <string name="player_saved_to">Saved to %1$s</string>
+    <string name="player_removed_from">Removed from %1$s</string>
     <string name="player_skip">Skip ahead</string>
     <string name="player_no_highlight">Nothing more to skip to.</string>
     <string name="player_captions">Turn on captions</string>

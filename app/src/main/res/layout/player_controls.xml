@@ -66,6 +66,18 @@
                 android:id="@+id/player_subscribe"
                 style="@style/PlayerTextButton"
                 android:text="@string/player_subscribe" />
+
+            <ImageButton
+                android:id="@+id/player_save"
+                style="@style/PlayerButton"
+                android:contentDescription="@string/player_save"
+                android:src="@drawable/ic_bookmark_border"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/player_channel"
+                style="@style/PlayerTextButton"
+                android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
 

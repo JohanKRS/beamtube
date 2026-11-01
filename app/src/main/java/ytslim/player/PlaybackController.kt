@@ -42,6 +42,7 @@ import ytslim.data.HeatmapRepository
 import ytslim.data.PlaybackInfo
 import ytslim.data.PlaybackRepository
 import ytslim.data.PlaybackResult
+import ytslim.data.PlaylistEditor
 import ytslim.data.Rating
 import ytslim.data.SettingsRepository
 import ytslim.data.SkipRules
@@ -72,6 +73,8 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         val captionsOn: Boolean = false,
         val skipAvailable: Boolean = false,
         val page: VideoState? = null,
+        /** O vídeo está na playlist do botão "Save"? null = sem botão (sem login ou não deu para saber). */
+        val saved: Boolean? = null,
     )
 
     private val _state = MutableStateFlow<State>(State.Loading)
@@ -140,6 +143,11 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
                 if (heatmap.isNotEmpty()) _controls.update { it.copy(skipAvailable = true) }
             }
             if (AuthRepository.isSigned()) {
+                launch {
+                    val target = SettingsRepository.current().saveTarget.playlistId
+                    val saved = PlaylistEditor.isSaved(videoId, target)
+                    _controls.update { it.copy(saved = saved) }
+                }
                 val page = VideoActions.state(videoId)
                 _controls.update { it.copy(page = page, skipAvailable = it.skipAvailable || !page?.chapterStartsMs.isNullOrEmpty()) }
             }
@@ -249,6 +257,24 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
                 _controls.update { c -> c.copy(page = c.page?.copy(subscribed = page.subscribed)) }
                 _notices.value = res.getString(R.string.action_failed, it.message ?: it.javaClass.simpleName)
             }
+        }
+    }
+
+    /** Botão "Save": põe ou tira o vídeo da playlist escolhida nas configurações (Assistir mais tarde). */
+    fun toggleSaved() {
+        val id = videoId ?: return
+        val saved = _controls.value.saved ?: return
+        _controls.update { it.copy(saved = !saved) }
+        scope.launch {
+            val target = SettingsRepository.current().saveTarget
+            val name = target.title ?: res.getString(R.string.watch_later)
+            runCatching { PlaylistEditor.setSaved(id, target.playlistId, !saved) }.fold(
+                { _notices.value = res.getString(if (saved) R.string.player_removed_from else R.string.player_saved_to, name) },
+                {
+                    _controls.update { c -> c.copy(saved = saved) }
+                    _notices.value = res.getString(R.string.action_failed, it.message ?: it.javaClass.simpleName)
+                },
+            )
         }
     }
 

@@ -51,6 +51,8 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var likeButton: ImageButton
     private lateinit var dislikeButton: ImageButton
     private lateinit var subscribeButton: TextView
+    private lateinit var saveButton: ImageButton
+    private lateinit var channelButton: TextView
     private lateinit var skipButton: TextView
     private lateinit var captionsButton: ImageButton
 
@@ -147,7 +149,13 @@ class PlayerActivity : ComponentActivity() {
             subscribeButton.visibility = if (page.channelId != null) View.VISIBLE else View.GONE
             subscribeButton.setText(if (page.subscribed) R.string.player_subscribed else R.string.player_subscribe)
             subscribeButton.setTextColor(color(if (page.subscribed) R.color.player_text_secondary else R.color.player_icon))
+            channelButton.visibility = if (page.channelId != null && !page.channelName.isNullOrBlank()) View.VISIBLE else View.GONE
+            channelButton.text = page.channelName
         }
+        saveButton.visibility = if (controls.saved != null) View.VISIBLE else View.GONE
+        saveButton.setImageResource(if (controls.saved == true) R.drawable.ic_bookmark else R.drawable.ic_bookmark_border)
+        saveButton.setActive(controls.saved == true)
+        saveButton.contentDescription = getString(if (controls.saved == true) R.string.player_saved else R.string.player_save)
         skipButton.visibility = if (controls.skipAvailable) View.VISIBLE else View.GONE
         captionsButton.visibility = if (controls.captionsAvailable) View.VISIBLE else View.GONE
         captionsButton.setActive(controls.captionsOn)
@@ -159,6 +167,13 @@ class PlayerActivity : ComponentActivity() {
         likeButton.setOnClickListener { controller.rate(Rating.LIKED) }
         dislikeButton.setOnClickListener { controller.rate(Rating.DISLIKED) }
         subscribeButton.setOnClickListener { controller.toggleSubscribed() }
+        saveButton.setOnClickListener { controller.toggleSaved() }
+        channelButton.setOnClickListener {
+            val page = controller.controls.value.page ?: return@setOnClickListener
+            val channelId = page.channelId ?: return@setOnClickListener
+            startActivity(MainActivity.channelIntent(this, channelId, page.channelName.orEmpty()))
+            finish()
+        }
         captionsButton.setOnClickListener { controller.toggleCaptions() }
         skipButton.setOnClickListener {
             if (!controller.skipAhead()) Toast.makeText(this, R.string.player_no_highlight, Toast.LENGTH_SHORT).show()
@@ -202,6 +217,8 @@ class PlayerActivity : ComponentActivity() {
         likeButton = playerView.findViewById(R.id.player_like)
         dislikeButton = playerView.findViewById(R.id.player_dislike)
         subscribeButton = playerView.findViewById(R.id.player_subscribe)
+        saveButton = playerView.findViewById(R.id.player_save)
+        channelButton = playerView.findViewById(R.id.player_channel)
         skipButton = playerView.findViewById(R.id.player_skip)
         captionsButton = playerView.findViewById(R.id.player_captions)
 

@@ -40,6 +40,26 @@ data class Playlist(
     val thumbnailUrl: String?,
 )
 
+/** Um canal (resultado de busca, ou o canal de um vídeo). */
+data class Channel(val id: String, val title: String, val info: String?, val thumbnailUrl: String?)
+
+/** Um resultado de busca: vídeo, canal ou playlist. */
+sealed interface SearchItem {
+    val key: String
+
+    data class VideoItem(val video: Video) : SearchItem {
+        override val key get() = "v:" + video.id
+    }
+
+    data class ChannelItem(val channel: Channel) : SearchItem {
+        override val key get() = "c:" + channel.id
+    }
+
+    data class PlaylistItem(val playlist: Playlist) : SearchItem {
+        override val key get() = "p:" + playlist.browseId
+    }
+}
+
 /** Uma página de vídeos. [next] é a continuação opaca do motor (null quando acabou). */
 class VideoPage(val videos: List<Video>, internal val next: MediaGroup?, val title: String? = null) {
     val hasMore: Boolean get() = next != null
@@ -85,4 +105,24 @@ internal fun MediaGroup?.toPage(): VideoPage {
         next = this?.takeIf { it.nextPageKey != null },
         title = this?.title,
     )
+}
+
+/**
+ * Converte um resultado de busca: playlist ("VL…", ou um item com playlistId: a busca manda a
+ * playlist junto com o primeiro vídeo dela), vídeo ou canal ("UC…").
+ */
+internal fun MediaItem.toSearchItem(): SearchItem? {
+    val channel = channelId
+    if (channel?.startsWith("VL") == true || playlistId != null) {
+        return toPlaylist()?.let { playlist ->
+            // "3Blue1Brown • 16 lessons"
+            val info = listOfNotNull(playlist.info, badgeText).filter { it.isNotBlank() }.joinToString(" • ")
+            SearchItem.PlaylistItem(playlist.copy(info = info.ifEmpty { null }))
+        }
+    }
+    videoId?.let { return toVideo()?.let(SearchItem::VideoItem) }
+    if (channel == null) return null
+    // A foto do canal às vezes vem sem o "https:" ("//yt3.ggpht.com/…").
+    val photo = cardImageUrl?.let { if (it.startsWith("//")) "https:$it" else it }
+    return SearchItem.ChannelItem(Channel(channel, title.orEmpty(), secondTitle?.toString(), photo))
 }
