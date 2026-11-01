@@ -59,8 +59,10 @@ import androidx.tv.material3.Text
 import androidx.tv.material3.darkColorScheme
 import coil3.compose.AsyncImage
 import ytslim.R
+import ytslim.data.AppIcon
 import ytslim.data.Playlist
 import ytslim.data.Video
+import ytslim.ui.AppIconPreview
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HomeTab
 import ytslim.ui.PlaylistViewModel
@@ -212,6 +214,7 @@ object TvUi : Screens {
         val settings by vm.settings.collectAsStateWithLifecycle()
         val playlists by vm.playlists.collectAsStateWithLifecycle()
         val error by vm.error.collectAsStateWithLifecycle()
+        val appIcon by vm.appIcon.collectAsStateWithLifecycle()
 
         LazyColumn(
             modifier = Modifier.fillMaxWidth(0.7f),
@@ -287,6 +290,25 @@ object TvUi : Screens {
                         }
                     }
                 }
+            }
+
+            item { SectionTitle(stringResource(R.string.settings_app_icon)) }
+            item {
+                Text(
+                    stringResource(R.string.settings_app_icon_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            items(AppIcon.entries) { icon ->
+                ListItem(
+                    selected = false,
+                    onClick = { vm.setAppIcon(icon) },
+                    headlineContent = { Text(stringResource(icon.label)) },
+                    leadingContent = { AppIconPreview(icon) },
+                    trailingContent = { RadioButton(selected = appIcon == icon, onClick = null) },
+                )
             }
 
             item { SectionTitle(stringResource(R.string.settings_account)) }

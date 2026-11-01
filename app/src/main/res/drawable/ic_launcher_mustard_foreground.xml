@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gerado por tools/make_icons.py; não editar à mão. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- luz no chão -->
+    <path
+        android:fillAlpha="0.14"
+        android:fillColor="@color/launcher_mustard_light"
+        android:pathData="M50,78L58,78L76,92L32,92Z" />
+    <!-- brilho externo -->
+    <path
+        android:fillAlpha="0.07"
+        android:fillColor="@color/launcher_mustard_glow"
+        android:pathData="M53,25h2a11,11 0,0 1,11 11v36a11,11 0,0 1,-11 11h-2a11,11 0,0 1,-11 -11v-36a11,11 0,0 1,11 -11z" />
+    <!-- brilho interno -->
+    <path
+        android:fillAlpha="0.13"
+        android:fillColor="@color/launcher_mustard_glow"
+        android:pathData="M53,28h2a7,7 0,0 1,7 7v38a7,7 0,0 1,-7 7h-2a7,7 0,0 1,-7 -7v-38a7,7 0,0 1,7 -7z" />
+    <!-- a fresta -->
+    <path
+        android:fillColor="@color/launcher_mustard_light"
+        android:pathData="M52,30h4a2,2 0,0 1,2 2v44a2,2 0,0 1,-2 2h-4a2,2 0,0 1,-2 -2v-44a2,2 0,0 1,2 -2z" />
+</vector>

@@ -1,6 +1,7 @@
 package ytslim
 
 import android.app.Application
+import ytslim.data.AppIcons
 import ytslim.data.Engine
 import ytslim.data.PlaylistSubscriptions
 import ytslim.data.SettingsRepository
@@ -11,5 +12,6 @@ class App : Application() {
         Engine.init(this)
         SettingsRepository.init(this)
         PlaylistSubscriptions.init(this)
+        AppIcons.init(this)
     }
 }

@@ -15,10 +15,10 @@
 
     <application
         android:name=".App"
-        android:banner="@drawable/tv_banner"
-        android:icon="@mipmap/ic_launcher"
+        android:banner="@drawable/tv_banner_night"
+        android:icon="@mipmap/ic_launcher_night"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_night"
         android:supportsRtl="true"
         android:theme="@style/Theme.App">
 
@@ -26,11 +26,6 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-            </intent-filter>
             <!-- Link de playlist vindo de fora: abre a página da playlist (com o botão de inscrição). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -45,6 +40,94 @@
                 <data android:path="/playlist" />
             </intent-filter>
         </activity>
+
+        <!-- Ícone do app (Settings > App icon): um activity-alias por cor, e só um fica ligado
+             (ytslim.data.AppIcons). O azul-noite é o padrão. Nunca renomear nem tirar um alias:
+             quem estivesse com ele escolhido ficaria sem o app no launcher. -->
+        <activity-alias
+            android:name=".LauncherNight"
+            android:banner="@drawable/tv_banner_night"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_night"
+            android:roundIcon="@mipmap/ic_launcher_night"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherBlack"
+            android:banner="@drawable/tv_banner_black"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_black"
+            android:roundIcon="@mipmap/ic_launcher_black"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherTeal"
+            android:banner="@drawable/tv_banner_teal"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_teal"
+            android:roundIcon="@mipmap/ic_launcher_teal"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherPlum"
+            android:banner="@drawable/tv_banner_plum"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_plum"
+            android:roundIcon="@mipmap/ic_launcher_plum"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherMustard"
+            android:banner="@drawable/tv_banner_mustard"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_mustard"
+            android:roundIcon="@mipmap/ic_launcher_mustard"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherVivid"
+            android:banner="@drawable/tv_banner_vivid"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_vivid"
+            android:roundIcon="@mipmap/ic_launcher_vivid"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Também abre links do YouTube vindos de fora (WhatsApp, navegador, Compartilhar).
              Esses vídeos tocam sem ir para o histórico. Shorts ficam de fora. -->

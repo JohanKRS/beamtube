@@ -2,6 +2,7 @@ package ytslim.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -12,6 +13,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ytslim.data.AppIcon
+import ytslim.data.AppIcons
 import ytslim.data.AuthRepository
 import ytslim.data.AuthRepository.SignInEvent
 import ytslim.data.ExternalLinks
@@ -283,6 +286,15 @@ class SettingsViewModel : ViewModel() {
 
     fun setExternalLinks(value: ExternalLinks) {
         viewModelScope.launch { SettingsRepository.setExternalLinks(value) }
+    }
+
+    private val _appIcon = MutableStateFlow(AppIcons.current())
+    val appIcon: StateFlow<AppIcon> = _appIcon.asStateFlow()
+
+    fun setAppIcon(icon: AppIcon) {
+        if (icon == _appIcon.value) return
+        _appIcon.value = icon
+        viewModelScope.launch(Dispatchers.IO) { AppIcons.select(icon) }
     }
 
     fun unsubscribe(playlist: Playlist) {
