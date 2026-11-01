@@ -52,8 +52,9 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - **Títulos sempre no idioma original**, sem as traduções automáticas do YouTube.
 - **Áudio original**: escolher sempre a faixa marcada como original, nunca a dublagem automática.
 - **Controles com bem menos elementos.** Manter apenas:
-  - **Pular as partes menos interessantes** (o "pular para frente" do Premium). *Pesquisar* se a API interna expõe isso. Alternativa: usar o gráfico de "mais repetidos" para pular para o próximo trecho de pico.
-  - **Ligar e desligar a legenda** com um toque ou botão.
+  - **Pular as partes menos interessantes** (botão "Skip ahead"). O motor não expõe o "pular para frente" do Premium nem o gráfico de "mais repetidos", então o app pede o gráfico à página "next" do cliente WEB, sem login (`HeatmapRepository`). O botão vai para o começo do próximo trecho "quente": acima do meio do caminho entre a mediana e o topo (95%) do gráfico, a pelo menos 5 s de distância (`SkipRules`). No vídeo de teste, cai exatamente onde o YouTube marca "Most replayed". Sem gráfico (vídeos com poucas visualizações), vai para o próximo capítulo; sem os dois, o botão não aparece.
+  - **Ligar e desligar a legenda** com um toque. O botão liga uma legenda escolhida sozinha (`SubtitleRules`): feita por pessoa no idioma do aparelho, depois feita por pessoa no idioma original, depois qualquer uma feita por pessoa, e por último a automática no idioma original. A escolha (ligada/desligada) vale para os próximos vídeos. Se o download da legenda falhar, o vídeo toca sem ela.
+  - Além disso: tocar/pausar e a barra de tempo. Na barra de cima ficam like, dislike e "Subscribe" (vale para o canal do vídeo); só aparecem com login.
 - **Qualidade sempre na máxima.** Uma mudança manual vale só para o vídeo atual; o próximo vídeo volta para a máxima.
 
 ## Playlists
@@ -68,19 +69,22 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
 
 - Botão "Inscrever" na página da playlist: salva a playlist na biblioteca da conta (`MediaItemService.savePlaylistObserve`). "Cancelar inscrição" tira da biblioteca (`removePlaylistObserve`).
 - Contam como inscritas as playlists **de outros canais** salvas na conta, inclusive as que já estavam salvas antes do Doorglow. As playlists do próprio usuário (Assistir mais tarde e as que ele criou) ficam de fora do feed.
-- Lista para gerenciar nas Configurações.
+- Lista para gerenciar nas Configurações, com "Unsubscribe". Para se inscrever: salvar a playlist no YouTube, ou abrir um link `youtube.com/playlist?list=` no Doorglow (abre a página da playlist com o botão).
+- **O que é "novo" numa playlist:** os vídeos de playlist não trazem data. Por isso o app anota, neste aparelho, quando cada vídeo apareceu na playlist (`PlaylistLedger`). O que já estava lá na primeira leitura não entra no feed; o que entrar depois aparece com a data em que foi visto. Por isso, logo depois de se inscrever, a playlist ainda não mostra nada nas Inscrições.
 - O feed de Inscrições junta o feed dos canais com os vídeos das playlists inscritas.
 - **Sem duplicados:** um vídeo de playlist inscrita só entra no feed se o usuário **não** estiver inscrito no canal do vídeo (se estiver, o vídeo já vem pelo canal).
-- Ordenação junto com o resto do feed, pela data de publicação; vídeos de playlists respeitam os mesmos filtros (Shorts, lives, tópicos, canais bloqueados).
+- Ordenação junto com o resto do feed: a data dos vídeos dos canais vem do texto "há 3 horas" do YouTube; os de playlist usam a data em que foram vistos. Vídeos de playlists respeitam os mesmos filtros (Shorts, lives e, quando existirem, tópicos e canais bloqueados).
+- Limite: o app lê até 10 páginas de cada playlist. Numa playlist enorme em ordem "mais antigos primeiro", vídeos novos além disso não aparecem.
 - Validado fora do aparelho (2026-11-01): o motor abre uma playlist pública só pelo id (`VL<id>`), com paginação, e cada vídeo traz o canal, que é o que a regra de duplicados precisa.
-- A ver na etapa 2: como o motor separa as playlists salvas de outros canais das criadas pelo usuário.
+- **Próprias × de outros canais:** a lista "salvar em" do motor (`getPlaylistsInfo`) traz só as playlists do próprio usuário; as de outros canais são as da biblioteca que não estão nela. Mixes ("RD…") ficam de fora. Cuidado: se o motor não consegue tirar uma playlist alheia da biblioteca, ele tenta *apagar* a playlist como se fosse do usuário. Por isso o app só cancela a inscrição depois de confirmar, na hora, que a playlist não é do usuário.
 
 ## Links externos
 
 - O Doorglow abre links `youtube.com/watch`, `youtu.be`, `/live/`, `/embed/` e `music.youtube.com`, e textos com link recebidos por "Compartilhar". Shorts ficam de fora.
 - Esses vídeos tocam com a conta (qualidade do Premium), mas **o progresso não é enviado ao histórico** do YouTube. A tela mostra "not saved to history". Confirmado no aparelho em 2026-11-01: o vídeo não aparece no histórico.
 - Para virar o app padrão de links do YouTube (Android 12+), o usuário precisa: desligar "Abrir links compatíveis" no app do YouTube e ligar, no Doorglow, Configurações > Apps > Doorglow > Abrir por padrão (youtube.com, m.youtube.com, youtu.be). Só o dono do domínio pode fazer isso automaticamente.
-- Depois, na tela de Configurações: opção "Links externos: sem histórico / na minha conta / perguntar", com padrão "sem histórico".
+- Nas Configurações, "Links from other apps": sem histórico (padrão), salvar no histórico, ou perguntar a cada link.
+- Links de playlist (`/playlist?list=`) abrem a página da playlist, com o botão de inscrição.
 
 ## Atualizações (Obtainium)
 
@@ -96,6 +100,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
 1. **Protótipo do motor:** login por código, listar as playlists e tocar um vídeo em qualidade máxima com áudio original. *Valida o MediaServiceCore + Media3 antes de construir telas.*
    - *Validado no aparelho pelo Johan em 2026-11-01:* login, playlists, reprodução, áudio original num vídeo dublado e link externo fora do histórico.
 2. **Inscrições (Início) + player completo:** controles mínimos, legenda, regra de qualidade, pular partes. Junto: toggle de lives, inscrição em playlists, like/dislike e inscrever/cancelar no vídeo, e a tela de Configurações mínima.
+   - *Implementado em 2026-11-01 (versão 0.2.0), aguardando o teste no aparelho* (ver "Como testar a etapa 2"). O início tem três abas: Subscriptions, Playlists e Settings. Configurações: mostrar lives (inclui as agendadas), links de outros apps, playlists inscritas e conta.
 3. **Playlists:** salvar com um toque, reordenar (inclusive na TV).
 4. **Busca com filtros, Histórico e Canal.**
 5. **Recomendações** com exclusão e preferência de tópicos.
@@ -106,6 +111,15 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 ## Perguntas em aberto
 
 Nenhuma no momento.
+
+## Como testar a etapa 2
+
+1. Atualizar pelo Obtainium (ou instalar o APK por cima).
+2. Inscrições: abre como tela inicial, sem Shorts e sem lives. Ligar "Show live streams" em Settings e ver as lives aparecerem.
+3. Player: tocar um vídeo popular e usar "Skip ahead" (deve ir para um trecho mais assistido); ligar e desligar a legenda; dar like, tirar o like e inscrever/cancelar no canal (conferir no app do YouTube).
+4. Playlists inscritas: abrir um link `youtube.com/playlist?list=` de uma playlist de outro canal, tocar "Subscribe" e ver a playlist em Settings. Os vídeos que entrarem nela depois aparecem nas Inscrições (só os de canais em que você não é inscrito).
+5. Links de outros apps: trocar para "Ask every time" e abrir um link pelo WhatsApp.
+6. Na TV: andar pelas abas com o D-pad, voltar do conteúdo para as abas com "voltar", e usar os botões do player.
 
 ## Como testar a etapa 1
 

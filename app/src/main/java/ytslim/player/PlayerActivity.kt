@@ -1,5 +1,6 @@
 package ytslim.player
 
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -11,11 +12,12 @@ import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowManager
 import android.widget.FrameLayout
-import android.widget.LinearLayout
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -25,13 +27,17 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
+import ytslim.MainActivity
 import ytslim.R
 import ytslim.data.AppScope
+import ytslim.data.ExternalLinks
+import ytslim.data.Rating
+import ytslim.data.SettingsRepository
 import ytslim.data.VideoLinks
 
 /**
- * Tela do player. Usa Views em vez de Compose porque o PlayerView do Media3 já cuida do
- * D-pad da TV e do toque no celular.
+ * Tela do player, que é também a "página do vídeo": like/dislike e inscrição ficam nos
+ * controles. Usa Views porque o PlayerView do Media3 já cuida do D-pad da TV e do toque.
  */
 @OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
@@ -41,15 +47,23 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var titleView: TextView
     private lateinit var detailView: TextView
     private lateinit var messageView: TextView
-    private lateinit var infoBar: View
+    private lateinit var actions: View
+    private lateinit var likeButton: ImageButton
+    private lateinit var dislikeButton: ImageButton
+    private lateinit var subscribeButton: TextView
+    private lateinit var skipButton: TextView
+    private lateinit var captionsButton: ImageButton
 
+    private var saveHistory = true
     private var external = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val target = resolveTarget(intent)
         if (target == null) {
-            Toast.makeText(this, R.string.link_not_a_video, Toast.LENGTH_LONG).show()
+            // Um link de playlist compartilhado vai para a página da playlist.
+            playlistLink(intent)?.let { startActivity(MainActivity.playlistIntent(this, it)) }
+                ?: Toast.makeText(this, R.string.link_not_a_video, Toast.LENGTH_LONG).show()
             finish()
             return
         }
@@ -65,19 +79,47 @@ class PlayerActivity : ComponentActivity() {
         controller = PlaybackController(this, AppScope)
         setContentView(buildLayout(intent.getStringExtra(EXTRA_TITLE)))
         playerView.player = controller.player
+        bindButtons()
 
-        controller.open(
-            videoId = target.videoId,
-            startPositionMs = savedInstanceState?.getLong(KEY_POSITION) ?: target.startMs,
-            // Link externo (WhatsApp, navegador, Compartilhar): não entra no histórico.
-            saveHistory = !target.external,
-        )
+        val startMs = savedInstanceState?.getLong(KEY_POSITION) ?: target.startMs
+        lifecycleScope.launch {
+            if (!target.external) return@launch start(target.videoId, startMs, saveHistory = true)
+            // Link de outro app: o padrão é não ir para o histórico (configurável).
+            when (SettingsRepository.current().externalLinks) {
+                ExternalLinks.NO_HISTORY -> start(target.videoId, startMs, saveHistory = false)
+                ExternalLinks.SAVE_HISTORY -> start(target.videoId, startMs, saveHistory = true)
+                ExternalLinks.ASK -> ask { save -> start(target.videoId, startMs, save) }
+            }
+        }
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                controller.state.collect(::render)
+                launch { controller.state.collect(::render) }
+                launch { controller.controls.collect(::renderControls) }
+                launch {
+                    controller.notices.collect { notice ->
+                        if (notice != null) {
+                            Toast.makeText(this@PlayerActivity, notice, Toast.LENGTH_LONG).show()
+                            controller.noticeShown()
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private fun start(videoId: String, startMs: Long, saveHistory: Boolean) {
+        this.saveHistory = saveHistory
+        controller.open(videoId, startMs, saveHistory)
+    }
+
+    private fun ask(onChoice: (saveHistory: Boolean) -> Unit) {
+        val options = arrayOf(getString(R.string.ext_ask_no_history), getString(R.string.ext_ask_save_history))
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(R.string.ext_ask_title)
+            .setItems(options) { _, which -> onChoice(which == 1) }
+            .setOnCancelListener { finish() }
+            .show()
     }
 
     private fun render(state: PlaybackController.State) {
@@ -86,7 +128,7 @@ class PlayerActivity : ComponentActivity() {
             is PlaybackController.State.Playing -> {
                 messageView.visibility = View.GONE
                 titleView.text = state.info.title
-                val noHistory = if (external) getString(R.string.player_no_history) else null
+                val noHistory = if (!saveHistory) getString(R.string.player_no_history) else null
                 detailView.text = listOfNotNull(state.info.author, state.selection, noHistory).joinToString(" · ")
             }
             is PlaybackController.State.Failed -> {
@@ -96,6 +138,40 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    private fun renderControls(controls: PlaybackController.Controls) {
+        val page = controls.page
+        actions.visibility = if (page != null) View.VISIBLE else View.GONE
+        if (page != null) {
+            likeButton.setActive(page.rating == Rating.LIKED)
+            dislikeButton.setActive(page.rating == Rating.DISLIKED)
+            subscribeButton.visibility = if (page.channelId != null) View.VISIBLE else View.GONE
+            subscribeButton.setText(if (page.subscribed) R.string.player_subscribed else R.string.player_subscribe)
+            subscribeButton.setTextColor(color(if (page.subscribed) R.color.player_text_secondary else R.color.player_icon))
+        }
+        skipButton.visibility = if (controls.skipAvailable) View.VISIBLE else View.GONE
+        captionsButton.visibility = if (controls.captionsAvailable) View.VISIBLE else View.GONE
+        captionsButton.setActive(controls.captionsOn)
+        captionsButton.contentDescription =
+            getString(if (controls.captionsOn) R.string.player_captions_off else R.string.player_captions)
+    }
+
+    private fun bindButtons() {
+        likeButton.setOnClickListener { controller.rate(Rating.LIKED) }
+        dislikeButton.setOnClickListener { controller.rate(Rating.DISLIKED) }
+        subscribeButton.setOnClickListener { controller.toggleSubscribed() }
+        captionsButton.setOnClickListener { controller.toggleCaptions() }
+        skipButton.setOnClickListener {
+            if (!controller.skipAhead()) Toast.makeText(this, R.string.player_no_highlight, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun ImageButton.setActive(active: Boolean) {
+        setColorFilter(color(if (active) R.color.player_accent else R.color.player_icon))
+        isActivated = active
+    }
+
+    private fun color(id: Int) = ContextCompat.getColor(this, id)
+
     override fun onStart() {
         super.onStart()
         playerView.requestFocus()
@@ -103,13 +179,14 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        if (!::controller.isInitialized) return
         controller.saveProgress()
         controller.player.pause()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putLong(KEY_POSITION, controller.player.currentPosition)
+        if (::controller.isInitialized) outState.putLong(KEY_POSITION, controller.player.currentPosition)
     }
 
     override fun onDestroy() {
@@ -118,37 +195,16 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun buildLayout(initialTitle: String?): View {
-        playerView = PlayerView(this).apply {
-            setShowNextButton(false)
-            setShowPreviousButton(false)
-            setShowShuffleButton(false)
-            setShowSubtitleButton(true)
-            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
-            keepScreenOn = true
-            isFocusable = true
-            setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
-                infoBar.visibility = visibility
-            })
-        }
+        playerView = layoutInflater.inflate(R.layout.player_view, null) as PlayerView
+        titleView = playerView.findViewById<TextView>(R.id.player_title).apply { text = initialTitle }
+        detailView = playerView.findViewById(R.id.player_detail)
+        actions = playerView.findViewById(R.id.player_actions)
+        likeButton = playerView.findViewById(R.id.player_like)
+        dislikeButton = playerView.findViewById(R.id.player_dislike)
+        subscribeButton = playerView.findViewById(R.id.player_subscribe)
+        skipButton = playerView.findViewById(R.id.player_skip)
+        captionsButton = playerView.findViewById(R.id.player_captions)
 
-        titleView = TextView(this).apply {
-            text = initialTitle
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
-            maxLines = 2
-        }
-        detailView = TextView(this).apply {
-            setTextColor(0xCCFFFFFF.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-        }
-        infoBar = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            val pad = dp(24)
-            setPadding(pad, pad, pad, pad)
-            setBackgroundColor(0x66000000)
-            addView(titleView)
-            addView(detailView)
-        }
         messageView = TextView(this).apply {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
@@ -161,24 +217,26 @@ class PlayerActivity : ComponentActivity() {
         return FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             addView(playerView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-            addView(infoBar, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP))
             addView(messageView, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER))
         }
     }
 
     private data class Target(val videoId: String, val startMs: Long, val external: Boolean)
 
+    private fun linkText(intent: Intent): String? = when (intent.action) {
+        Intent.ACTION_VIEW -> intent.dataString
+        Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+        else -> null
+    }
+
     /** Vídeo pedido: de dentro do app (extra) ou de um link externo (VIEW ou SEND). */
     private fun resolveTarget(intent: Intent): Target? {
         intent.getStringExtra(EXTRA_VIDEO_ID)?.let { return Target(it, 0, external = false) }
-        val text = when (intent.action) {
-            Intent.ACTION_VIEW -> intent.dataString
-            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
-            else -> null
-        }
-        val link = VideoLinks.parse(text) ?: return null
+        val link = VideoLinks.parse(linkText(intent)) ?: return null
         return Target(link.videoId, link.startSeconds * 1000, external = true)
     }
+
+    private fun playlistLink(intent: Intent): String? = VideoLinks.parsePlaylist(linkText(intent))
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 

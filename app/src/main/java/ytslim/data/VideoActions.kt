@@ -1,0 +1,51 @@
+package ytslim.data
+
+import com.liskovsoft.mediaserviceinterfaces.data.MediaItemMetadata
+import com.liskovsoft.youtubeapi.service.data.YouTubeMediaItem
+
+enum class Rating { NONE, LIKED, DISLIKED }
+
+/** O que a página do vídeo mostra além do player: avaliação, inscrição no canal e capítulos. */
+data class VideoState(
+    val channelId: String?,
+    val subscribed: Boolean,
+    val rating: Rating,
+    val chapterStartsMs: List<Long>,
+)
+
+/** Like/dislike e inscrever/cancelar inscrição no canal do vídeo. */
+object VideoActions {
+    suspend fun state(videoId: String): VideoState? = runCatching {
+        io { Engine.mediaItems.getMetadata(videoId) }
+    }.getOrNull()?.let { m ->
+        VideoState(
+            channelId = m.channelId,
+            subscribed = m.isSubscribed,
+            rating = when (m.likeStatus) {
+                MediaItemMetadata.LIKE_STATUS_LIKE -> Rating.LIKED
+                MediaItemMetadata.LIKE_STATUS_DISLIKE -> Rating.DISLIKED
+                else -> Rating.NONE
+            },
+            chapterStartsMs = m.chapters.orEmpty().map { it.startTimeMs }.filter { it > 0 },
+        )
+    }
+
+    /** Leva a avaliação de [from] para [to] (tocar no botão já ativo desfaz). */
+    suspend fun rate(videoId: String, from: Rating, to: Rating) = io {
+        val item = YouTubeMediaItem().apply { setVideoId(videoId) }
+        val service = Engine.mediaItems
+        when (to) {
+            Rating.LIKED -> service.setLike(item)
+            Rating.DISLIKED -> service.setDislike(item)
+            Rating.NONE -> when (from) {
+                Rating.LIKED -> service.removeLike(item)
+                Rating.DISLIKED -> service.removeDislike(item)
+                Rating.NONE -> Unit
+            }
+        }
+    }
+
+    suspend fun setSubscribed(channelId: String, subscribed: Boolean) = io {
+        if (subscribed) Engine.mediaItems.subscribe(channelId) else Engine.mediaItems.unsubscribe(channelId)
+    }
+}

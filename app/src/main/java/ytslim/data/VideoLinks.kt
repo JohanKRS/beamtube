@@ -7,10 +7,11 @@ data class VideoLink(val videoId: String, val startSeconds: Long = 0)
 
 /**
  * Lê links do YouTube: youtube.com/watch?v=, youtu.be/, /live/, /embed/, /v/ e m./music.
- * Shorts ficam de fora de propósito (o app não tem Shorts).
+ * Shorts ficam de fora de propósito (o app não tem Shorts). Links de playlist têm [parsePlaylist].
  */
 object VideoLinks {
     private val ID = Regex("^[A-Za-z0-9_-]{11}$")
+    private val PLAYLIST_ID = Regex("^[A-Za-z0-9_-]{2,64}$")
     private val URL_IN_TEXT = Regex("""https?://\S+""")
     private val YOUTUBE_HOSTS = setOf("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com")
     private val ID_PATHS = listOf("/live/", "/embed/", "/v/")
@@ -20,6 +21,17 @@ object VideoLinks {
         if (text.isNullOrBlank()) return null
         val candidates = URL_IN_TEXT.findAll(text).map { it.value }.toList().ifEmpty { listOf(text.trim()) }
         return candidates.firstNotNullOfOrNull { parseUrl(it.trimEnd('.', ',', ')', ']')) }
+    }
+
+    /** ID de uma playlist em youtube.com/playlist?list= (abre a página da playlist). */
+    fun parsePlaylist(text: String?): String? {
+        if (text.isNullOrBlank()) return null
+        val candidates = URL_IN_TEXT.findAll(text).map { it.value }.toList().ifEmpty { listOf(text.trim()) }
+        return candidates.firstNotNullOfOrNull { candidate ->
+            val uri = runCatching { URI(candidate.trimEnd('.', ',', ')', ']')) }.getOrNull() ?: return@firstNotNullOfOrNull null
+            if (uri.host?.lowercase() !in YOUTUBE_HOSTS || uri.path != "/playlist") return@firstNotNullOfOrNull null
+            parseQuery(uri.rawQuery)["list"]?.takeIf { PLAYLIST_ID.matches(it) }
+        }
     }
 
     private fun parseUrl(url: String): VideoLink? {

@@ -6,8 +6,9 @@ import ytslim.data.Playlist
 @Serializable
 data object SignInRoute
 
+/** Início: abas Inscrições, Playlists e Configurações. */
 @Serializable
-data object PlaylistsRoute
+data object HomeRoute
 
 @Serializable
 data class PlaylistRoute(
@@ -20,5 +21,10 @@ data class PlaylistRoute(
 
     companion object {
         fun from(p: Playlist) = PlaylistRoute(p.browseId, p.params, p.playlistId, p.title)
+
+        /** Playlist aberta por link: só o ID; o título vem com a primeira página. */
+        fun fromId(playlistId: String) = PlaylistRoute("VL$playlistId", null, playlistId, title = "")
     }
 }
+
+enum class HomeTab { SUBSCRIPTIONS, PLAYLISTS, SETTINGS }

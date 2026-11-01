@@ -36,4 +36,13 @@ class VideoLinksTest {
         assertNull(VideoLinks.parse("só texto"))
         assertNull(VideoLinks.parse(null))
     }
+
+    @Test
+    fun readsPlaylistLinks() {
+        assertEquals("PLXIclLvfETS3AgCnZg4N6QqHu_T27XKIq", VideoLinks.parsePlaylist("https://www.youtube.com/playlist?list=PLXIclLvfETS3AgCnZg4N6QqHu_T27XKIq&si=abc"))
+        assertEquals("PLabc", VideoLinks.parsePlaylist("Vê essa: https://m.youtube.com/playlist?list=PLabc"))
+        assertNull(VideoLinks.parsePlaylist("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLabc"))
+        assertNull(VideoLinks.parsePlaylist("https://example.com/playlist?list=PLabc"))
+        assertNull(VideoLinks.parsePlaylist(null))
+    }
 }
