@@ -18,7 +18,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - **Nome e ícone:** **Doorglow**. Ícone: a porta entreaberta (fresta de luz) em fundo azul-noite. `applicationId` = `app.doorglow`. Nome e ID ficam no `gradle.properties`; ícone em `app/src/main/res/drawable/ic_launcher_*.xml`; o banner da TV é gerado por `tools/make_tv_banner.py`.
 - **Interface em inglês.** (A conversa com o Claude continua em português.)
 - **Interações com a conta:** só **like/dislike** e **inscrever/cancelar inscrição**. O botão de inscrição fica na página do vídeo e vale para o canal do vídeo.
-- **Inscrição em playlists** (o YouTube não tem isso; ver a seção própria).
+- **Inscrição em playlists**, guardada nas playlists salvas da conta (o YouTube não tem isso; ver a seção própria).
 - **Links externos** (WhatsApp, navegador, "Compartilhar"): abrem no Doorglow e tocam **sem ir para o histórico** (ver a seção própria).
 
 ## Telas
@@ -63,14 +63,16 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 
 ## Inscrição em playlists
 
-O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. Então o Doorglow guarda as playlists inscritas **no próprio app**.
+O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doorglow monta esse feed, usando as **playlists salvas da conta** como a lista de inscrições (decisão do Johan, 2026-11-01). Assim a lista é a mesma no celular, no tablet e na TV.
 
-- Botão "Inscrever" na página da playlist; lista para gerenciar nas Configurações.
+- Botão "Inscrever" na página da playlist: salva a playlist na biblioteca da conta (`MediaItemService.savePlaylistObserve`). "Cancelar inscrição" tira da biblioteca (`removePlaylistObserve`).
+- Contam como inscritas as playlists **de outros canais** salvas na conta, inclusive as que já estavam salvas antes do Doorglow. As playlists do próprio usuário (Assistir mais tarde e as que ele criou) ficam de fora do feed.
+- Lista para gerenciar nas Configurações.
 - O feed de Inscrições junta o feed dos canais com os vídeos das playlists inscritas.
 - **Sem duplicados:** um vídeo de playlist inscrita só entra no feed se o usuário **não** estiver inscrito no canal do vídeo (se estiver, o vídeo já vem pelo canal).
 - Ordenação junto com o resto do feed, pela data de publicação; vídeos de playlists respeitam os mesmos filtros (Shorts, lives, tópicos, canais bloqueados).
 - Validado fora do aparelho (2026-11-01): o motor abre uma playlist pública só pelo id (`VL<id>`), com paginação, e cada vídeo traz o canal, que é o que a regra de duplicados precisa.
-- *Em aberto:* guardar só no aparelho (cada aparelho tem a sua lista) ou sincronizar pela conta. Ver Perguntas em aberto.
+- A ver na etapa 2: como o motor separa as playlists salvas de outros canais das criadas pelo usuário.
 
 ## Links externos
 
@@ -94,7 +96,6 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 
 ## Perguntas em aberto
 
-- Inscrições em playlists: guardar só no aparelho ou sincronizar entre celular, tablet e TV?
 - Confirmar no aparelho que um vídeo aberto por link externo não aparece no histórico (o app não envia o progresso; falta ver se o YouTube registra a visualização por outro caminho).
 
 ## Como testar a etapa 1
