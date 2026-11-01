@@ -8,6 +8,17 @@ plugins {
 val appName = providers.gradleProperty("app.name").get()
 val appId = providers.gradleProperty("app.id").get()
 val appAbis = providers.gradleProperty("app.abis").get().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+val appVersionCode = providers.gradleProperty("app.versionCode").get().toInt()
+val appVersionName = providers.gradleProperty("app.versionName").get()
+
+// Chave das releases. Precisa ser sempre a mesma, senão o Android recusa a atualização.
+// Local: -Pdoorglow.keystore=/caminho/doorglow.keystore. No GitHub Actions: DOORGLOW_KEYSTORE.
+val releaseKeystore: String? = providers.gradleProperty("doorglow.keystore").orNull
+    ?: providers.environmentVariable("DOORGLOW_KEYSTORE").orNull
+fun signingValue(name: String, default: String): String =
+    providers.gradleProperty("doorglow.$name").orNull
+        ?: providers.environmentVariable("DOORGLOW_${name.uppercase().replace('.', '_')}").orNull
+        ?: default
 
 android {
     namespace = "ytslim"
@@ -17,8 +28,8 @@ android {
         applicationId = appId
         minSdk = 23
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         resValue("string", "app_name", appName)
         multiDexEnabled = true
@@ -36,6 +47,18 @@ android {
         }
     }
 
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                // A chave atual foi gerada como chave de debug; por isso estes padrões.
+                storePassword = signingValue("store.password", "android")
+                keyAlias = signingValue("key.alias", "androiddebugkey")
+                keyPassword = signingValue("key.password", "android")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -43,8 +66,9 @@ android {
         }
         release {
             isMinifyEnabled = false
-            // Uso pessoal: assina com a chave de debug para instalar direto, sem keystore.
-            signingConfig = signingConfigs.getByName("debug")
+            // Sem a chave das releases (ex.: build local de teste), assina com a de debug desta máquina:
+            // instala num aparelho limpo, mas não atualiza por cima da versão das releases.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 

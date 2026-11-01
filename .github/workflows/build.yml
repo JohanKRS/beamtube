@@ -1,0 +1,28 @@
+name: Build
+
+# Em cada PR: compila o APK de debug e roda os testes de unidade.
+on:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Runner de repositório privado tem 7 GB: menos memória que o gradle.properties pede.
+      - name: Build e testes
+        run: >
+          ./gradlew :app:assembleAppDebug :app:testAppDebugUnitTest
+          -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
+          -Pkotlin.compiler.execution.strategy=in-process

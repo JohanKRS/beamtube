@@ -20,6 +20,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - **Interações com a conta:** só **like/dislike** e **inscrever/cancelar inscrição**. O botão de inscrição fica na página do vídeo e vale para o canal do vídeo.
 - **Inscrição em playlists**, guardada nas playlists salvas da conta (o YouTube não tem isso; ver a seção própria).
 - **Links externos** (WhatsApp, navegador, "Compartilhar"): abrem no Doorglow e tocam **sem ir para o histórico** (ver a seção própria).
+- **Atualizações pelo Obtainium**, a partir das releases do GitHub (ver a seção própria).
 
 ## Telas
 
@@ -77,15 +78,23 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
 ## Links externos
 
 - O Doorglow abre links `youtube.com/watch`, `youtu.be`, `/live/`, `/embed/` e `music.youtube.com`, e textos com link recebidos por "Compartilhar". Shorts ficam de fora.
-- Esses vídeos tocam com a conta (qualidade do Premium), mas **o progresso não é enviado ao histórico** do YouTube. A tela mostra "not saved to history".
+- Esses vídeos tocam com a conta (qualidade do Premium), mas **o progresso não é enviado ao histórico** do YouTube. A tela mostra "not saved to history". Confirmado no aparelho em 2026-11-01: o vídeo não aparece no histórico.
 - Para virar o app padrão de links do YouTube (Android 12+), o usuário precisa: desligar "Abrir links compatíveis" no app do YouTube e ligar, no Doorglow, Configurações > Apps > Doorglow > Abrir por padrão (youtube.com, m.youtube.com, youtu.be). Só o dono do domínio pode fazer isso automaticamente.
 - Depois, na tela de Configurações: opção "Links externos: sem histórico / na minha conta / perguntar", com padrão "sem histórico".
+
+## Atualizações (Obtainium)
+
+- Cada versão sai como **release no GitHub** com o APK assinado; o Johan acompanha pelo Obtainium.
+- Para lançar: no PR, somar 1 em `app.versionCode` e mudar `app.versionName` no `gradle.properties`. Quando o PR é mesclado no main, o workflow `release.yml` compila, confere a assinatura e cria a release `v<versionName>`. Se a versão já tem release, não faz nada.
+- **A chave de assinatura é sempre a mesma** (a do APK 0.1.0). Ela fica fora do git: no secret `DOORGLOW_KEYSTORE_BASE64` do repositório e em `/mnt/project-files/doorglow/signing/` (com um LEIA-ME). O workflow falha se o APK sair com outro certificado.
+- O repositório é privado, então o Obtainium precisa de um token do GitHub com leitura do repositório.
+- Em cada PR, o workflow `build.yml` compila e roda os testes de unidade.
 
 ## Etapas
 
 0. **Base do projeto:** submódulos, build Gradle e um APK que abre no celular e na TV. *Feito em 2026-11-01.*
 1. **Protótipo do motor:** login por código, listar as playlists e tocar um vídeo em qualidade máxima com áudio original. *Valida o MediaServiceCore + Media3 antes de construir telas.*
-   - *Validado no aparelho pelo Johan em 2026-11-01:* login, playlists e reprodução funcionando. Falta conferir a faixa original num vídeo dublado (ver "Como testar a etapa 1"). Inclui a abertura de links externos sem histórico, que serve para testar qualquer vídeo.
+   - *Validado no aparelho pelo Johan em 2026-11-01:* login, playlists, reprodução, áudio original num vídeo dublado e link externo fora do histórico.
 2. **Inscrições (Início) + player completo:** controles mínimos, legenda, regra de qualidade, pular partes. Junto: toggle de lives, inscrição em playlists, like/dislike e inscrever/cancelar no vídeo, e a tela de Configurações mínima.
 3. **Playlists:** salvar com um toque, reordenar (inclusive na TV).
 4. **Busca com filtros, Histórico e Canal.**
@@ -96,7 +105,7 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 
 ## Perguntas em aberto
 
-- Confirmar no aparelho que um vídeo aberto por link externo não aparece no histórico (o app não envia o progresso; falta ver se o YouTube registra a visualização por outro caminho).
+Nenhuma no momento.
 
 ## Como testar a etapa 1
 
