@@ -85,7 +85,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
 
 0. **Base do projeto:** submódulos, build Gradle e um APK que abre no celular e na TV. *Feito em 2026-11-01.*
 1. **Protótipo do motor:** login por código, listar as playlists e tocar um vídeo em qualidade máxima com áudio original. *Valida o MediaServiceCore + Media3 antes de construir telas.*
-   - *Implementado em 2026-11-01, aguardando o teste no aparelho* (login, playlists, abrir um vídeo; ver "Como testar a etapa 1"). Inclui a abertura de links externos sem histórico, que serve para testar qualquer vídeo.
+   - *Validado no aparelho pelo Johan em 2026-11-01:* login, playlists e reprodução funcionando. Falta conferir a faixa original num vídeo dublado (ver "Como testar a etapa 1"). Inclui a abertura de links externos sem histórico, que serve para testar qualquer vídeo.
 2. **Inscrições (Início) + player completo:** controles mínimos, legenda, regra de qualidade, pular partes. Junto: toggle de lives, inscrição em playlists, like/dislike e inscrever/cancelar no vídeo, e a tela de Configurações mínima.
 3. **Playlists:** salvar com um toque, reordenar (inclusive na TV).
 4. **Busca com filtros, Histórico e Canal.**
@@ -103,7 +103,7 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 1. Instalar o APK no celular e na TV.
 2. Entrar com o código (youtube.com/activate).
 3. Abrir uma playlist (por exemplo, Watch later) e tocar um vídeo. Na barra de cima do player aparecem a resolução, o codec e a faixa de áudio escolhida.
-4. Testar um vídeo dublado (ex.: um do MrBeast): a faixa deve ser a marcada como "original".
+4. Testar um vídeo dublado (ex.: https://youtu.be/0e3GPea1Tyg, do MrBeast): a faixa deve ser a marcada como "original".
 5. Abrir um link do YouTube pelo WhatsApp ou pelo "Compartilhar" do navegador: deve tocar e mostrar "not saved to history".
 
 ## Notas técnicas (da análise do SmartTube em 2026-11-01)
