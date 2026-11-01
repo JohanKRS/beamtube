@@ -109,6 +109,10 @@ dependencies {
     implementation(project(":mediaserviceinterfaces"))
     implementation(project(":youtubeapi"))
     implementation(project(":sharedutils"))
+    // Chamadas ao YouTube que o motor não tem (mover vídeo na playlist), pelo cliente HTTP dele.
+    implementation(libs.okhttp.engine)
+    // A busca com filtros combinados usa a API de busca do motor direto (EngineSearch.java).
+    compileOnly(libs.retrofit.engine)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -130,6 +134,9 @@ dependencies {
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
+
+    // QR code do login na TV.
+    implementation(libs.zxing.core)
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network.ktor)

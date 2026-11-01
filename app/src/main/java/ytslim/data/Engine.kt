@@ -24,6 +24,9 @@ object Engine {
     /** Precisa rodar antes de qualquer chamada ao motor: ele pega o Context daqui. */
     fun init(context: Context) {
         GlobalPreferences.instance(context.applicationContext)
+        // Liga o serviço de login já aqui: ele recupera a conta salva numa thread própria, e assim
+        // ela está pronta antes de a primeira tela perguntar se há login (ver AuthRepository.isSigned).
+        signIn
         // Como no SmartTube: erros do RxJava que chegam depois de um cancelamento não derrubam o app.
         RxHelper.setupGlobalErrorHandler()
     }

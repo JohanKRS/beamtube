@@ -22,11 +22,16 @@ import ytslim.data.FeedMerge
 import ytslim.data.FeedRepository
 import ytslim.data.FeedRules
 import ytslim.data.LibraryRepository
+import ytslim.data.OwnPlaylist
 import ytslim.data.Playlist
+import ytslim.data.PlaylistEditor
 import ytslim.data.PlaylistSubscriptions
+import ytslim.data.SaveTarget
 import ytslim.data.Settings
 import ytslim.data.SettingsRepository
 import ytslim.data.Timed
+import ytslim.data.Topic
+import ytslim.data.TopicRules
 import ytslim.data.Video
 import ytslim.data.VideoPage
 
@@ -36,7 +41,7 @@ sealed interface UiState<out T> {
     data class Error(val message: String) : UiState<Nothing>
 }
 
-private fun Throwable.toMessage(): String = message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
+internal fun Throwable.toMessage(): String = message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
 
 class SignInViewModel : ViewModel() {
     sealed interface State {
@@ -95,8 +100,10 @@ class FeedViewModel : ViewModel() {
         Raw.Loading -> UiState.Loading
         is Raw.Error -> UiState.Error(raw.message)
         is Raw.Loaded -> {
-            val keep = { t: Timed -> FeedRules.keep(t.video, settings.showLives) }
-            val videos = FeedMerge.merge(raw.feed.filter(keep), extras.filter(keep), feedComplete = !raw.lastPage.hasMore)
+            val keep = { t: Timed -> FeedRules.keep(t.video, settings.showLives) && !TopicRules.isBlocked(t.video, settings.filters) }
+            // Vídeos de playlists inscritas também respeitam os tópicos excluídos.
+            val keepExtra = { t: Timed -> keep(t) && !TopicRules.isExcluded(t.video, settings.filters) }
+            val videos = FeedMerge.merge(raw.feed.filter(keep), extras.filter(keepExtra), feedComplete = !raw.lastPage.hasMore)
             UiState.Ready(VideoListContent(videos, raw.lastPage.hasMore, raw.loadingMore))
         }
     }
@@ -201,6 +208,32 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
         }
     }
 
+    /** Mostra os vídeos já carregados numa nova ordem (depois de reordenar a playlist). */
+    protected fun showOrder(reordered: List<Video>) {
+        val current = (_state.value as? UiState.Ready)?.data ?: return
+        val moved = reordered.mapTo(HashSet()) { it.id }
+        _state.value = UiState.Ready(current.copy(videos = reordered + current.videos.filter { it.id !in moved }))
+    }
+
+    /**
+     * Carrega as páginas que faltam (até [maxPages]). true se a lista ficou completa.
+     * Reordenar precisa da playlist inteira: "mover para o fim" é o fim de verdade.
+     */
+    protected suspend fun loadAll(maxPages: Int): Boolean {
+        moreJob?.join()
+        repeat(maxPages) {
+            val current = (_state.value as? UiState.Ready)?.data ?: return false
+            val page = lastPage ?: return false
+            if (!page.hasMore) return true
+            val next = runCatching { LibraryRepository.more(page) }.getOrElse { return false }
+            lastPage = next
+            val known = current.videos.mapTo(HashSet()) { it.id }
+            val added = next.videos.filter { known.add(it.id) }
+            _state.value = UiState.Ready(current.copy(videos = current.videos + added, hasMore = next.hasMore, loadingMore = false))
+        }
+        return lastPage?.hasMore == false
+    }
+
     fun loadMore() {
         val current = (_state.value as? UiState.Ready)?.data ?: return
         val page = lastPage ?: return
@@ -218,23 +251,99 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
     }
 }
 
-/** Página de uma playlist: os vídeos e, se for de outro canal, o botão de inscrição. */
+/**
+ * Página de uma playlist: os vídeos; se for de outro canal, o botão de inscrição; se for do
+ * usuário (inclui Assistir mais tarde), o modo de reordenar.
+ */
 class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ LibraryRepository.playlistVideos(playlist) }) {
     sealed interface Subscription {
         data object Hidden : Subscription
         data class Shown(val subscribed: Boolean, val busy: Boolean = false, val error: String? = null) : Subscription
     }
 
+    sealed interface Reorder {
+        data object Unavailable : Reorder
+
+        /**
+         * Dá para reordenar. [preparing]: carregando o resto da playlist antes de editar.
+         * [loadFailed]: a playlist não carregou inteira, então o modo não abriu.
+         */
+        data class Available(val preparing: Boolean = false, val loadFailed: Boolean = false) : Reorder
+
+        /** Editando: [videos] na nova ordem; a conta só muda em "Save order". */
+        data class Editing(val videos: List<Video>, val saving: Boolean = false, val error: String? = null) : Reorder
+    }
+
     private val _subscription = MutableStateFlow<Subscription>(Subscription.Hidden)
     val subscription: StateFlow<Subscription> = _subscription.asStateFlow()
 
+    private val _reorder = MutableStateFlow<Reorder>(Reorder.Unavailable)
+    val reorder: StateFlow<Reorder> = _reorder.asStateFlow()
+    private var originalOrder: List<Video> = emptyList()
+
     init {
         viewModelScope.launch {
+            val own = PlaylistSubscriptions.ownPlaylistIds()
+            if (own != null && playlist.playlistId in own) _reorder.value = Reorder.Available()
             _subscription.value = when (val status = PlaylistSubscriptions.status(playlist.playlistId)) {
                 PlaylistSubscriptions.Status.NotApplicable -> Subscription.Hidden
                 is PlaylistSubscriptions.Status.Foreign -> Subscription.Shown(status.subscribed)
             }
         }
+    }
+
+    /** Entra no modo de reordenar, com a playlist inteira carregada. */
+    fun startReorder() {
+        val available = _reorder.value as? Reorder.Available ?: return
+        if (available.preparing) return
+        _reorder.value = Reorder.Available(preparing = true)
+        viewModelScope.launch {
+            val complete = loadAll(MAX_REORDER_PAGES)
+            val videos = (state.value as? UiState.Ready)?.data?.videos
+            if (!complete || videos == null) {
+                _reorder.value = Reorder.Available(loadFailed = true)
+                return@launch
+            }
+            // Um vídeo repetido na playlist não tem como ser movido pelo ID: fica de fora do modo.
+            originalOrder = videos.distinctBy { it.id }
+            _reorder.value = Reorder.Editing(originalOrder)
+        }
+    }
+
+    /** Move o vídeo da posição [from] para [to] (na lista em edição). */
+    fun move(from: Int, to: Int) {
+        val editing = _reorder.value as? Reorder.Editing ?: return
+        if (editing.saving || from !in editing.videos.indices || to !in editing.videos.indices || from == to) return
+        val list = editing.videos.toMutableList()
+        list.add(to, list.removeAt(from))
+        _reorder.value = editing.copy(videos = list, error = null)
+    }
+
+    fun cancelReorder() {
+        if ((_reorder.value as? Reorder.Editing)?.saving == true) return
+        _reorder.value = Reorder.Available()
+    }
+
+    fun saveOrder() {
+        val editing = _reorder.value as? Reorder.Editing ?: return
+        val id = playlist.playlistId ?: return
+        if (editing.saving) return
+        if (editing.videos == originalOrder) return cancelReorder()
+        _reorder.value = editing.copy(saving = true, error = null)
+        viewModelScope.launch {
+            runCatching { PlaylistEditor.reorder(id, originalOrder.map { it.id }, editing.videos.map { it.id }) }.fold(
+                {
+                    showOrder(editing.videos)
+                    _reorder.value = Reorder.Available()
+                },
+                { _reorder.value = editing.copy(saving = false, error = it.toMessage()) },
+            )
+        }
+    }
+
+    private companion object {
+        /** Até uns 5000 vídeos (100 por página). */
+        const val MAX_REORDER_PAGES = 50
     }
 
     fun toggleSubscription(title: String?) {
@@ -255,7 +364,10 @@ class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ L
     }
 }
 
-/** Configurações mínimas: lives nas Inscrições, links externos, playlists inscritas e conta. */
+/**
+ * Configurações: lives nas Inscrições, links externos, playlist do botão Save, tópicos e canais
+ * bloqueados, playlists inscritas, ícone e conta.
+ */
 class SettingsViewModel : ViewModel() {
     val settings: StateFlow<Settings> = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
     val accountName: String? = AuthRepository.accountName()
@@ -286,6 +398,57 @@ class SettingsViewModel : ViewModel() {
 
     fun setExternalLinks(value: ExternalLinks) {
         viewModelScope.launch { SettingsRepository.setExternalLinks(value) }
+    }
+
+    /** As playlists do usuário, para escolher a do botão "Save". Carregadas ao abrir a escolha. */
+    private val _ownPlaylists = MutableStateFlow<UiState<List<OwnPlaylist>>?>(null)
+    val ownPlaylists: StateFlow<UiState<List<OwnPlaylist>>?> = _ownPlaylists.asStateFlow()
+
+    fun loadOwnPlaylists() {
+        if (_ownPlaylists.value is UiState.Loading || _ownPlaylists.value is UiState.Ready) return
+        _ownPlaylists.value = UiState.Loading
+        viewModelScope.launch {
+            _ownPlaylists.value = runCatching { PlaylistEditor.ownPlaylists() }
+                .fold({ UiState.Ready(it) }, { UiState.Error(it.toMessage()) })
+        }
+    }
+
+    fun setSaveTarget(playlist: OwnPlaylist) {
+        viewModelScope.launch { SettingsRepository.setSaveTarget(SaveTarget(playlist.id, playlist.title)) }
+    }
+
+    enum class TopicList { EXCLUDED, PREFERRED }
+
+    private fun topics(list: TopicList): List<Topic> = when (list) {
+        TopicList.EXCLUDED -> settings.value.filters.excluded
+        TopicList.PREFERRED -> settings.value.filters.preferred
+    }
+
+    private fun setTopics(list: TopicList, topics: List<Topic>) {
+        viewModelScope.launch {
+            when (list) {
+                TopicList.EXCLUDED -> SettingsRepository.setExcludedTopics(topics)
+                TopicList.PREFERRED -> SettingsRepository.setPreferredTopics(topics)
+            }
+        }
+    }
+
+    /** Cria ([index] null) ou altera um tópico. Palavras-chave separadas por vírgula. */
+    fun saveTopic(list: TopicList, index: Int?, name: String, keywords: String) {
+        val topic = Topic(name.trim(), TopicRules.parseKeywords(keywords))
+        if (topic.name.isEmpty() || topic.keywords.isEmpty()) return
+        val current = topics(list).toMutableList()
+        if (index != null && index in current.indices) current[index] = topic else current += topic
+        setTopics(list, current)
+    }
+
+    fun removeTopic(list: TopicList, index: Int) {
+        val current = topics(list)
+        if (index in current.indices) setTopics(list, current.filterIndexed { i, _ -> i != index })
+    }
+
+    fun unblock(channelId: String) {
+        viewModelScope.launch { SettingsRepository.unblock(channelId) }
     }
 
     private val _appIcon = MutableStateFlow(AppIcons.current())

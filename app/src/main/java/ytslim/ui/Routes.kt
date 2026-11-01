@@ -6,7 +6,7 @@ import ytslim.data.Playlist
 @Serializable
 data object SignInRoute
 
-/** Início: abas Inscrições, Playlists e Configurações. */
+/** Início: as abas de [HomeTab]. */
 @Serializable
 data object HomeRoute
 
@@ -27,4 +27,15 @@ data class PlaylistRoute(
     }
 }
 
-enum class HomeTab { SUBSCRIPTIONS, PLAYLISTS, SETTINGS }
+/** Página de um canal (da busca ou do player). */
+@Serializable
+data class ChannelRoute(val channelId: String, val title: String)
+
+/** A Busca é uma aba, mas no celular ela abre pela lupa da barra de cima. */
+enum class HomeTab { SUBSCRIPTIONS, RECOMMENDED, SEARCH, PLAYLISTS, HISTORY, SETTINGS }
+
+/** Uma página pedida de fora da navegação: link de playlist de outro app, ou o canal no player. */
+sealed interface Link {
+    data class Playlist(val id: String) : Link
+    data class Channel(val id: String, val name: String) : Link
+}

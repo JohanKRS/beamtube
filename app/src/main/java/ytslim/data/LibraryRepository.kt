@@ -22,6 +22,12 @@ object LibraryRepository {
         return groups?.firstOrNull { !it.isEmpty }.toPage()
     }
 
+    /** Histórico da conta (o que foi assistido), do mais recente para o mais antigo. */
+    suspend fun history(): VideoPage = Engine.content.historyObserve.firstOrNull().toPage()
+
+    /** Recomendações da conta (o "Início" do YouTube), ainda sem os nossos filtros. */
+    suspend fun recommended(): VideoPage = Engine.content.recommendedObserve.firstOrNull().toPage()
+
     /** Próxima página de uma lista (playlist, feed etc.). */
     suspend fun more(page: VideoPage): VideoPage {
         val next = page.next ?: return VideoPage(emptyList(), null)

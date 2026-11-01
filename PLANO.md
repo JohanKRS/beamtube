@@ -14,6 +14,8 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - **Não editar os submódulos.** Toda adaptação fica no nosso código, numa camada própria (`data/`).
   - Atualizar os submódulos de tempos em tempos para receber as correções.
 - **Login:** pelo código de TV (youtube.com/activate), o mesmo fluxo em todos os aparelhos.
+  - Na TV, a tela mostra também um **QR code** (pedido do Johan, 2026-11-01) com `youtube.com/activate?user_code=<código>`, que já abre a página do Google com o código preenchido. No celular, o botão "Copy code and open the site" abre esse mesmo endereço.
+  - O login fica salvo entre atualizações. Até a 0.2.1 o app às vezes pedia o código de novo depois de atualizar (ver as notas técnicas).
 - **Fora do app:** envio de vídeos (upload), Shorts, comentários, chat ao vivo e notificações.
 - **Nome e ícone:** **Doorglow**. Ícone: a porta entreaberta (fresta de luz) em fundo azul-noite. `applicationId` = `app.doorglow`. Nome e ID ficam no `gradle.properties`.
   - **Cor do ícone à escolha** (decidido em 2026-11-01): o desenho é sempre a porta original, e nas Configurações ("App icon") dá para escolher uma de seis cores: azul-noite (padrão), preto, verde-azulado, ameixa, mostarda e gradiente vivo. São as versões 01 a 06 de `/mnt/project-files/nome-e-icone/versoes/`.
@@ -30,24 +32,25 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 |---|---|
 | **Início = Inscrições** | Feed das inscrições como tela principal. |
 | Recomendações | Secundária, com exclusão e preferência de tópicos (ver Filtragem). |
-| Busca | "Melhorada": filtros de duração, data, tipo e ordenação. Lives só aparecem aqui. |
+| Busca | "Melhorada": filtros de duração, data, tipo e ordenação, e sugestões enquanto se digita. Resultados misturam vídeos, canais e playlists. Lives só aparecem aqui. |
 | Playlists | Inclui **Assistir mais tarde** (o real, que o motor acessa). Reordenar vídeos, inclusive pela TV. |
 | Histórico | Lista do que foi assistido. |
-| Canal | Página básica do canal (vídeos, playlists). |
-| Configurações | Mínimas: filtros, tópicos, canais bloqueados, conta, **mostrar lives nas Inscrições**, playlists inscritas, comportamento dos links externos, **cor do ícone**. |
+| Canal | Página básica do canal: vídeos e playlists (duas abas) e o botão de bloquear. Abre pela busca ou pelo nome do canal no player. |
+| Configurações | Mínimas: **mostrar lives nas Inscrições**, playlist do botão Save, tópicos excluídos e preferidos, canais bloqueados, links externos, playlists inscritas, **cor do ícone** e conta. |
+
+- **Abas:** no celular, a barra de baixo tem Subscriptions, Recommended, Playlists, History e Settings, e a Busca abre pela lupa da barra de cima (seis abas não cabem). Na TV, as seis abas ficam na fileira de cima, com Search em terceiro.
 
 ## Filtragem
 
 - **Shorts:** nunca aparecem, em lugar nenhum.
 - **Lives:** nos resultados de busca e, se o usuário quiser, nas Inscrições; nunca nas recomendações.
   - Inscrições: **toggle nas configurações** ("mostrar lives nas Inscrições"), desligado por padrão.
-- **Tópicos excluídos** (lista editável): esportes, política, etc.
-- **Tópicos preferidos** (lista editável): engenharia, tecnologia, computação, IA, conteúdo técnico. Ganham prioridade nas recomendações.
-- **Como classificar:** combinar a categoria oficial do vídeo (Esportes, Notícias e política, Ciência e tecnologia, Educação…), palavras-chave no título e na descrição, e listas de canais.
-  - Opção para obter a categoria: YouTube Data API só com chave de API (sem login), `videos.list` com 50 vídeos por chamada a 1 unidade de cota.
-  - Avaliar também se a resposta interna já traz a categoria sem custo extra.
-- **Filtros na TV** (e no celular): duração (mínima/máxima, preferência por vídeos longos), data de publicação e ordenação.
-- **Bloquear canal**, com uma lista para gerenciar os canais bloqueados.
+- **Tópicos excluídos** (lista editável): esportes, política, etc. Saem das Recomendações e dos vídeos das playlists inscritas. O feed dos canais inscritos não é filtrado por tópico: foi o usuário que escolheu o canal.
+- **Tópicos preferidos** (lista editável): engenharia, tecnologia, computação, IA, conteúdo técnico. Sobem para o começo de cada página das Recomendações, mantendo a ordem do YouTube entre eles (uma página nova não mexe no que já está na tela).
+- **Como classificar (decidido em 2026-11-01): por palavras-chave**, no título e no nome do canal. Cada tópico é um nome e uma lista de palavras-chave, editável nas Configurações. A comparação ignora maiúsculas e acentos e só casa palavras inteiras ("ai" não casa com "aim"). As listas começam com Sports e Politics (excluídos) e Engineering, Technology, Computing e AI (preferidos), com palavras em inglês e português (`TopicRules`).
+  - A categoria oficial ficou de fora: as listas do motor não trazem a categoria nem a descrição, e buscá-las custaria uma chamada a mais por vídeo (ou uma chave da Data API). Dá para acrescentar depois, se as palavras-chave não bastarem.
+- **Filtros da busca** (TV e celular): data de publicação, duração (menos de 4 min, 4 a 20, mais de 20), tipo (vídeos, canais, playlists) e ordenação (relevância, mais novos, mais vistos, nota). Qualquer combinação vale. No celular são menus; na TV, cada botão passa para o próximo valor.
+- **Bloquear canal**, pelo botão na página do canal, com a lista para desbloquear nas Configurações. Canal bloqueado some das Recomendações, da Busca, das Inscrições e dos vídeos de playlists inscritas. Quando o YouTube não manda o ID do canal (acontece na busca), o app compara pelo nome.
 
 ## Player
 
@@ -61,9 +64,12 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 
 ## Playlists
 
-- **Salvar com um toque**: um botão de salvar que vai direto para "Assistir mais tarde" (ou para outra playlist escolhida nas configurações).
-- **Reordenar vídeos dentro das playlists**, principalmente o Assistir mais tarde. Na TV, isso funciona com um modo "mover", em que o D-pad sobe e desce o item. As mudanças vão para a conta, então aparecem em todos os aparelhos.
-  - O MediaServiceCore já tem adicionar, remover, criar e renomear, mas **não tem mover**. Isso precisa ser implementado na nossa camada usando a ação de mover vídeo do endpoint interno `browse/edit_playlist`.
+- **Salvar com um toque**: o botão de marcador na barra de cima do player põe o vídeo direto no "Assistir mais tarde" (ou na playlist escolhida em Settings > Save button) e tira de lá no segundo toque. O ícone cheio mostra que o vídeo já está na playlist.
+- **Reordenar vídeos dentro das playlists do usuário**, principalmente o Assistir mais tarde. As mudanças vão para a conta, então aparecem em todos os aparelhos. O botão "Reorder" só aparece nas playlists do próprio usuário.
+  - O app carrega a playlist inteira antes de abrir o modo (até umas 5000 vídeos), para que "mover para o fim" seja o fim de verdade. Nada vai para a conta até tocar "Save order".
+  - No celular: setas para subir e descer cada vídeo. Na TV: o modo "mover", em que OK pega o vídeo, cima e baixo levam ele pela lista e OK solta. "Voltar" solta o vídeo pego, e de novo cancela.
+  - O MediaServiceCore já tem adicionar, remover, criar e renomear, mas **não tem mover**. O app manda os movimentos para o endpoint interno `browse/edit_playlist` (ação `ACTION_MOVE_VIDEO_BEFORE`, como o ytmusicapi), com o mínimo de movimentos (`ReorderPlan`).
+  - Cada movimento usa o `setVideoId` do vídeo (a posição dele na playlist), que o app lê pedindo a playlist ao YouTube (cliente de TV e, se faltar, WEB). Uma playlist pública não mostra o `setVideoId` sem ser do dono, então **essa parte só dá para validar no aparelho**, com o login.
 
 ## Inscrição em playlists
 
@@ -104,16 +110,32 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
 2. **Inscrições (Início) + player completo:** controles mínimos, legenda, regra de qualidade, pular partes. Junto: toggle de lives, inscrição em playlists, like/dislike e inscrever/cancelar no vídeo, e a tela de Configurações mínima.
    - *Implementado em 2026-11-01 (versão 0.2.0), aguardando o teste no aparelho* (ver "Como testar a etapa 2"). O início tem três abas: Subscriptions, Playlists e Settings. Configurações: mostrar lives (inclui as agendadas), links de outros apps, playlists inscritas e conta.
    - *Versão 0.2.1:* seletor da cor do ícone nas Configurações.
+   - *Testado no celular pelo Johan em 2026-11-01.* Falta testar na TV.
 3. **Playlists:** salvar com um toque, reordenar (inclusive na TV).
 4. **Busca com filtros, Histórico e Canal.**
 5. **Recomendações** com exclusão e preferência de tópicos.
+   - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
+   - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
 
 Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", porque o motor acessa o real. Fica como ideia opcional para limpar o site.
 
 ## Perguntas em aberto
 
-Nenhuma no momento.
+Nenhuma no momento. Próxima etapa: polimento visual (6), junto com o Johan.
+
+## Como testar as etapas 3 a 5
+
+1. Atualizar pelo Obtainium. **O app deve abrir já com o login** (antes pedia o código de novo depois de atualizar). Se ainda pedir, avise: aí a causa é outra.
+2. Recomendações: aba "Recommended". Não deve ter Shorts, lives, esportes nem política, e vídeos de tecnologia, engenharia, computação e IA vêm primeiro.
+3. Busca: lupa no celular, aba "Search" na TV. Testar as sugestões, e os filtros juntos (por exemplo "Over 20 minutes" + "Videos" + "Most viewed"). Abrir um canal e uma playlist dos resultados.
+4. Canal: na página do canal, as abas Videos e Playlists. Tocar "Block channel" e ver o canal sumir da busca e das Recomendações; desbloquear em Settings > Blocked channels.
+5. Histórico: aba "History".
+6. Salvar: no player, o marcador ao lado de "Subscribe" põe o vídeo no Watch later (confira no app do YouTube). Em Settings > Save button dá para trocar a playlist.
+7. Reordenar: abrir o Watch later (ou uma playlist sua), tocar no ícone de setas (celular) ou "Reorder" (TV), mudar a ordem e tocar "Save order". Conferir no app do YouTube. Na TV: OK pega, cima e baixo movem, OK solta.
+8. Tópicos: em Settings, editar um tópico (nome e palavras separadas por vírgula), criar um novo e remover outro, e ver o efeito nas Recomendações.
+9. TV: o login mostra o QR code ao lado do código (para testar, é preciso sair da conta em Settings).
+10. Player: o nome do canal na barra de cima abre a página do canal.
 
 ## Como testar a etapa 2
 
@@ -170,7 +192,12 @@ Nenhuma no momento.
   - **Qualidade máxima:** `forceHighestSupportedBitrate`, sem limite de tamanho de tela. Os parâmetros voltam ao padrão a cada vídeo.
 - **V8 só no aparelho:** o motor decifra as URLs com o j2v8, que só tem binários para Android. Nos testes no JVM (Robolectric) dá para validar busca e playlists, mas não os formatos de vídeo.
   - Teste online: `./gradlew :app:testAppDebugUnitTest -Pytslim.online=true --tests '*EngineOnlineTest*'`.
-- **Busca:** playlists vêm com tipo indefinido (-1), sem `playlistId` e com `channelId` = `VL<id da playlist>`.
+- **Busca:** todos os itens vêm com tipo indefinido (-1). Canal: `channelId` "UC…" e sem `videoId`. Playlist: ou `channelId` = `VL<id>`, ou o `playlistId` junto com o `videoId` do primeiro vídeo (e duração 0, com "16 lessons" no badge); por isso o app trata como playlist todo item com `playlistId`. Vídeos da busca vêm sem `channelId`, e o `author` traz "Canal • views • data".
+  - O primeiro grupo da resposta é o dos resultados (o único com continuação); os outros são prateleiras ("People also watched", Shorts…), que ficam de fora.
+  - **Filtros:** o motor só conhece uma tabela pequena de combinações (`SearchFilterHelper`); duração + tipo, por exemplo, virava "sem filtro". O app monta o parâmetro de filtros ele mesmo (`SearchParams`, um protobuf em base64, o mesmo `sp` do site) e faz a busca pela API do motor por um atalho em Java (`EngineSearch.java`), reaproveitando a leitura da resposta e a paginação do motor. Esse atalho usa classes "internal" do motor: se uma atualização do motor quebrar a compilação ali, é o primeiro lugar a olhar.
+- **Canal:** o motor devolve a página em grupos: "Videos" (com paginação), "Shorts", "For You" e seções que costumam ser playlists (todos os vídeos com o mesmo `playlistId`, ex.: "Physics"). O app usa o primeiro grupo com vídeos que não são Shorts como "Videos" e as seções-playlist como "Playlists".
+- **Chamadas que o motor não tem** (mover vídeo, ler `setVideoId`): `Innertube.post` usa o cliente HTTP do próprio motor (`EngineHttp.java`), que já põe o login nos cabeçalhos, e os corpos de pedido do motor (`PostDataHelper.createQueryTV`/`createQueryWeb`).
+- **Login perdido nas atualizações (corrigido na 0.3.0):** o serviço de login do motor só é criado quando alguém pede, e aí carrega a conta salva numa thread própria. Na primeira abertura depois de uma atualização, o app perguntava "tem login?" antes de a conta carregar, ouvia "não" e mostrava o código. Agora o `Engine.init` cria o serviço logo no começo, e o `AuthRepository.isSigned()`, se há conta salva, espera o motor terminar de carregar (até 2 s).
 - **APK:** ~52 MB em debug e ~43 MB em release, só com arm64-v8a e armeabi-v7a (o j2v8 tem ~30 MB por ABI). Para emulador, acrescentar x86_64 em `app.abis`.
 - **Cor do ícone:** cada cor é um `activity-alias` da `MainActivity` no manifest, com o próprio ícone e o banner da TV, e só um fica ligado (`data/AppIcons.kt`, com `PackageManager.setComponentEnabledSetting` e `DONT_KILL_APP`). O alias ligado é a própria escolha: o app não guarda a cor em outro lugar.
   - **Nunca renomear nem tirar um alias:** quem estivesse com ele ligado ficaria sem o app no launcher.

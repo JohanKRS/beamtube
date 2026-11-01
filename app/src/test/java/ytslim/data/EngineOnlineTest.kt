@@ -80,6 +80,46 @@ class EngineOnlineTest {
         }
     }
 
+    /** A busca com filtros, as sugestões e a página do canal (achado pela própria busca). */
+    @Test
+    fun searchFiltersSuggestionsAndChannelPage() = withMainLooper {
+        val mixed = SearchRepository.search("3blue1brown", SearchFilters())
+        println("[online] busca: ${mixed.items.size} itens, tem mais: ${mixed.hasMore}")
+        mixed.items.take(6).forEach { println("[online]   $it".take(160)) }
+        assertTrue(mixed.items.any { it is SearchItem.VideoItem })
+        assertTrue(mixed.hasMore)
+        val more = SearchRepository.more(mixed)
+        println("[online] segunda página: ${more.items.size}")
+        assertTrue(more.items.isNotEmpty())
+
+        assertTrue("playlist lida como vídeo", mixed.items.filterIsInstance<SearchItem.VideoItem>().none { it.video.durationMs == 0L })
+
+        // Duração + tipo + data: a tabela do motor não tem essa combinação.
+        val long = SearchRepository.search(
+            "linear algebra",
+            SearchFilters(date = UploadDate.YEAR, duration = SearchDuration.OVER_20, type = ResultType.VIDEO, sort = SortBy.VIEWS),
+        )
+        val videos = long.items.filterIsInstance<SearchItem.VideoItem>().map { it.video }
+        println("[online] filtrada: ${long.items.size} itens; minutos: ${videos.take(8).map { it.durationMs / 60_000 }}; ${videos.take(4).map { it.info }}")
+        assertTrue(videos.isNotEmpty())
+        assertTrue("tipo ignorado", long.items.all { it is SearchItem.VideoItem })
+        assertTrue("filtro de duração ignorado", videos.filter { it.durationMs > 0 }.all { it.durationMs >= 20 * 60_000 })
+
+        val suggestions = SearchRepository.suggestions("kotlin corou")
+        println("[online] sugestões: $suggestions")
+        assertTrue(suggestions.isNotEmpty())
+
+        val channels = SearchRepository.search("3blue1brown", SearchFilters(type = ResultType.CHANNEL))
+            .items.filterIsInstance<SearchItem.ChannelItem>()
+        println("[online] canais: ${channels.take(3).map { it.channel.id + " " + it.channel.title }}")
+        val channel = channels.first().channel
+        val page = ChannelRepository.channel(channel.id)
+        println("[online] canal ${channel.title}: ${page.videos.videos.size} vídeos, tem mais: ${page.videos.hasMore}, " +
+            "playlists: ${page.playlists.take(5).map { it.title }}")
+        assertTrue(page.videos.videos.isNotEmpty())
+        assertTrue(page.videos.videos.none { it.isShorts })
+    }
+
     private fun checkVideo(videoId: String, expectOriginal: Boolean) {
         var manifests = 0
         var originalSurvived = false
