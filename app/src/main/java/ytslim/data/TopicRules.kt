@@ -20,7 +20,7 @@ data class ContentFilters(
     val blockedIds: Set<String> by lazy { blocked.mapTo(HashSet()) { it.id } }
 
     /** Os nomes, normalizados: na busca o YouTube nem sempre manda o ID do canal do vídeo. */
-    val blockedNames: Set<String> by lazy { blocked.mapNotNullTo(HashSet()) { TopicRules.normalize(it.name).ifEmpty { null } } }
+    val blockedNames: Set<String> by lazy { blocked.mapNotNullTo(HashSet()) { TopicRules.normalize(Handles.channelName(it.name).orEmpty()).ifEmpty { null } } }
 
     /** As palavras-chave já normalizadas (" futebol "), feitas uma vez só e não a cada vídeo. */
     internal val excludedNeedles: List<String> by lazy { TopicRules.needles(excluded) }
@@ -110,7 +110,7 @@ object TopicRules {
     fun isBlocked(video: Video, filters: ContentFilters): Boolean {
         if (filters.blocked.isEmpty()) return false
         if (video.channelId != null && video.channelId in filters.blockedIds) return true
-        val name = video.channelName?.substringBefore(" • ")?.let(::normalize) ?: return false
+        val name = Handles.channelName(video.channelName)?.let(::normalize) ?: return false
         return name.isNotEmpty() && name in filters.blockedNames
     }
 

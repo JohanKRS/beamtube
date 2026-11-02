@@ -33,6 +33,12 @@
     <string name="recommended_empty">Nothing to recommend right now. Topics you left out and blocked channels don\'t show up here.</string>
     <string name="recommended_filtered_empty">No recommendations match these filters.</string>
     <string name="history_empty">Nothing in your history yet.</string>
+    <string name="history_remove">Remove from history</string>
+    <string name="history_removed">Removed from history</string>
+    <string name="history_remove_failed">Couldn\'t remove it from history: %1$s</string>
+    <string name="playlist_remove">Remove from this playlist</string>
+    <string name="playlist_removed">Removed from %1$s</string>
+    <string name="playlist_remove_failed">Couldn\'t remove it from the playlist: %1$s</string>
 
     <string name="search_hint">Search YouTube</string>
     <string name="search_clear">Clear</string>
@@ -85,9 +91,8 @@
     <string name="reorder_load_failed">Couldn\'t load the whole playlist, so it can\'t be reordered here.</string>
     <string name="reorder_save">Save order</string>
     <string name="reorder_saving">Saving…</string>
-    <string name="reorder_move_up">Move up</string>
-    <string name="reorder_move_down">Move down</string>
-    <string name="reorder_hint_touch">Move videos with the arrows. The new order goes to your account when you save.</string>
+    <string name="reorder_drag">Drag to move</string>
+    <string name="reorder_hint_touch">Drag a video by its handle, or hold it, to move it. The new order goes to your account when you save.</string>
     <string name="reorder_hint_tv">Press OK on a video to pick it up, move it with up and down, and press OK again to drop it. The new order goes to your account when you save.</string>
     <string name="reorder_failed">Couldn\'t save the new order: %1$s</string>
 

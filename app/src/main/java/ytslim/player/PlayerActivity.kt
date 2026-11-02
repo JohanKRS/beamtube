@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import ytslim.MainActivity
 import ytslim.R
+import ytslim.isTv
 import ytslim.data.AppScope
 import ytslim.data.ExternalLinks
 import ytslim.data.PlayQueue
@@ -86,6 +87,9 @@ class PlayerActivity : ComponentActivity() {
 
     /** "When done: Turn off", guardado nas configurações. */
     private var turnOffWhenDone = false
+
+    /** Desligar no fim é só da TV (no celular e no tablet a opção não existe). */
+    private val canTurnOff by lazy { isTv() && ScreenOffService.supported }
 
     /** O fim atual já foi tratado (a tela só desliga uma vez por fim). */
     private var endHandled = false
@@ -137,7 +141,7 @@ class PlayerActivity : ComponentActivity() {
 
         val startMs = savedInstanceState?.getLong(KEY_POSITION) ?: target.startMs
         lifecycleScope.launch {
-            turnOffWhenDone = SettingsRepository.current().turnOffWhenDone
+            turnOffWhenDone = canTurnOff && SettingsRepository.current().turnOffWhenDone
             renderSleep()
             if (!target.external) return@launch start(videoId, startMs, saveHistory = true, title)
             // Link de outro app: o padrão é não ir para o histórico (configurável).
@@ -320,8 +324,8 @@ class PlayerActivity : ComponentActivity() {
         brightnessRow.select(brightness)
         queueRow.visibility = if (PlayQueue.active.value) View.VISIBLE else View.GONE
         queueRow.select(PlayQueue.left.value)
-        // Sem a ação de dormir do sistema (antes do Android 9), não há o que escolher.
-        endRow.visibility = if (ScreenOffService.supported) View.VISIBLE else View.GONE
+        // Só na TV, e só com a ação de dormir do sistema (Android 9 em diante).
+        endRow.visibility = if (canTurnOff) View.VISIBLE else View.GONE
         endRow.select(turnOffWhenDone)
         val limited = PlayQueue.active.value && PlayQueue.left.value != PlayQueue.ALL
         sleepButton.setActive(brightness < 100 || turnOffWhenDone || limited)
@@ -383,7 +387,7 @@ class PlayerActivity : ComponentActivity() {
         turnOffWhenDone = on
         AppScope.launch { SettingsRepository.setTurnOffWhenDone(on) }
         renderSleep()
-        if (on && ScreenOffService.supported && !ScreenOffService.enabled) {
+        if (on && !ScreenOffService.enabled) {
             // Uma vez só: o Android pede que o serviço seja ligado à mão.
             Toast.makeText(this, R.string.player_turn_off_setup, Toast.LENGTH_LONG).show()
             try {
@@ -408,7 +412,7 @@ class PlayerActivity : ComponentActivity() {
         }
         if (endHandled) return
         endHandled = true
-        if (!turnOffWhenDone || !ScreenOffService.supported) return
+        if (!turnOffWhenDone || !canTurnOff) return
         if (!ScreenOffService.enabled) {
             Toast.makeText(this, R.string.player_turn_off_not_allowed, Toast.LENGTH_LONG).show()
             return

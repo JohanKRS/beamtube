@@ -24,6 +24,8 @@ data class Video(
     val playlistIndex: Int,
     /** No feed de Inscrições: o título da playlist inscrita de onde o vídeo veio. */
     val fromPlaylist: String? = null,
+    /** No Histórico: o que o YouTube pede para tirar o vídeo de lá (o menu do cartão manda). */
+    val feedbackToken: String? = null,
 )
 
 /**
@@ -70,10 +72,10 @@ internal fun MediaItem.toVideo(): Video? {
     return Video(
         id = id,
         title = title.orEmpty(),
-        channelName = author,
+        channelName = Handles.channelName(author),
         channelId = channelId,
         thumbnailUrl = cardImageUrl,
-        info = secondTitle?.toString(),
+        info = Handles.strip(secondTitle?.toString()),
         published = productionDate,
         durationMs = durationMs,
         isLive = isLive,
@@ -83,6 +85,7 @@ internal fun MediaItem.toVideo(): Video? {
         percentWatched = percentWatched,
         playlistId = playlistId,
         playlistIndex = playlistIndex,
+        feedbackToken = feedbackToken,
     )
 }
 
@@ -93,7 +96,7 @@ internal fun MediaItem.toPlaylist(): Playlist? {
         params = params,
         playlistId = playlistId ?: browseId.removePrefix("VL").takeIf { browseId.startsWith("VL") },
         title = title.orEmpty(),
-        info = secondTitle?.toString(),
+        info = Handles.strip(secondTitle?.toString()),
         thumbnailUrl = cardImageUrl,
     )
 }
@@ -123,5 +126,28 @@ internal fun MediaItem.toSearchItem(): SearchItem? {
     videoId?.let { return toVideo()?.let(SearchItem::VideoItem) }
     if (channel == null) return null
     val photo = ChannelPhotos.normalize(cardImageUrl)
-    return SearchItem.ChannelItem(Channel(channel, title.orEmpty(), secondTitle?.toString(), photo))
+    return SearchItem.ChannelItem(Channel(channel, title.orEmpty(), Handles.strip(secondTitle?.toString()), photo))
+}
+
+/**
+ * O @ do canal ("@veritasium") fica fora do app (pedido do Johan). O YouTube manda o @ junto com o
+ * nome nos cartões da TV ("Veritasium • @veritasium") e na linha dos canais da busca
+ * ("@veritasium • 21.4M subscribers").
+ */
+object Handles {
+    /** "Veritasium • @veritasium" vira "Veritasium". Só com o @, o nome sem ele. */
+    fun channelName(raw: String?): String? {
+        val parts = parts(raw)
+        return parts.firstOrNull { !it.startsWith("@") } ?: parts.firstOrNull()?.removePrefix("@")?.ifBlank { null }
+    }
+
+    /** Tira as partes "@…" de uma linha do YouTube (sem elas, a linha fica como veio). */
+    fun strip(info: String?): String? {
+        val parts = parts(info)
+        if (parts.none { it.startsWith("@") }) return info
+        return parts.filterNot { it.startsWith("@") }.joinToString(" • ").ifEmpty { null }
+    }
+
+    private fun parts(text: String?): List<String> =
+        text.orEmpty().split('•', '·').map { it.trim() }.filter { it.isNotEmpty() }
 }

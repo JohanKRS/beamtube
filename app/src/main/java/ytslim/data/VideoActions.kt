@@ -24,7 +24,7 @@ object VideoActions {
         VideoState(
             title = m.title?.takeIf { it.isNotBlank() },
             channelId = m.channelId,
-            channelName = m.author,
+            channelName = Handles.channelName(m.author),
             subscribed = m.isSubscribed,
             rating = when (m.likeStatus) {
                 MediaItemMetadata.LIKE_STATUS_LIKE -> Rating.LIKED

@@ -44,6 +44,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -423,8 +424,22 @@ object TvUi : Screens {
     @Composable
     override fun History(vm: HistoryViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
+        val res = LocalContext.current.resources
         Loadable(state, onRetry = vm::reload) { content ->
-            VideoGrid(content, stringResource(R.string.history_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
+            VideoGrid(
+                content,
+                stringResource(R.string.history_empty),
+                vm::loadMore,
+                onPlay,
+                onOpenChannel,
+                takeFocus = false,
+                onFocusTaken = {},
+                onRemove = { video ->
+                    vm.remove(video) { Notices.show(res.getString(R.string.history_remove_failed, it)) }
+                    Notices.show(res.getString(R.string.history_removed))
+                },
+                removeLabel = stringResource(R.string.history_remove),
+            )
         }
     }
 
@@ -938,6 +953,8 @@ object TvUi : Screens {
                 ReorderList(editing, held = held, onHold = { held = it }, onMove = vm::move)
             } else {
                 val saveTarget by SavedVideos.target.collectAsStateWithLifecycle()
+                val removable by vm.removable.collectAsStateWithLifecycle()
+                val res = LocalContext.current.resources
                 Loadable(state, onRetry = vm::reload) { content ->
                     VideoGrid(
                         content = content,
@@ -949,6 +966,15 @@ object TvUi : Screens {
                         onFocusTaken = {},
                         // Na própria playlist do botão Save, o marcador estaria em todos os vídeos.
                         showSaved = vm.playlistId != saveTarget.playlistId,
+                        onRemove = if (removable) {
+                            { video ->
+                                vm.remove(video) { Notices.show(res.getString(R.string.playlist_remove_failed, it)) }
+                                Notices.show(res.getString(R.string.playlist_removed, shownTitle))
+                            }
+                        } else {
+                            null
+                        },
+                        removeLabel = stringResource(R.string.playlist_remove),
                     )
                 }
             }
@@ -1123,6 +1149,8 @@ object TvUi : Screens {
         takeFocus: Boolean,
         onFocusTaken: () -> Unit,
         showSaved: Boolean = true,
+        onRemove: ((Video) -> Unit)? = null,
+        removeLabel: String? = null,
     ) {
         val firstFocus = remember { FocusRequester() }
         val saved by SavedVideos.ids.collectAsStateWithLifecycle()
@@ -1142,8 +1170,10 @@ object TvUi : Screens {
                 if (index >= content.videos.size - 8) LaunchedEffect(Unit) { onNearEnd() }
                 VideoCard(
                     video,
-                    saved = showSaved && video.id in saved,
+                    saved = video.id in saved,
+                    showSaved = showSaved,
                     onOpenChannel = onOpenChannel,
+                    onRemove = onRemove?.let { remove -> removeLabel?.let { it to remove } },
                     modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
                 ) { onPlay(video) }
             }
@@ -1166,7 +1196,11 @@ object TvUi : Screens {
 
     /**
      * Card de vídeo. OK abre o vídeo; segurar o OK abre um menu pequeno ao lado do card, com
-     * "Save to Watch later" (ou "Remove from…", se já estiver lá) e "Go to channel".
+     * "Save to Watch later" (ou "Remove from…", se já estiver lá), "Go to channel" e, no Histórico
+     * e nas playlists do usuário ([onRemove]: o texto e a ação), tirar o vídeo da lista.
+     *
+     * @param showSaved false na própria playlist do botão Save: sem o marcador (estaria em todos)
+     * e sem a opção de salvar (tirar é o [onRemove]).
      */
     @Composable
     private fun VideoCard(
@@ -1174,6 +1208,8 @@ object TvUi : Screens {
         saved: Boolean,
         onOpenChannel: ((Channel) -> Unit)?,
         modifier: Modifier = Modifier,
+        showSaved: Boolean = true,
+        onRemove: Pair<String, (Video) -> Unit>? = null,
         onClick: () -> Unit,
     ) {
         var menu by remember { mutableStateOf(false) }
@@ -1208,7 +1244,7 @@ object TvUi : Screens {
                                     .height(3.dp).background(Look.Glow),
                             )
                         }
-                        if (saved) {
+                        if (saved && showSaved) {
                             Box(
                                 Modifier.align(Alignment.TopEnd).padding(7.dp).size(20.dp).background(Look.BadgeSoft, CircleShape),
                                 contentAlignment = Alignment.Center,
@@ -1228,8 +1264,13 @@ object TvUi : Screens {
                         saved = saved,
                         channelName = channel?.title,
                         onDismiss = { menu = false },
-                        onSave = { toggleSaved(res, video) },
+                        onSave = if (showSaved) {
+                            { toggleSaved(res, video) }
+                        } else {
+                            null
+                        },
                         onChannel = channel?.let { c -> { onOpenChannel?.invoke(c) } },
+                        remove = onRemove?.let { (label, remove) -> label to { remove(video) } },
                     )
                 }
             }
@@ -1239,7 +1280,14 @@ object TvUi : Screens {
 
     /** O menu do OK longo: abre ao lado do card (à direita, ou à esquerda na última coluna). */
     @Composable
-    private fun VideoMenu(saved: Boolean, channelName: String?, onDismiss: () -> Unit, onSave: () -> Unit, onChannel: (() -> Unit)?) {
+    private fun VideoMenu(
+        saved: Boolean,
+        channelName: String?,
+        onDismiss: () -> Unit,
+        onSave: (() -> Unit)?,
+        onChannel: (() -> Unit)?,
+        remove: Pair<String, () -> Unit>? = null,
+    ) {
         val gap = with(LocalDensity.current) { 18.dp.roundToPx() }
         val target by SavedVideos.target.collectAsStateWithLifecycle()
         val playlist = target.title ?: stringResource(R.string.watch_later)
@@ -1256,26 +1304,31 @@ object TvUi : Screens {
                     .padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                MenuItem(
-                    text = stringResource(if (saved) R.string.video_menu_remove else R.string.video_menu_save, playlist),
-                    supporting = null,
-                    leading = {
-                        Icon(
-                            painterResource(if (saved) R.drawable.ic_bookmark else R.drawable.ic_bookmark_border),
-                            contentDescription = null,
-                            tint = Look.Glow,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    },
-                    modifier = Modifier.focusRequester(first),
-                ) {
-                    onDismiss()
-                    onSave()
+                // O foco começa na primeira opção que aparece.
+                val firstFocus = Modifier.focusRequester(first)
+                if (onSave != null) {
+                    MenuItem(
+                        text = stringResource(if (saved) R.string.video_menu_remove else R.string.video_menu_save, playlist),
+                        supporting = null,
+                        leading = {
+                            Icon(
+                                painterResource(if (saved) R.drawable.ic_bookmark else R.drawable.ic_bookmark_border),
+                                contentDescription = null,
+                                tint = Look.Glow,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        },
+                        modifier = firstFocus,
+                    ) {
+                        onDismiss()
+                        onSave()
+                    }
                 }
                 if (onChannel != null) {
                     MenuItem(
                         text = stringResource(R.string.video_menu_channel),
                         supporting = channelName,
+                        modifier = if (onSave == null) firstFocus else Modifier,
                         leading = {
                             Box(
                                 Modifier.size(24.dp).background(Look.monogramTone(channelName.orEmpty()), CircleShape),
@@ -1287,6 +1340,17 @@ object TvUi : Screens {
                     ) {
                         onDismiss()
                         onChannel()
+                    }
+                }
+                if (remove != null) {
+                    MenuItem(
+                        text = remove.first,
+                        supporting = null,
+                        leading = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = Look.Sub, modifier = Modifier.size(22.dp)) },
+                        modifier = if (onSave == null && onChannel == null) firstFocus else Modifier,
+                    ) {
+                        onDismiss()
+                        remove.second()
                     }
                 }
             }

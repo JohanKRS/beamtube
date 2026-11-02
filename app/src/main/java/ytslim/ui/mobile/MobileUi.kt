@@ -50,6 +50,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
@@ -64,8 +67,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Explore
@@ -111,7 +113,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -120,8 +124,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -197,6 +203,9 @@ import ytslim.ui.toggleSaved
 
 /** Altura das barras de vidro, sem contar as barras do sistema que ficam atrás delas. */
 private val TopBarHeight = 56.dp
+
+/** A chave do aviso no topo da lista de reordenar (os vídeos usam o próprio ID). */
+private const val REORDER_HINT = "reorder-hint"
 private val BottomBarHeight = 60.dp
 private val RailWidth = 80.dp
 
@@ -367,30 +376,37 @@ object MobileUi : Screens {
 
     private data class TabInfo(val tab: HomeTab, val label: Int, val icon: ImageVector)
 
-    /** As abas da barra de baixo. A Busca abre pela lupa da barra de cima. */
+    /**
+     * As abas da barra de baixo, na ordem do deslizar de lado. A Busca abre pela lupa da barra de
+     * cima e as Configurações pelo avatar da conta, também em cima.
+     */
     private val tabs = listOf(
         TabInfo(HomeTab.SUBSCRIPTIONS, R.string.tab_subscriptions, Icons.Outlined.Subscriptions),
         TabInfo(HomeTab.RECOMMENDED, R.string.tab_recommended, Icons.Outlined.Explore),
         TabInfo(HomeTab.PLAYLISTS, R.string.tab_playlists, Icons.AutoMirrored.Outlined.PlaylistPlay),
         TabInfo(HomeTab.HISTORY, R.string.tab_history, Icons.Outlined.History),
-        TabInfo(HomeTab.SETTINGS, R.string.tab_settings, Icons.Outlined.Tune),
     )
+    private val swipeTabs = tabs.map { it.tab }
 
     /** No trilho lateral (tela deitada) cabe a Busca também. */
     private val railTabs = tabs.take(2) + TabInfo(HomeTab.SEARCH, R.string.tab_search, Icons.Outlined.Search) + tabs.drop(2)
 
+    /** Os títulos da barra de cima, inclusive das telas que não estão nas barras de abas. */
+    private val titles = railTabs + TabInfo(HomeTab.SETTINGS, R.string.tab_settings, Icons.Outlined.Tune)
+
     @Composable
     override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, onReload: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
-        // Voltar, na Busca, leva de volta à aba de onde ela foi aberta.
+        // Voltar, na Busca e nas Configurações, leva de volta à aba de onde elas foram abertas.
         var lastTab by rememberSaveable { mutableStateOf(HomeTab.SUBSCRIPTIONS) }
-        LaunchedEffect(tab) { if (tab != HomeTab.SEARCH) lastTab = tab }
-        BackHandler(enabled = tab == HomeTab.SEARCH) { onTab(lastTab) }
+        LaunchedEffect(tab) { if (tab in swipeTabs) lastTab = tab }
+        val aside = tab !in swipeTabs
+        BackHandler(enabled = aside) { onTab(lastTab) }
 
         val haze = rememberHazeState()
         val config = LocalConfiguration.current
         // Tela deitada (tablet, ou celular de lado): trilho de ícones à esquerda em vez da barra de baixo.
         val rail = config.screenWidthDp > config.screenHeightDp && config.screenWidthDp >= 600
-        val showBottom = !rail && tab != HomeTab.SEARCH
+        val showBottom = !rail && !aside
         val system = systemInsets()
         val railWidth = RailWidth + system.start
         val bars = PaddingValues(
@@ -402,11 +418,14 @@ object MobileUi : Screens {
 
         Box(Modifier.fillMaxSize().background(Look.Ground)) {
             Box(Modifier.fillMaxSize().hazeSource(haze)) {
-                CompositionLocalProvider(LocalBars provides bars) { content(tab) }
+                CompositionLocalProvider(LocalBars provides bars) {
+                    if (aside) content(tab) else SwipeTabs(tab, onTab, content)
+                }
             }
-            val title = stringResource(railTabs.first { it.tab == tab }.label)
+            val title = stringResource(titles.first { it.tab == tab }.label)
             TopBar(haze, system, Modifier.padding(start = if (rail) railWidth else 0.dp)) {
-                if (tab == HomeTab.SEARCH && !rail) BackButton { onTab(lastTab) } else Spacer(Modifier.width(8.dp))
+                val back = tab == HomeTab.SETTINGS || (tab == HomeTab.SEARCH && !rail)
+                if (back) BackButton { onTab(lastTab) } else Spacer(Modifier.width(8.dp))
                 Text(
                     title,
                     style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, letterSpacing = (-0.2).sp),
@@ -414,17 +433,48 @@ object MobileUi : Screens {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).padding(start = 4.dp),
                 )
-                if (tab != HomeTab.SEARCH && !rail) {
+                if (!aside && !rail) {
                     IconButton(onClick = { onTab(HomeTab.SEARCH) }) {
                         Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.tab_search))
                     }
                 }
+                if (tab != HomeTab.SETTINGS) AccountButton { onTab(HomeTab.SETTINGS) }
             }
             if (rail) {
                 Rail(haze, system, railTabs, tab, onTab, Modifier.align(Alignment.CenterStart))
             } else if (showBottom) {
                 BottomNav(haze, system, tab, onTab, Modifier.align(Alignment.BottomCenter))
             }
+        }
+    }
+
+    /**
+     * As abas da barra de baixo lado a lado: deslizar para o lado troca de aba, e tocar numa aba
+     * desliza até ela. Cada aba guarda a própria posição da lista (ver AppRoot).
+     */
+    @Composable
+    private fun SwipeTabs(tab: HomeTab, onTab: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
+        val pager = rememberPagerState(initialPage = swipeTabs.indexOf(tab).coerceAtLeast(0)) { swipeTabs.size }
+        val currentOnTab by rememberUpdatedState(onTab)
+        LaunchedEffect(tab) {
+            val page = swipeTabs.indexOf(tab)
+            if (page >= 0 && page != pager.currentPage) pager.animateScrollToPage(page)
+        }
+        LaunchedEffect(pager) {
+            snapshotFlow { pager.settledPage }.collect { currentOnTab(swipeTabs[it]) }
+        }
+        HorizontalPager(pager, Modifier.fillMaxSize(), key = { swipeTabs[it].name }) { page ->
+            content(swipeTabs[page])
+        }
+    }
+
+    /** O avatar da conta, no canto da barra de cima: abre as Configurações (com o Sign out). */
+    @Composable
+    private fun AccountButton(onClick: () -> Unit) {
+        val account = remember { AuthRepository.account() }
+        val name = account?.name.orEmpty()
+        IconButton(onClick = onClick) {
+            Avatar(name.ifBlank { "?" }, account?.photo, 30.dp)
         }
     }
 
@@ -582,8 +632,20 @@ object MobileUi : Screens {
     @Composable
     override fun History(vm: HistoryViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
+        val res = LocalContext.current.resources
+        val remove = { video: Video ->
+            vm.remove(video) { Notices.show(res.getString(R.string.history_remove_failed, it)) }
+            Notices.show(res.getString(R.string.history_removed))
+        }
         Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
-            VideoGrid(content, emptyText = stringResource(R.string.history_empty), onNearEnd = vm::loadMore, onPlay = onPlay, onOpenChannel = onOpenChannel)
+            VideoGrid(
+                content,
+                emptyText = stringResource(R.string.history_empty),
+                onNearEnd = vm::loadMore,
+                onPlay = onPlay,
+                onOpenChannel = onOpenChannel,
+                onRemove = remove,
+            )
         }
     }
 
@@ -1033,7 +1095,9 @@ object MobileUi : Screens {
         val state by vm.state.collectAsStateWithLifecycle()
         val subscription by vm.subscription.collectAsStateWithLifecycle()
         val reorder by vm.reorder.collectAsStateWithLifecycle()
+        val removable by vm.removable.collectAsStateWithLifecycle()
         val saveTarget by SavedVideos.target.collectAsStateWithLifecycle()
+        val res = LocalContext.current.resources
         val loadedTitle = (state as? UiState.Ready)?.data?.title
         val shownTitle = title.ifBlank { loadedTitle ?: stringResource(R.string.playlist_default_title) }
         val editing = reorder as? Reorder.Editing
@@ -1088,6 +1152,14 @@ object MobileUi : Screens {
                             }
                             else -> null
                         },
+                        onRemove = if (removable) {
+                            { video ->
+                                vm.remove(video) { Notices.show(res.getString(R.string.playlist_remove_failed, it)) }
+                                Notices.show(res.getString(R.string.playlist_removed, shownTitle))
+                            }
+                        } else {
+                            null
+                        },
                     )
                 }
             }
@@ -1096,8 +1168,14 @@ object MobileUi : Screens {
 
     @Composable
     private fun ReorderList(editing: Reorder.Editing, onMove: (Int, Int) -> Unit) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = barsPlus(start = 0.dp, top = 8.dp, end = 0.dp)) {
-            item {
+        val list = rememberLazyListState()
+        val drag = rememberDragReorderState(list, editing.videos.map { it.id }, onMove)
+        LazyColumn(
+            Modifier.fillMaxSize().dragReorderOnLongPress(drag, enabled = !editing.saving),
+            state = list,
+            contentPadding = barsPlus(start = 0.dp, top = 8.dp, end = 0.dp),
+        ) {
+            item(key = REORDER_HINT) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     Hint(stringResource(R.string.reorder_hint_touch), Modifier)
                     editing.error?.let {
@@ -1106,8 +1184,18 @@ object MobileUi : Screens {
                 }
             }
             itemsIndexed(editing.videos, key = { _, video -> video.id }) { index, video ->
+                val dragging = drag.draggingKey == video.id
+                val lifted = if (dragging) {
+                    Modifier
+                        .zIndex(1f)
+                        .graphicsLayer { translationY = drag.offset }
+                        .shadow(12.dp, RoundedCornerShape(12.dp))
+                        .background(Look.Surface, RoundedCornerShape(12.dp))
+                } else {
+                    Modifier.animateItem()
+                }
                 Row(
-                    Modifier.animateItem().fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    lifted.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -1126,11 +1214,15 @@ object MobileUi : Screens {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                     )
-                    IconButton(onClick = { onMove(index, index - 1) }, enabled = index > 0 && !editing.saving) {
-                        Icon(Icons.Filled.KeyboardArrowUp, contentDescription = stringResource(R.string.reorder_move_up))
-                    }
-                    IconButton(onClick = { onMove(index, index + 1) }, enabled = index < editing.videos.lastIndex && !editing.saving) {
-                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = stringResource(R.string.reorder_move_down))
+                    Box(
+                        Modifier.size(48.dp).dragReorderHandle(drag, video.id, enabled = !editing.saving),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.DragHandle,
+                            contentDescription = stringResource(R.string.reorder_drag),
+                            tint = if (dragging) Look.Glow else Look.Sub,
+                        )
                     }
                 }
             }
@@ -1283,6 +1375,7 @@ object MobileUi : Screens {
         onPlay: (Video) -> Unit,
         onOpenChannel: ((Channel) -> Unit)?,
         header: (@Composable () -> Unit)? = null,
+        onRemove: ((Video) -> Unit)? = null,
     ) {
         val grid = rememberLazyGridState()
         NearEnd(grid, content.videos.size, onNearEnd)
@@ -1303,7 +1396,7 @@ object MobileUi : Screens {
                 }
             }
             items(content.videos, key = { it.id + it.playlistIndex }) { video ->
-                VideoCard(video, cards, onPlay, onOpenChannel)
+                VideoCard(video, cards, onPlay, onOpenChannel, onRemove, Modifier.animateItem())
             }
             listEnd(content, onNearEnd)
         }
@@ -1332,6 +1425,7 @@ object MobileUi : Screens {
         onOpenChannel: (Channel) -> Unit,
         showSaved: Boolean,
         header: (@Composable () -> Unit)?,
+        onRemove: ((Video) -> Unit)? = null,
     ) {
         val grid = rememberLazyGridState()
         NearEnd(grid, content.videos.size, onNearEnd)
@@ -1351,7 +1445,15 @@ object MobileUi : Screens {
                 }
             }
             items(content.videos, key = { it.id + it.playlistIndex }) { video ->
-                VideoRow(video, cards, onPlay, onOpenChannel)
+                SwipeToRemove(
+                    enabled = onRemove != null,
+                    label = stringResource(R.string.playlist_remove),
+                    corner = 10.dp,
+                    onRemove = { onRemove?.invoke(video) },
+                    modifier = Modifier.animateItem(),
+                ) {
+                    VideoRow(video, cards, onPlay, onOpenChannel)
+                }
             }
             listEnd(content, onNearEnd)
         }
@@ -1359,12 +1461,26 @@ object MobileUi : Screens {
 
     /**
      * Card de vídeo. Tocar abre o vídeo; tocar e segurar põe ou tira do Watch later (com um aviso);
-     * o avatar e o nome do canal abrem o canal.
+     * o avatar e o nome do canal abrem o canal. Com [onRemove] (só no Histórico), deslizar para a
+     * esquerda tira o vídeo da lista.
      */
     @Composable
-    private fun VideoCard(video: Video, cards: CardState, onPlay: (Video) -> Unit, onOpenChannel: ((Channel) -> Unit)?) {
+    private fun VideoCard(
+        video: Video,
+        cards: CardState,
+        onPlay: (Video) -> Unit,
+        onOpenChannel: ((Channel) -> Unit)?,
+        onRemove: ((Video) -> Unit)? = null,
+        modifier: Modifier = Modifier,
+    ) = SwipeToRemove(
+        enabled = onRemove != null,
+        label = stringResource(R.string.history_remove),
+        corner = 14.dp,
+        onRemove = { onRemove?.invoke(video) },
+        modifier = modifier,
+    ) {
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).combinedClickable(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Look.Ground).combinedClickable(
                 onClickLabel = video.title,
                 onLongClickLabel = stringResource(R.string.video_toggle_save),
                 onLongClick = { cards.onLongPress(video) },
@@ -1381,7 +1497,7 @@ object MobileUi : Screens {
     @Composable
     private fun VideoRow(video: Video, cards: CardState, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).combinedClickable(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Look.Ground).combinedClickable(
                 onClickLabel = video.title,
                 onLongClickLabel = stringResource(R.string.video_toggle_save),
                 onLongClick = { cards.onLongPress(video) },

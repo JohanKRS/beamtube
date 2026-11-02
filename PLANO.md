@@ -40,16 +40,21 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 | **Início = Inscrições** | Feed das inscrições como tela principal. |
 | Recomendações | Secundária, com exclusão e preferência de tópicos (ver Filtragem) e os filtros de data, duração e ordem da busca. |
 | Busca | "Melhorada": filtros de duração, data, tipo e ordenação, e sugestões enquanto se digita. Resultados misturam vídeos, canais e playlists. Lives só aparecem aqui. |
-| Playlists | Inclui **Assistir mais tarde** (o real, que o motor acessa). Reordenar vídeos, inclusive pela TV. |
-| Histórico | Lista do que foi assistido. |
+| Playlists | Inclui **Assistir mais tarde** (o real, que o motor acessa). Reordenar e tirar vídeos, inclusive pela TV. |
+| Histórico | Lista do que foi assistido. Tirar vídeos dela (0.4.2). |
+| Explore | *Decidida em 2026-11-02, desenho para aprovar* (ver "Explore"). Catálogo de categorias do próprio Johan, cada uma uma busca nova com filtros. Aba a mais: **Recommended continua**. |
 | Canal | Página básica do canal: vídeos e playlists (duas abas) e o bloquear, que é só um ícone pequeno (na barra de cima no celular, ao lado do nome na TV). Abre pela busca, pelo nome do canal no player, pelo avatar e nome do canal nos cards (celular e tablet) e pelo menu do OK longo (TV). |
-| Configurações | Mínimas: **mostrar lives nas Inscrições**, playlist do botão Save, tópicos excluídos e preferidos, canais bloqueados, links externos, playlists inscritas, **cor do ícone** e conta. |
+| Configurações | Mínimas: **mostrar lives nas Inscrições**, playlist do botão Save, tópicos excluídos e preferidos, canais bloqueados, links externos, playlists inscritas, **cor do ícone** e conta (com o Sign out). |
 
-- **Abas:** no celular, a barra de baixo tem os ícones de Subscriptions, Recommended, Playlists, History e Settings, e a Busca abre pela lupa da barra de cima (seis abas não cabem). Deitado, a coluna da esquerda tem as seis, com a Busca em terceiro. Na TV, as seis abas ficam na fileira de cima, com Search em terceiro; "voltar" no conteúdo leva às abas, e de novo sai do app.
+- **Abas:** no celular e no tablet (0.4.2, pedido do Johan), a barra de baixo tem os ícones de Subscriptions, Recommended, Playlists e History; a Busca abre pela lupa e as **Configurações pelo avatar da conta**, os dois na barra de cima (como nos apps do Google). "Voltar" na Busca e nas Configurações leva à aba de onde vieram. Deitado, a coluna da esquerda tem as abas e a Busca, e o avatar fica na barra de cima. Na TV, as seis abas ficam na fileira de cima, com Search em terceiro; "voltar" no conteúdo leva às abas, e de novo sai do app.
+- **Deslizar para o lado** troca de aba no celular e no tablet (0.4.2, pedido do Johan), na ordem da barra de baixo. Busca e Configurações ficam fora do deslizar.
 - As páginas de playlist e de canal não têm a barra de abas: só a barra de cima, com "voltar".
 - **Trocar de aba** não perde a posição da lista, e Recommended, Playlists e History carregam logo depois das Inscrições, ao abrir o app, para já estarem prontas (0.4.1).
 - **Atualizar as listas** (pedido do Johan, 2026-11-02): no celular e no tablet, **puxar para baixo** no topo da lista recarrega Subscriptions, Recommended, Playlists, History, a página da playlist e a do canal. A lista continua na tela até a nova chegar. Na TV, **segurar OK na aba** Subscriptions, Recommended, Playlists ou History recarrega a lista (quando o OK é solto). Nada recarrega sozinho: as abas carregam quando o app abre e depois só quando o usuário pede.
 - **Cards de vídeo:** a miniatura com a duração e o progresso; embaixo, o título, o avatar e o nome do canal (abrem o canal) e o resto da linha (visualizações e data). Canal sem foto (em que o usuário não é inscrito) mostra a inicial num círculo colorido.
+- **Sem o @ do canal** (0.4.2, pedido do Johan): o YouTube manda o @ junto com o nome nos cartões da TV ("Veritasium • @veritasium") e na linha dos canais da busca; o app tira o @ das listas, do player e da busca (`Handles`).
+- **Tirar vídeos das listas** (0.4.2, pedido do Johan): no Histórico e nas playlists do próprio usuário (inclui Watch later), **deslizar o vídeo para a esquerda** tira ele da lista, com um aviso. Só para a esquerda, para não brigar com o deslizar entre abas (o Histórico é a última aba). Na TV, é uma opção no menu do OK longo ("Remove from history" ou "Remove from this playlist"). O vídeo some na hora e a conta muda logo depois; se a conta recusar, aparece "Couldn't…" e a lista recarrega.
+  - Histórico: o menu de cada cartão do YouTube traz o pedido "Remove from watch history" (um `feedbackToken`), que o motor manda pelo mesmo caminho do "Not interested". **Só dá para validar no aparelho**, com o login.
 
 ## Filtragem
 
@@ -84,7 +89,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - **Modo dormir** (0.4.1, pedido do Johan, que usa playlists para dormir, principalmente na TV): o botão da lua, na barra de baixo, abre um painel acima da barra de tempo com três linhas:
   - **Brightness: 100% / 50% / 25% / 10% / 0%** escurece o vídeo e a legenda, sem mexer no brilho da TV (uma camada preta por cima do vídeo e por baixo dos controles). Escurecido, os controles não acendem sozinhos na troca de vídeo nem no fim. Volta a 100% a cada player aberto, para não pegar a tela escura de dia.
   - **Then play: None / 1 / 2 / 3 / 4 / 5 / All**: quantos vídeos da playlist ainda tocam depois do atual (ver "Tocar em sequência"). Só aparece quando o vídeo veio da página de uma playlist. O número desce a cada vídeo. Começa em All a cada vez. Por decisão do Johan, essa escolha fica **só no player**, não na lista.
-  - **When done: Stay on / Turn off**: o que fazer quando os vídeos acabam. A escolha **fica guardada** (pedido do Johan) e vale para todo vídeo ou sequência que terminar. Com "Turn off", o app avisa e espera 10 s (qualquer botão ou toque cancela) e põe o aparelho para dormir. Pelo HDMI-CEC, a TV desliga junto.
+  - **When done: Stay on / Turn off** (**só na TV**; no celular e no tablet a linha e o serviço de Acessibilidade saem do app, pedido do Johan na 0.4.2): o que fazer quando os vídeos acabam. A escolha **fica guardada** (pedido do Johan) e vale para todo vídeo ou sequência que terminar. Com "Turn off", o app avisa e espera 10 s (qualquer botão ou toque cancela) e põe o aparelho para dormir. Pelo HDMI-CEC, a TV desliga junto.
   - O Android não deixa um app comum pôr o aparelho para dormir. Por isso o app tem um serviço de Acessibilidade (`ScreenOffService`) que só faz isso (não recebe eventos nem lê a tela) e que o usuário liga uma vez, em Configurações > Acessibilidade. Ao escolher "Turn off" sem o serviço ligado, o app abre essa tela. Precisa do Android 9 ou mais novo; antes disso, a linha não aparece.
   - Com "Stay on", ou sem o serviço, o player só para de manter a tela acesa quando os vídeos acabam, e quem apaga é o timer do aparelho.
   - Com o painel aberto, os controles não somem sozinhos; "voltar" ou a lua fecham o painel.
@@ -100,9 +105,18 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - O app guarda a lista dos vídeos da playlist do Save (até 10 páginas), lida ao abrir e ao trocar a playlist em Settings. Na hora de salvar ou tirar, ele confere na conta se o vídeo está lá, então o marcador pode estar desatualizado numa playlist enorme, mas o toque faz sempre a coisa certa.
 - **Reordenar vídeos dentro das playlists do usuário**, principalmente o Assistir mais tarde. As mudanças vão para a conta, então aparecem em todos os aparelhos. O botão "Reorder" só aparece nas playlists do próprio usuário.
   - O app carrega a playlist inteira antes de abrir o modo (até umas 5000 vídeos), para que "mover para o fim" seja o fim de verdade. Nada vai para a conta até tocar "Save order".
-  - No celular: setas para subir e descer cada vídeo. Na TV: o modo "mover", em que OK pega o vídeo, cima e baixo levam ele pela lista e OK solta. "Voltar" solta o vídeo pego, e de novo cancela.
+  - No celular e no tablet (0.4.2; as setas da 0.4.0 não funcionaram para o Johan): **arrastar o vídeo pela alça**, ou segurar o vídeo e arrastar; perto da borda a lista rola sozinha. Na TV: o modo "mover", em que OK pega o vídeo, cima e baixo levam ele pela lista e OK solta. "Voltar" solta o vídeo pego, e de novo cancela.
   - O MediaServiceCore já tem adicionar, remover, criar e renomear, mas **não tem mover**. O app manda os movimentos para o endpoint interno `browse/edit_playlist` (ação `ACTION_MOVE_VIDEO_BEFORE`, como o ytmusicapi), com o mínimo de movimentos (`ReorderPlan`).
   - Cada movimento usa o `setVideoId` do vídeo (a posição dele na playlist), que o app lê pedindo a playlist ao YouTube (cliente de TV e, se faltar, WEB). Uma playlist pública não mostra o `setVideoId` sem ser do dono, então **essa parte só dá para validar no aparelho**, com o login.
+
+## Explore
+
+Pedido do Johan (2026-11-02): os filtros das Recomendações só filtram o que o YouTube já mandou, e muita coisa é difícil de descobrir. Ele escolheu um **catálogo de categorias por buscas**, sem perder as Recomendações.
+
+- Uma aba nova, **Explore**, entre Recommended e Playlists, com as categorias do usuário em grade e um "New category".
+- Cada categoria tem um nome e palavras-chave. Abrir a categoria faz uma busca nova no YouTube com essas palavras e os filtros da busca (ordem, duração, data, "Before <ano>"), que ficam guardados com a categoria. Não é um filtro em cima das recomendações.
+- Descartado: as seções prontas do YouTube (Gaming, News, Sports, Live, Podcasts), que o motor tem, mas que trazem conteúdo popular e pouco controle.
+- O desenho está no canvas "Doorglow: player, Explore e conta" (https://claude.ai/artifact/9aFHesFxs28wHzHnWkzWgB), aguardando a aprovação do Johan.
 
 ## Inscrição em playlists
 
@@ -151,6 +165,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
+   - *Versão 0.4.2 (2026-11-02), pedidos do Johan depois de testar a 0.4.1, aguardando o teste no aparelho* (ver "Como testar a 0.4.2"): sem o @ do canal, "When done" só na TV, reordenar arrastando no celular, tirar vídeos do Histórico e das playlists, deslizar entre abas e as Configurações pelo avatar. A aba Explore e o player novo esperam a aprovação do desenho.
    - *Versão 0.4.1 (2026-11-02), ajustes pedidos pelo Johan depois da 0.4.0, aguardando o teste no aparelho* (ver "Como testar a 0.4.1"): filtros nas Recomendações, duração de 30/45/60 min ou mais, "Before <ano>", salvar com resposta na hora, título no player, bloquear discreto, desempenho, playlists em sequência, o modo dormir no player (escurecer, quantos vídeos seguem e desligar a TV no fim) e a correção dos vídeos em 360p e lentos para começar na TV.
    - *Polimento visual implementado em 2026-11-02 (versão 0.4.0), aguardando o teste no aparelho* (ver "Como testar a etapa 6"). Junto, a pedido do Johan: salvar pelas listas (toque longo, e o menu do OK longo na TV), o marcador de salvo, o canal pelos cards, o estado de inscrito mais claro na playlist, puxar para atualizar (OK longo na aba, na TV) e o ícone vermelho. As Configurações só ganharam o visual novo.
    - Falta a rotina de atualização do motor.
@@ -160,6 +175,16 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 0.4.2
+
+1. Listas e busca: nenhum "@canal" aparece (nos cards, no player e nos canais da busca).
+2. Celular ou tablet: a lua no player não tem mais "When done". Na TV continua.
+3. Celular: Watch later > ícone de setas > arrastar um vídeo pela alça (as três linhas à direita) ou segurar e arrastar. "Save order" e conferir no app do YouTube.
+4. Histórico: deslizar um vídeo para a esquerda. Ele some com o aviso "Removed from history"; conferir no app do YouTube. Na TV: segurar OK no vídeo > "Remove from history".
+5. Watch later (ou uma playlist sua): deslizar um vídeo para a esquerda tira ele da playlist. Numa playlist de outro canal, deslizar não faz nada. Na TV: OK longo > "Remove from this playlist".
+6. Deslizar para o lado nas abas troca de aba; no Histórico, deslizar um vídeo para a direita volta para Playlists.
+7. O avatar no canto de cima abre as Configurações, com o Sign out; "voltar" retorna à aba.
 
 ## Como testar a 0.4.1
 
