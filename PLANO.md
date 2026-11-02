@@ -42,11 +42,11 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 | Busca | "Melhorada": filtros de duração, data, tipo e ordenação, e sugestões enquanto se digita. Resultados misturam vídeos, canais e playlists. Lives só aparecem aqui. |
 | Playlists | Inclui **Assistir mais tarde** (o real, que o motor acessa). Reordenar e tirar vídeos, inclusive pela TV. |
 | Histórico | Lista do que foi assistido. Tirar vídeos dela (0.4.2). |
-| Explore | *Decidida em 2026-11-02, desenho para aprovar* (ver "Explore"). Catálogo de categorias do próprio Johan, cada uma uma busca nova com filtros. Aba a mais: **Recommended continua**. |
+| Explore | Catálogo de categorias do próprio Johan, cada uma uma busca nova com filtros (0.5.0; ver "Explore"). Aba a mais: **Recommended continua**. |
 | Canal | Página básica do canal: vídeos e playlists (duas abas) e o bloquear, que é só um ícone pequeno (na barra de cima no celular, ao lado do nome na TV). Abre pela busca, pelo nome do canal no player, pelo avatar e nome do canal nos cards (celular e tablet) e pelo menu do OK longo (TV). |
 | Configurações | Mínimas: **mostrar lives nas Inscrições**, playlist do botão Save, tópicos excluídos e preferidos, canais bloqueados, links externos, playlists inscritas, **cor do ícone** e conta (com o Sign out). |
 
-- **Abas:** no celular e no tablet (0.4.2, pedido do Johan), a barra de baixo tem os ícones de Subscriptions, Recommended, Playlists e History; a Busca abre pela lupa e as **Configurações pelo avatar da conta**, os dois na barra de cima (como nos apps do Google). "Voltar" na Busca e nas Configurações leva à aba de onde vieram. Deitado, a coluna da esquerda tem as abas e a Busca, e o avatar fica na barra de cima. Na TV, as seis abas ficam na fileira de cima, com Search em terceiro; "voltar" no conteúdo leva às abas, e de novo sai do app.
+- **Abas:** no celular e no tablet (0.4.2, pedido do Johan), a barra de baixo tem os ícones de Subscriptions, Recommended, Explore (0.5.0), Playlists e History; a Busca abre pela lupa e as **Configurações pelo avatar da conta**, os dois na barra de cima (como nos apps do Google). "Voltar" na Busca e nas Configurações leva à aba de onde vieram. Deitado, a coluna da esquerda tem as abas e a Busca, e o avatar fica na barra de cima. Na TV, as sete abas ficam na fileira de cima, com Explore em terceiro e Search em quarto; "voltar" no conteúdo leva às abas, e de novo sai do app.
 - **Deslizar para o lado** troca de aba no celular e no tablet (0.4.2, pedido do Johan), na ordem da barra de baixo. Busca e Configurações ficam fora do deslizar.
 - As páginas de playlist e de canal não têm a barra de abas: só a barra de cima, com "voltar".
 - **Trocar de aba** não perde a posição da lista, e Recommended, Playlists e History carregam logo depois das Inscrições, ao abrir o app, para já estarem prontas (0.4.1).
@@ -120,10 +120,13 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 
 Pedido do Johan (2026-11-02): os filtros das Recomendações só filtram o que o YouTube já mandou, e muita coisa é difícil de descobrir. Ele escolheu um **catálogo de categorias por buscas**, sem perder as Recomendações.
 
-- Uma aba nova, **Explore**, entre Recommended e Playlists, com as categorias do usuário em grade e um "New category".
-- Cada categoria tem um nome e palavras-chave. Abrir a categoria faz uma busca nova no YouTube com essas palavras e os filtros da busca (ordem, duração, data, "Before <ano>"), que ficam guardados com a categoria. Não é um filtro em cima das recomendações.
+- Uma aba nova, **Explore** (0.5.0), entre Recommended e Playlists, com as categorias do usuário em grade e um "New category". Cada cartão mostra um mosaico com quatro miniaturas da última busca da categoria, o nome e as palavras.
+- Cada categoria tem um nome e palavras-chave. Abrir a categoria faz **uma busca nova no YouTube por palavra-chave**, só de vídeos, e a lista alterna os resultados (o 1º de cada palavra, depois o 2º…), para nenhuma palavra tomar a lista; um vídeo repetido fica só uma vez. Rolar até o fim busca a próxima página de cada palavra. Não é um filtro em cima das recomendações.
+- Os filtros (ordem, duração, data e "Before <ano>") ficam **guardados com a categoria**: escolhidos ao criar (no celular) e mudados na página dela (celular e TV). Shorts e canais bloqueados ficam de fora, como na busca.
+- Criar: "New category" pede o nome, as palavras e, no celular, os filtros. No celular cada palavra vira um chip (vírgula ou o "Done" do teclado); na TV as palavras vão separadas por vírgula. Mudar: o lápis na página da categoria, ou segurar a categoria (OK longo na TV) > "Edit category". Apagar: segurar > "Delete category".
+- As categorias ficam só no aparelho (não vão para a conta do YouTube).
 - Descartado: as seções prontas do YouTube (Gaming, News, Sports, Live, Podcasts), que o motor tem, mas que trazem conteúdo popular e pouco controle.
-- O desenho está no canvas "Doorglow: player, Explore e conta" (https://claude.ai/artifact/9aFHesFxs28wHzHnWkzWgB). Entra na versão depois da 0.4.2 (o Johan pediu para a 0.4.2 sair com o player novo primeiro).
+- O desenho está no canvas "Doorglow: player, Explore e conta" (https://claude.ai/artifact/9aFHesFxs28wHzHnWkzWgB).
 
 ## Inscrição em playlists
 
@@ -172,6 +175,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
+   - *Versão 0.5.0 (2026-11-02), a aba Explore pedida pelo Johan, aguardando o teste no aparelho* (ver "Como testar a 0.5.0"). A busca das categorias foi conferida contra o YouTube, sem login.
    - *Versão 0.4.2 (2026-11-02), pedidos do Johan depois de testar a 0.4.1, aguardando o teste no aparelho* (ver "Como testar a 0.4.2"): sem o @ do canal, "When done" só na TV, reordenar arrastando no celular, tirar vídeos do Histórico e das playlists, deslizar entre abas, as Configurações pelo avatar, o menu do OK longo abrindo antes de soltar (TV) e o **player novo (opção A)**. A aba Explore vem na versão seguinte.
    - *Versão 0.4.1 (2026-11-02), ajustes pedidos pelo Johan depois da 0.4.0, aguardando o teste no aparelho* (ver "Como testar a 0.4.1"): filtros nas Recomendações, duração de 30/45/60 min ou mais, "Before <ano>", salvar com resposta na hora, título no player, bloquear discreto, desempenho, playlists em sequência, o modo dormir no player (escurecer, quantos vídeos seguem e desligar a TV no fim) e a correção dos vídeos em 360p e lentos para começar na TV.
    - *Polimento visual implementado em 2026-11-02 (versão 0.4.0), aguardando o teste no aparelho* (ver "Como testar a etapa 6"). Junto, a pedido do Johan: salvar pelas listas (toque longo, e o menu do OK longo na TV), o marcador de salvo, o canal pelos cards, o estado de inscrito mais claro na playlist, puxar para atualizar (OK longo na aba, na TV) e o ícone vermelho. As Configurações só ganharam o visual novo.
@@ -182,6 +186,15 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 0.5.0
+
+1. A aba Explore aparece entre Recommended e Playlists (no celular, na barra de baixo e no deslizar; na TV, a terceira aba).
+2. Celular: "New category" > nome, algumas palavras (vírgula ou "Done" viram chips), um filtro em "Opens with" > Save. O cartão ganha o mosaico em alguns segundos.
+3. Abrir a categoria: vídeos das várias palavras misturados, com os filtros escolhidos em cima. Mudar um filtro busca de novo, e ele continua lá ao voltar à categoria.
+4. Rolar até o fim carrega mais vídeos. Puxar para baixo atualiza.
+5. O lápis na página muda o nome e as palavras. Segurar uma categoria no Explore > "Delete category" apaga.
+6. Na TV: "New category" com o controle (nome e palavras separadas por vírgula), abrir, mudar os filtros, e o OK longo numa categoria para editar ou apagar.
 
 ## Como testar a 0.4.2
 

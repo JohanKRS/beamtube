@@ -120,6 +120,24 @@ class EngineOnlineTest {
         assertTrue(page.videos.videos.none { it.isShorts })
     }
 
+    /** Uma categoria do Explore: uma busca por palavra, alternadas, e a segunda página de cada uma. */
+    @Test
+    fun categorySearchMixesItsKeywords() = withMainLooper {
+        val category = Category("t", "Woodworking", listOf("joinery", "hand tools", "workbench"))
+            .withFilters(SearchFilters(sort = SortBy.VIEWS, duration = SearchDuration.OVER_20))
+        val first = CategorySearch.first(category)
+        println("[online] categoria: ${first.videos.size} vídeos, tem mais: ${first.hasMore}")
+        first.videos.take(6).forEach { println("[online]   ${it.title.take(70)} (${it.durationMs / 60_000} min)") }
+        assertTrue(first.videos.size >= 20)
+        assertTrue(first.hasMore)
+        assertTrue("filtro de duração ignorado", first.videos.filter { it.durationMs > 0 }.all { it.durationMs >= 20 * 60_000 })
+        assertTrue("mosaico vazio", CategoryRules.thumbnails(first.videos).size == CategoryRules.MAX_THUMBNAILS)
+        val more = CategorySearch.more(first)
+        println("[online] depois de mais: ${more.videos.size} vídeos")
+        assertTrue(more.videos.size > first.videos.size)
+        assertTrue(more.videos.map { it.id }.distinct().size == more.videos.size)
+    }
+
     private fun checkVideo(videoId: String, expectOriginal: Boolean) {
         var manifests = 0
         var originalSurvived = false

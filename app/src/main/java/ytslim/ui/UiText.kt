@@ -131,3 +131,19 @@ fun feedFilterChoices(filters: SearchFilters, currentYear: Int = thisYear()): Li
         ),
     ) { filters.copy(sort = it) },
 )
+
+/** Os filtros de uma categoria do Explore, na ordem do desenho: ordem, duração e data (só vídeos, sem o tipo). */
+fun categoryFilterChoices(filters: SearchFilters, currentYear: Int = thisYear()): List<SearchFilterChoice> = listOf(
+    choice(
+        R.string.search_filter_sort,
+        filters.sort,
+        listOf(
+            SortBy.RELEVANCE to R.string.sort_relevance,
+            SortBy.DATE to R.string.sort_date,
+            SortBy.VIEWS to R.string.sort_views,
+            SortBy.RATING to R.string.sort_rating,
+        ),
+    ) { filters.copy(sort = it) },
+    durationChoice(filters),
+    dateChoice(filters, currentYear),
+)

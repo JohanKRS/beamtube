@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.builtins.ListSerializer
@@ -50,10 +51,12 @@ object SettingsRepository {
     private val SAVE_TARGET_ID = stringPreferencesKey("save_target_id")
     private val SAVE_TARGET_TITLE = stringPreferencesKey("save_target_title")
     private val TURN_OFF_WHEN_DONE = booleanPreferencesKey("turn_off_when_done")
+    private val CATEGORIES = stringPreferencesKey("explore_categories")
 
     private val json = Json { ignoreUnknownKeys = true }
     private val topics = ListSerializer(Topic.serializer())
     private val channels = ListSerializer(BlockedChannel.serializer())
+    private val categoryList = ListSerializer(Category.serializer())
 
     private lateinit var store: DataStore<Preferences>
 
@@ -104,6 +107,27 @@ object SettingsRepository {
     suspend fun unblock(channelId: String) = store.edit { p ->
         val current = p[BLOCKED_CHANNELS]?.let { decode(it, channels) }.orEmpty()
         p[BLOCKED_CHANNELS] = json.encodeToString(channels, current.filterNot { it.id == channelId })
+    }
+
+    /** As categorias do Explore, na ordem em que foram criadas. Fora do [Settings]: mudam sozinhas (miniaturas). */
+    val categories: Flow<List<Category>>
+        get() = store.data.map { p -> p[CATEGORIES]?.let { decode(it, categoryList) }.orEmpty() }.distinctUntilChanged()
+
+    /** Grava [category] no lugar da que tem o mesmo id, ou no fim, se for nova. */
+    suspend fun saveCategory(category: Category) = editCategories { list ->
+        if (list.any { it.id == category.id }) list.map { if (it.id == category.id) category else it } else list + category
+    }
+
+    suspend fun deleteCategory(id: String) = editCategories { list -> list.filterNot { it.id == id } }
+
+    /** Muda só a categoria [id] (se ela ainda existir). */
+    suspend fun updateCategory(id: String, change: (Category) -> Category) = editCategories { list ->
+        list.map { if (it.id == id) change(it) else it }
+    }
+
+    private suspend fun editCategories(change: (List<Category>) -> List<Category>) = store.edit { p ->
+        val current = p[CATEGORIES]?.let { decode(it, categoryList) }.orEmpty()
+        p[CATEGORIES] = json.encodeToString(categoryList, change(current))
     }
 
     suspend fun setSaveTarget(value: SaveTarget) = store.edit { p ->
