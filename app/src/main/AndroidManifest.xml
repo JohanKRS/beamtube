@@ -21,6 +21,14 @@
         android:roundIcon="@mipmap/ic_launcher_night"
         android:supportsRtl="true"
         android:theme="@style/Theme.App">
+        <!--
+          Android 16 ignora o sentido fixo da tela em tablets para apps no SDK 36. O player precisa
+          dele (deitar para vídeo horizontal, o botão de girar): esta é a saída que o Android dá,
+          e ela vale até o app passar para o SDK 37.
+        -->
+        <property
+            android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
+            android:value="true" />
 
         <activity
             android:name=".MainActivity"

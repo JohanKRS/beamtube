@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -51,12 +52,15 @@ object SettingsRepository {
     private val SAVE_TARGET_ID = stringPreferencesKey("save_target_id")
     private val SAVE_TARGET_TITLE = stringPreferencesKey("save_target_title")
     private val TURN_OFF_WHEN_DONE = booleanPreferencesKey("turn_off_when_done")
-    private val CATEGORIES = stringPreferencesKey("explore_categories")
+    private val EXPLORE = stringPreferencesKey("explore_themes")
+    private val HIDDEN_THEMES = stringSetPreferencesKey("explore_hidden")
+
+    /** As categorias feitas à mão da 0.5.0: a Explore passou a achar os temas sozinha. */
+    private val OLD_CATEGORIES = stringPreferencesKey("explore_categories")
 
     private val json = Json { ignoreUnknownKeys = true }
     private val topics = ListSerializer(Topic.serializer())
     private val channels = ListSerializer(BlockedChannel.serializer())
-    private val categoryList = ListSerializer(Category.serializer())
 
     private lateinit var store: DataStore<Preferences>
 
@@ -82,7 +86,7 @@ object SettingsRepository {
             )
         }
 
-    private fun <T> decode(text: String, serializer: kotlinx.serialization.KSerializer<List<T>>): List<T>? =
+    private fun <T> decode(text: String, serializer: kotlinx.serialization.KSerializer<T>): T? =
         runCatching { json.decodeFromString(serializer, text) }.getOrNull()
 
     suspend fun current(): Settings = settings.first()
@@ -109,25 +113,32 @@ object SettingsRepository {
         p[BLOCKED_CHANNELS] = json.encodeToString(channels, current.filterNot { it.id == channelId })
     }
 
-    /** As categorias do Explore, na ordem em que foram criadas. Fora do [Settings]: mudam sozinhas (miniaturas). */
+    /** Os temas da Explore (null antes da primeira vez). Fora do [Settings]: mudam sozinhos (miniaturas). */
+    val explore: Flow<ThemeSet?>
+        get() = store.data.map { p -> p[EXPLORE]?.let { decode(it, ThemeSet.serializer()) } }.distinctUntilChanged()
+
     val categories: Flow<List<Category>>
-        get() = store.data.map { p -> p[CATEGORIES]?.let { decode(it, categoryList) }.orEmpty() }.distinctUntilChanged()
+        get() = explore.map { it?.categories.orEmpty() }.distinctUntilChanged()
 
-    /** Grava [category] no lugar da que tem o mesmo id, ou no fim, se for nova. */
-    suspend fun saveCategory(category: Category) = editCategories { list ->
-        if (list.any { it.id == category.id }) list.map { if (it.id == category.id) category else it } else list + category
+    /** Os temas que o usuário escondeu: não voltam quando a Explore procura de novo. */
+    val hiddenThemes: Flow<Set<String>>
+        get() = store.data.map { p -> p[HIDDEN_THEMES].orEmpty() }.distinctUntilChanged()
+
+    suspend fun saveExplore(themes: ThemeSet) = store.edit { p ->
+        p[EXPLORE] = json.encodeToString(ThemeSet.serializer(), themes)
+        p.remove(OLD_CATEGORIES)
     }
-
-    suspend fun deleteCategory(id: String) = editCategories { list -> list.filterNot { it.id == id } }
 
     /** Muda só a categoria [id] (se ela ainda existir). */
-    suspend fun updateCategory(id: String, change: (Category) -> Category) = editCategories { list ->
-        list.map { if (it.id == id) change(it) else it }
+    suspend fun updateCategory(id: String, change: (Category) -> Category) = store.edit { p ->
+        val current = p[EXPLORE]?.let { decode(it, ThemeSet.serializer()) } ?: return@edit
+        p[EXPLORE] = json.encodeToString(ThemeSet.serializer(), current.copy(categories = current.categories.map { if (it.id == id) change(it) else it }))
     }
 
-    private suspend fun editCategories(change: (List<Category>) -> List<Category>) = store.edit { p ->
-        val current = p[CATEGORIES]?.let { decode(it, categoryList) }.orEmpty()
-        p[CATEGORIES] = json.encodeToString(categoryList, change(current))
+    suspend fun hideTheme(id: String) = store.edit { p ->
+        p[HIDDEN_THEMES] = p[HIDDEN_THEMES].orEmpty() + id
+        val current = p[EXPLORE]?.let { decode(it, ThemeSet.serializer()) } ?: return@edit
+        p[EXPLORE] = json.encodeToString(ThemeSet.serializer(), current.copy(categories = current.categories.filterNot { it.id == id }))
     }
 
     suspend fun setSaveTarget(value: SaveTarget) = store.edit { p ->

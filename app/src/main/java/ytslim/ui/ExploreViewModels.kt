@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -11,7 +12,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -19,75 +19,60 @@ import kotlinx.coroutines.launch
 import ytslim.data.AppScope
 import ytslim.data.Category
 import ytslim.data.CategoryResults
-import ytslim.data.CategoryRules
 import ytslim.data.CategorySearch
+import ytslim.data.ExploreRepository
 import ytslim.data.SearchFilters
 import ytslim.data.Settings
 import ytslim.data.SettingsRepository
 import ytslim.data.TopicRules
 import ytslim.data.Video
-import java.util.UUID
 
-/** Criar, mudar e apagar categorias: o mesmo nas duas telas (Explore e a página da categoria). */
-object CategoryEditing {
-    /**
-     * Grava a categoria [id] (ou uma nova, com id null) e devolve o id. Uma categoria nova (ou com
-     * palavras novas) busca as miniaturas do mosaico logo em seguida.
-     */
-    fun save(id: String?, name: String, keywords: List<String>, filters: SearchFilters): String {
-        val categoryId = id ?: UUID.randomUUID().toString()
-        AppScope.launch {
-            val old = SettingsRepository.categories.first().firstOrNull { it.id == categoryId }
-            val category = (old ?: Category(categoryId, name.trim(), keywords))
-                .copy(name = name.trim(), keywords = keywords)
-                .withFilters(filters)
-            SettingsRepository.saveCategory(category)
-            if (old == null || old.keywords != keywords || old.filters != filters) refreshThumbnails(category)
-        }
-        return categoryId
-    }
-
-    fun delete(id: String) {
-        AppScope.launch { SettingsRepository.deleteCategory(id) }
-    }
-
-    /** Busca a primeira página só para o mosaico do cartão (sem mexer em nada se falhar). */
-    suspend fun refreshThumbnails(category: Category) {
-        val videos = runCatching { CategorySearch.first(category).videos }.getOrNull() ?: return
-        storeThumbnails(category.id, videos)
-    }
-
-    suspend fun storeThumbnails(id: String, videos: List<Video>) {
-        val thumbs = CategoryRules.thumbnails(videos.filterNot { it.isShorts })
-        if (thumbs.isEmpty()) return
-        SettingsRepository.updateCategory(id) { if (it.thumbnails == thumbs) it else it.copy(thumbnails = thumbs) }
-    }
-}
-
-/** A aba Explore: as categorias do usuário. As que ainda não têm mosaico buscam as miniaturas. */
-class ExploreViewModel : ViewModel() {
-    /** null enquanto lê do aparelho. */
-    val categories: StateFlow<List<Category>?> = SettingsRepository.categories
+/**
+ * A aba Explore: os temas achados no histórico ([ExploreRepository]). Procura de novo sozinha a
+ * cada poucos dias; puxar para atualizar (ou segurar OK na aba, na TV) procura na hora.
+ */
+class ExploreViewModel : ViewModel(), Refreshable {
+    /** null enquanto lê do aparelho ou procura os temas pela primeira vez. */
+    val categories: StateFlow<List<Category>?> = SettingsRepository.explore
+        .map { it?.categories }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    private val _error = MutableStateFlow<String?>(null)
+    /** A procura falhou e ainda não há temas para mostrar. */
+    val error: StateFlow<String?> = _error.asStateFlow()
+
+    private val _refreshing = MutableStateFlow(false)
+    override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
+
     init {
+        find(force = false)
+    }
+
+    override fun refresh() = find(force = true)
+
+    fun retry() = find(force = true)
+
+    /** Esconde o tema: ele sai da lista e não volta nas próximas procuras. */
+    fun hide(id: String) {
+        AppScope.launch { ExploreRepository.hide(id) }
+    }
+
+    private fun find(force: Boolean) {
+        if (_refreshing.value) return
+        _refreshing.value = force
+        _error.value = null
         viewModelScope.launch {
-            categories.filterNotNull().first()
-                .filter { it.thumbnails.isEmpty() && it.keywords.isNotEmpty() }
-                .forEach { CategoryEditing.refreshThumbnails(it) }
+            // Em AppScope: a procura (e as miniaturas) continua mesmo saindo da aba.
+            runCatching { AppScope.async { ExploreRepository.refresh(force) }.await() }
+                .onFailure { _error.value = it.toMessage() }
+            _refreshing.value = false
         }
     }
-
-    fun save(id: String?, name: String, keywords: List<String>, filters: SearchFilters) {
-        CategoryEditing.save(id, name, keywords, filters)
-    }
-
-    fun delete(id: String) = CategoryEditing.delete(id)
 }
 
 /**
  * A página de uma categoria: a busca de cada palavra-chave, alternadas. Shorts e canais
- * bloqueados ficam de fora. Mudar os filtros (ou as palavras) grava na categoria e busca de novo.
+ * bloqueados ficam de fora. Mudar os filtros grava na categoria e busca de novo.
  */
 class CategoryViewModel(private val id: String) : ViewModel(), Refreshable {
     /** null depois que a categoria foi apagada. */
@@ -95,7 +80,7 @@ class CategoryViewModel(private val id: String) : ViewModel(), Refreshable {
         .map { list -> list.firstOrNull { it.id == id } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** A categoria foi apagada (em outra tela): a página avisa em vez de esperar para sempre. */
+    /** O tema saiu da Explore (escondido ou numa procura nova): a página avisa em vez de esperar para sempre. */
     val gone: StateFlow<Boolean> = SettingsRepository.categories
         .map { list -> list.none { it.id == id } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -127,7 +112,7 @@ class CategoryViewModel(private val id: String) : ViewModel(), Refreshable {
     private var autoPages = 0
 
     init {
-        // Busca de novo quando as palavras ou os filtros da categoria mudam (não quando só o mosaico muda).
+        // Busca de novo quando as palavras ou os filtros da categoria mudam (não quando só o mosaico ou o nome muda).
         viewModelScope.launch {
             category.filterNotNull()
                 .map { it.keywords to it.filters }
@@ -160,7 +145,7 @@ class CategoryViewModel(private val id: String) : ViewModel(), Refreshable {
         job = viewModelScope.launch {
             raw.value = runCatching { CategorySearch.first(current) }.fold(
                 { results ->
-                    CategoryEditing.storeThumbnails(id, results.videos)
+                    ExploreRepository.storeThumbnails(id, results.videos)
                     Raw.Loaded(results, loadingMore = false)
                 },
                 { Raw.Error(it.toMessage()) },
@@ -194,12 +179,6 @@ class CategoryViewModel(private val id: String) : ViewModel(), Refreshable {
         autoPages++
         more()
     }
-
-    fun edit(name: String, keywords: List<String>, filters: SearchFilters) {
-        CategoryEditing.save(id, name, keywords, filters)
-    }
-
-    fun delete() = CategoryEditing.delete(id)
 
     private companion object {
         const val MIN_ON_SCREEN = 12

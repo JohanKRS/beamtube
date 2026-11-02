@@ -138,6 +138,24 @@ class EngineOnlineTest {
         assertTrue(more.videos.map { it.id }.distinct().size == more.videos.size)
     }
 
+    /**
+     * Os temas da Explore com títulos reais: um "histórico" de buscas de vários assuntos, como
+     * alguém que assiste a esses assuntos em canais diferentes.
+     */
+    @Test
+    fun themesComeOutOfRealTitles() = withMainLooper {
+        val history = listOf("sourdough bread", "star wars lore", "formula 1 race highlights", "minecraft survival", "python tutorial", "pão caseiro")
+            .flatMap { query -> SearchRepository.search(query, SearchFilters(type = ResultType.VIDEO)).items.mapNotNull { (it as? SearchItem.VideoItem)?.video } }
+        val themes = ThemeRules.themes(history)
+        println("[online] histórico: ${history.size} vídeos; temas: ${themes.joinToString { "${it.name} (${it.videos}/${it.channels})" }}")
+        assertTrue(themes.size >= 4)
+        println("[online] temas: ${themes.joinToString { it.key }}")
+        val names = themes.joinToString(" ") { it.key }
+        // "sourdough" e "bread" têm quase os mesmos vídeos: fica um dos dois.
+        assertTrue("faltou o pão em $names", "sourdough" in names || "bread" in names)
+        listOf("star wars", "minecraft", "python").forEach { assertTrue("faltou $it em $names", it in names) }
+    }
+
     private fun checkVideo(videoId: String, expectOriginal: Boolean) {
         var manifests = 0
         var originalSurvived = false
