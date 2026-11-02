@@ -14,6 +14,7 @@
 
     <string name="tab_subscriptions">Subscriptions</string>
     <string name="tab_recommended">Recommended</string>
+    <string name="tab_explore">Explore</string>
     <string name="tab_search">Search</string>
     <string name="tab_playlists">Playlists</string>
     <string name="tab_history">History</string>
@@ -188,4 +189,21 @@
     <string name="ext_ask_title">Open this video</string>
     <string name="ext_ask_no_history">Watch without saving to history</string>
     <string name="ext_ask_save_history">Watch and save to my history</string>
+    <!-- Explore -->
+    <string name="explore_new">New category</string>
+    <string name="explore_new_hint">Name and keywords</string>
+    <string name="explore_hint">Each category is a fresh YouTube search with its own filters, not a filter over your recommendations. Hold a category to edit or delete it.</string>
+    <string name="category_edit">Edit category</string>
+    <string name="category_delete">Delete category</string>
+    <string name="category_deleted">Deleted %1$s</string>
+    <string name="category_name">Name</string>
+    <string name="category_keywords">Keywords (each one is searched)</string>
+    <string name="category_keywords_tv">Keywords, separated by commas (each one is searched)</string>
+    <string name="category_keyword_add">Add a keyword</string>
+    <string name="category_keyword_remove">Remove %1$s</string>
+    <string name="category_opens_with">Opens with</string>
+    <string name="category_filters_hint">The same filters as Search. You can change them on the category page too.</string>
+    <string name="category_searching">Searching: %1$s</string>
+    <string name="category_empty">Nothing found for these keywords and filters.</string>
+    <string name="category_gone">This category was deleted.</string>
 </resources>

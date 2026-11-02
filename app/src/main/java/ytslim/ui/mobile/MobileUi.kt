@@ -18,6 +18,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -54,6 +56,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -70,7 +73,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Subscriptions
@@ -89,7 +94,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -123,7 +132,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -158,6 +171,8 @@ import dev.chrisbanes.haze.rememberHazeState
 import ytslim.R
 import ytslim.data.AppIcon
 import ytslim.data.AuthRepository
+import ytslim.data.Category
+import ytslim.data.CategoryRules
 import ytslim.data.Channel
 import ytslim.data.ChannelPhotos
 import ytslim.data.Playlist
@@ -168,7 +183,10 @@ import ytslim.data.Topic
 import ytslim.data.TopicRules
 import ytslim.data.Video
 import ytslim.ui.AppIconPreview
+import ytslim.ui.CategoryViewModel
 import ytslim.ui.ChannelViewModel
+import ytslim.ui.ExploreViewModel
+import ytslim.ui.categoryFilterChoices
 import ytslim.ui.DoorGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
@@ -383,13 +401,14 @@ object MobileUi : Screens {
     private val tabs = listOf(
         TabInfo(HomeTab.SUBSCRIPTIONS, R.string.tab_subscriptions, Icons.Outlined.Subscriptions),
         TabInfo(HomeTab.RECOMMENDED, R.string.tab_recommended, Icons.Outlined.Explore),
+        TabInfo(HomeTab.EXPLORE, R.string.tab_explore, Icons.Outlined.GridView),
         TabInfo(HomeTab.PLAYLISTS, R.string.tab_playlists, Icons.AutoMirrored.Outlined.PlaylistPlay),
         TabInfo(HomeTab.HISTORY, R.string.tab_history, Icons.Outlined.History),
     )
     private val swipeTabs = tabs.map { it.tab }
 
     /** No trilho lateral (tela deitada) cabe a Busca também. */
-    private val railTabs = tabs.take(2) + TabInfo(HomeTab.SEARCH, R.string.tab_search, Icons.Outlined.Search) + tabs.drop(2)
+    private val railTabs = tabs.take(3) + TabInfo(HomeTab.SEARCH, R.string.tab_search, Icons.Outlined.Search) + tabs.drop(3)
 
     /** Os títulos da barra de cima, inclusive das telas que não estão nas barras de abas. */
     private val titles = railTabs + TabInfo(HomeTab.SETTINGS, R.string.tab_settings, Icons.Outlined.Tune)
@@ -625,6 +644,339 @@ object MobileUi : Screens {
                 onOpenChannel = onOpenChannel,
                 // Os filtros rolam junto com a lista, no topo dela.
                 header = { FilterRow(feedFilterChoices(filters), onChange = vm::setFilters, padding = PaddingValues(0.dp)) },
+            )
+        }
+    }
+
+    @Composable
+    override fun Explore(vm: ExploreViewModel, onOpen: (Category) -> Unit) {
+        val categories by vm.categories.collectAsStateWithLifecycle()
+        var adding by remember { mutableStateOf(false) }
+        var editing by remember { mutableStateOf<Category?>(null) }
+        val res = LocalContext.current.resources
+        val list = categories
+        if (list == null) {
+            Box(Modifier.fillMaxSize().padding(LocalBars.current), Alignment.Center) { CircularProgressIndicator() }
+        } else {
+            LazyVerticalGrid(
+                // Duas colunas no celular em pé; mais no tablet e deitado.
+                columns = GridCells.Adaptive(minSize = 156.dp),
+                contentPadding = barsPlus(top = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                items(list, key = { it.id }) { category ->
+                    CategoryTile(
+                        category,
+                        onOpen = { onOpen(category) },
+                        onEdit = { editing = category },
+                        onDelete = {
+                            vm.delete(category.id)
+                            Notices.show(res.getString(R.string.category_deleted, category.name))
+                        },
+                    )
+                }
+                item(key = "new-category") { NewCategoryTile { adding = true } }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Hint(stringResource(R.string.explore_hint), Modifier.padding(horizontal = 2.dp, vertical = 6.dp))
+                }
+            }
+        }
+        if (adding || editing != null) {
+            val initial = editing
+            CategorySheet(
+                initial = initial,
+                onDismiss = {
+                    adding = false
+                    editing = null
+                },
+                onSave = { name, keywords, filters ->
+                    vm.save(initial?.id, name, keywords, filters)
+                    adding = false
+                    editing = null
+                },
+            )
+        }
+    }
+
+    /** Uma categoria: o mosaico das miniaturas, o nome e as palavras. Segurar abre editar e apagar. */
+    @OptIn(ExperimentalFoundationApi::class)
+    @Composable
+    private fun CategoryTile(category: Category, onOpen: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
+        var menu by remember { mutableStateOf(false) }
+        Box {
+            Column(
+                Modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = { menu = true }),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CategoryMosaic(category, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)))
+                Column(Modifier.padding(horizontal = 2.dp)) {
+                    Text(category.name, style = RowTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        category.keywords.joinToString(" · "),
+                        style = Meta.copy(fontSize = 12.sp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.category_edit)) },
+                    leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
+                    onClick = {
+                        menu = false
+                        onEdit()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.category_delete)) },
+                    leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
+                    onClick = {
+                        menu = false
+                        onDelete()
+                    },
+                )
+            }
+        }
+    }
+
+    /** Quatro miniaturas da última busca da categoria; sem elas, a cor e a letra do nome. */
+    @Composable
+    private fun CategoryMosaic(category: Category, modifier: Modifier) {
+        val thumbs = category.thumbnails
+        Box(modifier.background(Look.Surface)) {
+            when {
+                thumbs.size >= CategoryRules.MAX_THUMBNAILS -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    thumbs.chunked(2).forEach { row ->
+                        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            row.forEach { url ->
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.weight(1f).fillMaxHeight().background(Look.SurfaceHigh),
+                                )
+                            }
+                        }
+                    }
+                }
+                thumbs.isNotEmpty() -> AsyncImage(
+                    model = thumbs.first(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                else -> Box(Modifier.fillMaxSize().background(Look.monogramTone(category.name).copy(alpha = 0.55f)), Alignment.Center) {
+                    Text(monogramOf(category.name), style = RowTitle.copy(fontSize = 24.sp))
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun NewCategoryTile(onClick: () -> Unit) {
+        Column(
+            Modifier.fillMaxWidth().clickable(onClick = onClick),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                Modifier.fillMaxWidth().aspectRatio(16f / 9f).drawBehind {
+                    val stroke = 1.5.dp.toPx()
+                    drawRoundRect(
+                        color = Look.Outline,
+                        topLeft = androidx.compose.ui.geometry.Offset(stroke / 2, stroke / 2),
+                        size = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke),
+                        cornerRadius = CornerRadius(14.dp.toPx()),
+                        style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))),
+                    )
+                },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(28.dp))
+            }
+            Column(Modifier.padding(horizontal = 2.dp)) {
+                Text(stringResource(R.string.explore_new), style = RowTitle)
+                Text(stringResource(R.string.explore_new_hint), style = Meta.copy(fontSize = 12.sp))
+            }
+        }
+    }
+
+    /**
+     * Criar ou mudar uma categoria: o nome, as palavras (cada uma vira uma busca) e os filtros com
+     * que ela abre. Uma vírgula ou o "Done" do teclado viram a palavra digitada num chip.
+     */
+    @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+    @Composable
+    private fun CategorySheet(
+        initial: Category?,
+        onDismiss: () -> Unit,
+        onSave: (name: String, keywords: List<String>, filters: SearchFilters) -> Unit,
+    ) {
+        var name by remember { mutableStateOf(initial?.name.orEmpty()) }
+        var keywords by remember { mutableStateOf(initial?.keywords.orEmpty()) }
+        var draft by remember { mutableStateOf("") }
+        var filters by remember { mutableStateOf(initial?.filters ?: SearchFilters()) }
+        val all = CategoryRules.keywords((keywords + draft).joinToString(","))
+        val valid = name.isNotBlank() && all.isNotEmpty()
+        val addDraft = {
+            keywords = CategoryRules.keywords((keywords + draft).joinToString(","))
+            draft = ""
+        }
+        val fieldColors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Look.Ground,
+            unfocusedContainerColor = Look.Ground,
+            focusedBorderColor = Look.Glow.copy(alpha = 0.55f),
+            unfocusedBorderColor = Look.Outline,
+            cursorColor = Look.Glow,
+        )
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Look.Surface,
+        ) {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    stringResource(if (initial == null) R.string.explore_new else R.string.category_edit),
+                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 19.sp),
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(R.string.category_name)) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = fieldColors,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.category_keywords), style = MaterialTheme.typography.labelMedium, color = Look.Sub)
+                    if (keywords.isNotEmpty()) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            keywords.forEach { keyword ->
+                                InputChip(
+                                    selected = false,
+                                    onClick = { keywords = keywords - keyword },
+                                    label = { Text(keyword) },
+                                    trailingIcon = {
+                                        Icon(
+                                            Icons.Filled.Close,
+                                            contentDescription = stringResource(R.string.category_keyword_remove, keyword),
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    },
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = InputChipDefaults.inputChipColors(containerColor = Look.SurfaceHigh, labelColor = Look.Text, trailingIconColor = Look.Sub),
+                                    border = null,
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { text ->
+                            // Uma vírgula fecha a palavra: o que vem antes vira chip, o resto continua no campo.
+                            if (',' in text) {
+                                keywords = CategoryRules.keywords((keywords + text.substringBeforeLast(',')).joinToString(","))
+                                draft = text.substringAfterLast(',').trimStart()
+                            } else {
+                                draft = text
+                            }
+                        },
+                        placeholder = { Text(stringResource(R.string.category_keyword_add)) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { addDraft() }),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.category_opens_with), style = MaterialTheme.typography.labelMedium, color = Look.Sub)
+                    FilterRow(categoryFilterChoices(filters), onChange = { filters = it }, padding = PaddingValues(0.dp))
+                    Text(stringResource(R.string.category_filters_hint), style = MaterialTheme.typography.bodySmall, color = Look.Sub)
+                }
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).height(48.dp)) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                    Button(
+                        onClick = { onSave(name, all, filters) },
+                        enabled = valid,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                    ) { Text(stringResource(R.string.save)) }
+                }
+            }
+        }
+    }
+
+    @Composable
+    override fun CategoryPage(
+        title: String,
+        vm: CategoryViewModel,
+        onPlay: (Video) -> Unit,
+        onOpenChannel: (Channel) -> Unit,
+        onBack: () -> Unit,
+    ) {
+        val category by vm.category.collectAsStateWithLifecycle()
+        val gone by vm.gone.collectAsStateWithLifecycle()
+        val state by vm.state.collectAsStateWithLifecycle()
+        val filters by vm.filters.collectAsStateWithLifecycle()
+        var editing by remember { mutableStateOf(false) }
+        DetailFrame(
+            title = category?.name ?: title,
+            navigation = { BackButton(onBack) },
+            actions = {
+                if (category != null) {
+                    IconButton(onClick = { editing = true }) {
+                        Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.category_edit), modifier = Modifier.size(20.dp))
+                    }
+                }
+            },
+        ) {
+            if (gone) {
+                Box(Modifier.fillMaxSize().padding(LocalBars.current).padding(24.dp), Alignment.Center) {
+                    Text(stringResource(R.string.category_gone), color = Look.Sub, textAlign = TextAlign.Center)
+                }
+            } else {
+                Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
+                    VideoGrid(
+                        content,
+                        emptyText = stringResource(R.string.category_empty),
+                        onNearEnd = vm::loadMore,
+                        onPlay = onPlay,
+                        onOpenChannel = onOpenChannel,
+                        // Os filtros e as palavras buscadas rolam junto com a lista, no topo dela.
+                        header = {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                FilterRow(categoryFilterChoices(filters), onChange = vm::setFilters, padding = PaddingValues(0.dp))
+                                category?.let {
+                                    Text(
+                                        stringResource(R.string.category_searching, it.keywords.joinToString(" · ")),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Look.Sub,
+                                    )
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+        }
+        val current = category
+        if (editing && current != null) {
+            CategorySheet(
+                initial = current,
+                onDismiss = { editing = false },
+                onSave = { name, keywords, newFilters ->
+                    vm.edit(name, keywords, newFilters)
+                    editing = false
+                },
             )
         }
     }

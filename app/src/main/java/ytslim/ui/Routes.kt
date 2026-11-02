@@ -31,8 +31,12 @@ data class PlaylistRoute(
 @Serializable
 data class ChannelRoute(val channelId: String, val title: String)
 
+/** Uma categoria do Explore (o nome só para o título enquanto ela carrega). */
+@Serializable
+data class CategoryRoute(val id: String, val name: String)
+
 /** A Busca é uma aba, mas no celular ela abre pela lupa da barra de cima. */
-enum class HomeTab { SUBSCRIPTIONS, RECOMMENDED, SEARCH, PLAYLISTS, HISTORY, SETTINGS }
+enum class HomeTab { SUBSCRIPTIONS, RECOMMENDED, EXPLORE, SEARCH, PLAYLISTS, HISTORY, SETTINGS }
 
 /** Uma página pedida de fora da navegação: link de playlist de outro app, ou o canal no player. */
 sealed interface Link {

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -42,9 +43,11 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -66,6 +69,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -119,6 +123,8 @@ import kotlinx.coroutines.launch
 import ytslim.R
 import ytslim.data.AppIcon
 import ytslim.data.AuthRepository
+import ytslim.data.Category
+import ytslim.data.CategoryRules
 import ytslim.data.Channel
 import ytslim.data.Playlist
 import ytslim.data.SavedVideos
@@ -128,7 +134,10 @@ import ytslim.data.Topic
 import ytslim.data.TopicRules
 import ytslim.data.Video
 import ytslim.ui.AppIconPreview
+import ytslim.ui.CategoryViewModel
 import ytslim.ui.ChannelViewModel
+import ytslim.ui.ExploreViewModel
+import ytslim.ui.categoryFilterChoices
 import ytslim.ui.DoorGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
@@ -311,6 +320,7 @@ object TvUi : Screens {
     private val tabs = listOf(
         HomeTab.SUBSCRIPTIONS to R.string.tab_subscriptions,
         HomeTab.RECOMMENDED to R.string.tab_recommended,
+        HomeTab.EXPLORE to R.string.tab_explore,
         HomeTab.SEARCH to R.string.tab_search,
         HomeTab.PLAYLISTS to R.string.tab_playlists,
         HomeTab.HISTORY to R.string.tab_history,
@@ -418,6 +428,276 @@ object TvUi : Screens {
                 val empty = stringResource(if (filters.isDefault) R.string.recommended_empty else R.string.recommended_filtered_empty)
                 VideoGrid(content, empty, vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
             }
+        }
+    }
+
+    @Composable
+    override fun Explore(vm: ExploreViewModel, onOpen: (Category) -> Unit) {
+        val categories by vm.categories.collectAsStateWithLifecycle()
+        var adding by remember { mutableStateOf(false) }
+        var editing by remember { mutableStateOf<Category?>(null) }
+        val res = LocalContext.current.resources
+        val list = categories
+        if (list == null) {
+            Box(Modifier.fillMaxSize(), Alignment.Center) { Text(stringResource(R.string.loading), style = MaterialTheme.typography.titleMedium) }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                horizontalArrangement = Arrangement.spacedBy(GridGapX),
+                verticalArrangement = Arrangement.spacedBy(GridGapY),
+                contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
+            ) {
+                itemsIndexed(list, key = { _, c -> c.id }) { _, category ->
+                    CategoryCard(
+                        category,
+                        onOpen = { onOpen(category) },
+                        onEdit = { editing = category },
+                        onDelete = {
+                            vm.delete(category.id)
+                            Notices.show(res.getString(R.string.category_deleted, category.name))
+                        },
+                    )
+                }
+                item(key = "new-category") {
+                    Column {
+                        GlowCard(onClick = { adding = true }) {
+                            Box(Modifier.fillMaxSize().background(Look.Surface), Alignment.Center) {
+                                Icon(Icons.Filled.Add, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(36.dp))
+                            }
+                        }
+                        CardText(stringResource(R.string.explore_new), stringResource(R.string.explore_new_hint))
+                    }
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) { Hint(stringResource(R.string.explore_hint)) }
+            }
+        }
+        if (adding || editing != null) {
+            val initial = editing
+            CategoryDialog(
+                initial = initial,
+                onDismiss = {
+                    adding = false
+                    editing = null
+                },
+                onSave = { name, keywords ->
+                    vm.save(initial?.id, name, keywords, initial?.filters ?: SearchFilters())
+                    adding = false
+                    editing = null
+                },
+            )
+        }
+    }
+
+    /**
+     * Uma categoria: OK abre; segurar o OK abre o menu com editar e apagar (como no card de vídeo,
+     * o menu aparece no toque longo e pega o foco quando o OK é solto).
+     */
+    @Composable
+    private fun CategoryCard(category: Category, onOpen: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
+        var menu by remember { mutableStateOf(false) }
+        var menuFocusable by remember { mutableStateOf(false) }
+        Column {
+            Box(
+                Modifier.onPreviewKeyEvent { event ->
+                    if (menu && !menuFocusable && event.type == KeyEventType.KeyUp && event.nativeKeyEvent.keyCode in OkKeys) {
+                        menuFocusable = true
+                    }
+                    false
+                },
+            ) {
+                GlowCard(
+                    onClick = onOpen,
+                    onLongClick = {
+                        menuFocusable = false
+                        menu = true
+                    },
+                ) { CategoryMosaic(category) }
+                if (menu) {
+                    HoldMenu(
+                        focusable = menuFocusable,
+                        onDismiss = { menu = false },
+                        items = listOf(
+                            Triple(stringResource(R.string.category_edit), Icons.Outlined.Edit, onEdit),
+                            Triple(stringResource(R.string.category_delete), Icons.Outlined.Delete, onDelete),
+                        ),
+                    )
+                }
+            }
+            CardText(category.name, category.keywords.joinToString(" · "))
+        }
+    }
+
+    /** Quatro miniaturas da última busca da categoria; sem elas, a cor e a letra do nome. */
+    @Composable
+    private fun CategoryMosaic(category: Category) {
+        val thumbs = category.thumbnails
+        Box(Modifier.fillMaxSize().background(Look.Surface)) {
+            when {
+                thumbs.size >= CategoryRules.MAX_THUMBNAILS -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    thumbs.chunked(2).forEach { row ->
+                        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            row.forEach { url ->
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.weight(1f).fillMaxHeight().background(Look.SurfaceHigh),
+                                )
+                            }
+                        }
+                    }
+                }
+                thumbs.isNotEmpty() -> AsyncImage(
+                    model = thumbs.first(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                else -> Box(Modifier.fillMaxSize().background(Look.monogramTone(category.name).copy(alpha = 0.55f)), Alignment.Center) {
+                    Text(ytslim.ui.monogramOf(category.name), style = MaterialTheme.typography.headlineMedium, color = Look.Text)
+                }
+            }
+        }
+    }
+
+    /** Um menu pequeno ao lado do card, do OK longo. Só pega o foco quando [focusable] (OK solto). */
+    @Composable
+    private fun HoldMenu(focusable: Boolean, onDismiss: () -> Unit, items: List<Triple<String, ImageVector, () -> Unit>>) {
+        val gap = with(LocalDensity.current) { 18.dp.roundToPx() }
+        val first = remember { FocusRequester() }
+        Popup(
+            popupPositionProvider = remember(gap) { BesideAnchor(gap) },
+            onDismissRequest = onDismiss,
+            properties = PopupProperties(focusable = focusable),
+        ) {
+            Column(
+                Modifier.width(320.dp)
+                    .background(Floating, RoundedCornerShape(22.dp))
+                    .border(1.dp, Look.Hairline, RoundedCornerShape(22.dp))
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items.forEachIndexed { index, (text, icon, action) ->
+                    MenuItem(
+                        text = text,
+                        supporting = null,
+                        leading = { Icon(icon, contentDescription = null, tint = Look.Sub, modifier = Modifier.size(22.dp)) },
+                        modifier = if (index == 0) Modifier.focusRequester(first) else Modifier,
+                    ) {
+                        onDismiss()
+                        action()
+                    }
+                }
+            }
+            LaunchedEffect(focusable) { if (focusable) runCatching { first.requestFocus() } }
+        }
+    }
+
+    /** Criar ou mudar uma categoria na TV: o nome e as palavras, separadas por vírgula. Os filtros ficam na página dela. */
+    @Composable
+    private fun CategoryDialog(initial: Category?, onDismiss: () -> Unit, onSave: (name: String, keywords: List<String>) -> Unit) {
+        var name by rememberSaveable { mutableStateOf(initial?.name.orEmpty()) }
+        var keywords by rememberSaveable { mutableStateOf(initial?.keywords?.joinToString(", ").orEmpty()) }
+        val parsed = CategoryRules.keywords(keywords)
+        val valid = name.isNotBlank() && parsed.isNotEmpty()
+        val first = remember { FocusRequester() }
+        Dialog(onDismissRequest = onDismiss) {
+            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(640.dp)) {
+                Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(
+                        stringResource(if (initial == null) R.string.explore_new else R.string.category_edit),
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Text(stringResource(R.string.category_name), style = MaterialTheme.typography.labelLarge)
+                    TvTextField(name, { name = it }, placeholder = "", modifier = Modifier.fillMaxWidth().focusRequester(first))
+                    Text(stringResource(R.string.category_keywords_tv), style = MaterialTheme.typography.labelLarge)
+                    TvTextField(keywords, { keywords = it }, placeholder = "", modifier = Modifier.fillMaxWidth())
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(onClick = { onSave(name, parsed) }, enabled = valid) { Text(stringResource(R.string.save)) }
+                        OutlinedButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+                    }
+                }
+            }
+            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+        }
+    }
+
+    @Composable
+    override fun CategoryPage(
+        title: String,
+        vm: CategoryViewModel,
+        onPlay: (Video) -> Unit,
+        onOpenChannel: (Channel) -> Unit,
+        onBack: () -> Unit,
+    ) {
+        val category by vm.category.collectAsStateWithLifecycle()
+        val gone by vm.gone.collectAsStateWithLifecycle()
+        val state by vm.state.collectAsStateWithLifecycle()
+        val filters by vm.filters.collectAsStateWithLifecycle()
+        var editing by remember { mutableStateOf(false) }
+
+        Column(Modifier.fillMaxSize().padding(screenPadding)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    category?.name ?: title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (category != null) {
+                    Spacer(Modifier.width(16.dp))
+                    IconButton(
+                        onClick = { editing = true },
+                        modifier = Modifier.size(36.dp),
+                        colors = IconButtonDefaults.colors(
+                            containerColor = Color.Transparent,
+                            contentColor = Look.Sub,
+                            focusedContainerColor = Look.GlowSoft.copy(alpha = 0.18f),
+                            focusedContentColor = Look.Text,
+                        ),
+                    ) {
+                        Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.category_edit), modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            if (gone) {
+                Text(stringResource(R.string.category_gone), style = MaterialTheme.typography.titleMedium)
+                return@Column
+            }
+            FilterButtons(categoryFilterChoices(filters), onChange = vm::setFilters)
+            category?.let {
+                Text(
+                    stringResource(R.string.category_searching, it.keywords.joinToString(" · ")),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Look.Sub,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            Loadable(state, onRetry = vm::reload) { content ->
+                VideoGrid(
+                    content = content,
+                    emptyText = stringResource(R.string.category_empty),
+                    onNearEnd = vm::loadMore,
+                    onPlay = onPlay,
+                    onOpenChannel = onOpenChannel,
+                    takeFocus = true,
+                    onFocusTaken = {},
+                )
+            }
+        }
+        val current = category
+        if (editing && current != null) {
+            CategoryDialog(
+                initial = current,
+                onDismiss = { editing = false },
+                onSave = { name, keywords ->
+                    vm.edit(name, keywords, current.filters)
+                    editing = false
+                },
+            )
         }
     }
 
