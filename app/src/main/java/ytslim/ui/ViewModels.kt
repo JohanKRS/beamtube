@@ -20,6 +20,7 @@ import ytslim.data.AuthRepository
 import ytslim.data.AuthRepository.SignInEvent
 import ytslim.data.ExploreRepository
 import ytslim.data.ExternalLinks
+import ytslim.data.FeedCache
 import ytslim.data.FeedMerge
 import ytslim.data.FeedRepository
 import ytslim.data.FeedRules
@@ -99,7 +100,8 @@ class FeedViewModel : ViewModel(), Refreshable {
     private sealed interface Raw {
         data object Loading : Raw
         data class Error(val message: String) : Raw
-        data class Loaded(val feed: List<Timed>, val lastPage: VideoPage, val loadingMore: Boolean) : Raw
+        /** [cached]: o feed guardado no aparelho ([FeedCache]), na tela até o novo chegar. */
+        data class Loaded(val feed: List<Timed>, val lastPage: VideoPage, val loadingMore: Boolean, val cached: Boolean = false) : Raw
     }
 
     private val raw = MutableStateFlow<Raw>(Raw.Loading)
@@ -116,7 +118,8 @@ class FeedViewModel : ViewModel(), Refreshable {
             val keep = { t: Timed -> FeedRules.keep(t.video, settings.showLives) && !TopicRules.isBlocked(t.video, settings.filters) }
             // Vídeos de playlists inscritas também respeitam os tópicos excluídos.
             val keepExtra = { t: Timed -> keep(t) && !TopicRules.isExcluded(t.video, settings.filters) }
-            val videos = FeedMerge.merge(raw.feed.filter(keep), extras.filter(keepExtra), feedComplete = !raw.lastPage.hasMore)
+            val complete = !raw.lastPage.hasMore && !raw.cached
+            val videos = FeedMerge.merge(raw.feed.filter(keep), extras.filter(keepExtra), feedComplete = complete)
             UiState.Ready(VideoListContent(videos, raw.lastPage.hasMore, raw.loadingMore))
         }
     }
@@ -127,7 +130,14 @@ class FeedViewModel : ViewModel(), Refreshable {
     override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
     init {
-        reload()
+        // Abre com o feed guardado da última vez, se houver, e atualiza por trás.
+        viewModelScope.launch {
+            FeedCache.read()?.let { saved ->
+                raw.value = Raw.Loaded(saved.feed, VideoPage(emptyList(), null), loadingMore = false, cached = true)
+                extras.value = saved.extras
+            }
+            load(quiet = raw.value is Raw.Loaded)
+        }
     }
 
     fun reload() = load(quiet = false)
@@ -142,8 +152,13 @@ class FeedViewModel : ViewModel(), Refreshable {
         if (!quiet) raw.value = Raw.Loading
         loadJob = viewModelScope.launch {
             raw.value = runCatching { FeedRepository.subscriptions() }.fold(
-                { page -> Raw.Loaded(FeedMerge.estimate(page.videos, System.currentTimeMillis()), page, loadingMore = false) },
-                { Raw.Error(it.toMessage()) },
+                { page ->
+                    val feed = FeedMerge.estimate(page.videos, System.currentTimeMillis())
+                    AppScope.launch { FeedCache.saveFeed(feed) }
+                    Raw.Loaded(feed, page, loadingMore = false)
+                },
+                // Sem rede, a lista que está na tela (a guardada, ou a de antes do puxar) fica.
+                { if (quiet) raw.value else Raw.Error(it.toMessage()) },
             )
             _refreshing.value = false
             fillScreen()
@@ -151,7 +166,10 @@ class FeedViewModel : ViewModel(), Refreshable {
         // As playlists inscritas chegam depois, sem segurar o feed dos canais.
         extrasJob = viewModelScope.launch {
             val channels = FeedRepository.subscribedChannelIds().orEmpty()
-            extras.value = runCatching { PlaylistSubscriptions.newVideos(channels) }.getOrDefault(emptyList())
+            runCatching { PlaylistSubscriptions.newVideos(channels) }.onSuccess { found ->
+                extras.value = found
+                AppScope.launch { FeedCache.saveExtras(found) }
+            }
             // Com as inscrições lidas, a Explore lê em segundo plano o que os canais destacam.
             ExploreRepository.prepare()
         }
@@ -583,6 +601,7 @@ class SettingsViewModel : ViewModel() {
     fun signOut(onDone: () -> Unit) {
         viewModelScope.launch {
             AuthRepository.signOut()
+            FeedCache.clear()
             onDone()
         }
     }

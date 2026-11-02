@@ -3,8 +3,10 @@ package ytslim.data
 import com.liskovsoft.googlecommon.common.helpers.YouTubeHelper
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItem
+import kotlinx.serialization.Serializable
 
 /** Um vídeo, já convertido do modelo do motor. */
+@Serializable
 data class Video(
     val id: String,
     val title: String,
