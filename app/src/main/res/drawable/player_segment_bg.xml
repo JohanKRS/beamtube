@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Uma opção do painel: âmbar quando escolhida; contorno âmbar com o foco (TV). -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_activated="true" android:state_focused="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="9dp" />
+            <solid android:color="@color/launcher_night_glow" />
+            <stroke android:width="2dp" android:color="#FFE3A3" />
+        </shape>
+    </item>
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="9dp" />
+            <solid android:color="#33FFC861" />
+            <stroke android:width="2dp" android:color="@color/launcher_night_glow" />
+        </shape>
+    </item>
+    <item android:state_activated="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="9dp" />
+            <solid android:color="@color/launcher_night_glow" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="9dp" />
+            <solid android:color="#26F3EFE4" />
+        </shape>
+    </item>
+    <item android:drawable="@android:color/transparent" />
+</selector>

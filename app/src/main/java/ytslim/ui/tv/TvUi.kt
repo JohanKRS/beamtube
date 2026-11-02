@@ -1213,22 +1213,28 @@ object TvUi : Screens {
         onClick: () -> Unit,
     ) {
         var menu by remember { mutableStateOf(false) }
-        // O menu abre quando o OK é solto: se abrisse ainda com o botão apertado, o "soltar" iria
-        // para o menu (e escolheria a primeira opção) e o card ficaria esperando um soltar que não vem.
-        var held by remember { mutableStateOf(false) }
+        // O menu aparece no toque longo, com o OK ainda apertado (pedido do Johan), mas só pega o
+        // foco quando o OK é solto: se pegasse antes, o "soltar" iria para o menu (e escolheria a
+        // primeira opção) e o card ficaria esperando um soltar que não vem.
+        var menuFocusable by remember { mutableStateOf(false) }
         val res = LocalContext.current.resources
         val channel = channelOf(video)?.takeIf { onOpenChannel != null }
         Column(modifier) {
             Box(
                 Modifier.onPreviewKeyEvent { event ->
-                    if (held && event.type == KeyEventType.KeyUp && event.nativeKeyEvent.keyCode in OkKeys) {
-                        held = false
-                        menu = true
+                    if (menu && !menuFocusable && event.type == KeyEventType.KeyUp && event.nativeKeyEvent.keyCode in OkKeys) {
+                        menuFocusable = true
                     }
                     false
                 },
             ) {
-                GlowCard(onClick = onClick, onLongClick = { held = true }) {
+                GlowCard(
+                    onClick = onClick,
+                    onLongClick = {
+                        menuFocusable = false
+                        menu = true
+                    },
+                ) {
                     Box(Modifier.fillMaxSize()) {
                         AsyncImage(
                             model = video.thumbnailUrl,
@@ -1263,6 +1269,7 @@ object TvUi : Screens {
                     VideoMenu(
                         saved = saved,
                         channelName = channel?.title,
+                        focusable = menuFocusable,
                         onDismiss = { menu = false },
                         onSave = if (showSaved) {
                             { toggleSaved(res, video) }
@@ -1283,6 +1290,7 @@ object TvUi : Screens {
     private fun VideoMenu(
         saved: Boolean,
         channelName: String?,
+        focusable: Boolean,
         onDismiss: () -> Unit,
         onSave: (() -> Unit)?,
         onChannel: (() -> Unit)?,
@@ -1295,7 +1303,7 @@ object TvUi : Screens {
         Popup(
             popupPositionProvider = remember(gap) { BesideAnchor(gap) },
             onDismissRequest = onDismiss,
-            properties = PopupProperties(focusable = true),
+            properties = PopupProperties(focusable = focusable),
         ) {
             Column(
                 Modifier.width(320.dp)
@@ -1354,7 +1362,7 @@ object TvUi : Screens {
                     }
                 }
             }
-            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+            LaunchedEffect(focusable) { if (focusable) runCatching { first.requestFocus() } }
         }
     }
 

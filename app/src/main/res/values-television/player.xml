@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Na TV, os controles ficam dentro da área segura da tela (overscan) e o título cresce um pouco. -->
+<resources>
+    <dimen name="player_edge">48dp</dimen>
+    <dimen name="player_edge_top">27dp</dimen>
+    <dimen name="player_edge_bottom">27dp</dimen>
+    <dimen name="player_title_size">20sp</dimen>
+</resources>

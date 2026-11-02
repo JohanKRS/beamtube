@@ -149,8 +149,6 @@
 
     <string name="player_unplayable">This video can\'t be played.</string>
     <string name="player_error">Playback error: %1$s</string>
-    <string name="player_audio">audio: %1$s</string>
-    <string name="player_audio_single">single track</string>
     <string name="player_no_history">not saved to history</string>
     <string name="link_not_a_video">This isn\'t a YouTube video link.</string>
 

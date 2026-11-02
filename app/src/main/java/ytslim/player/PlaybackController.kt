@@ -70,7 +70,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
 
     sealed interface State {
         data object Loading : State
-        data class Playing(val info: PlaybackInfo, val selection: String?) : State
+        data class Playing(val info: PlaybackInfo) : State
         data class Failed(val message: String) : State
     }
 
@@ -263,7 +263,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         player.setMediaSource(buildSource(result, caption), startPositionMs)
         player.prepare()
         _controls.update { it.copy(captionsAvailable = caption != null, captionsOn = captionsOn) }
-        _state.value = State.Playing(result.info, null)
+        _state.value = State.Playing(result.info)
     }
 
     private fun buildSource(result: PlaybackResult.Ready, caption: Caption?): MediaSource {
@@ -415,7 +415,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
             pickQuality(tracks)
             selectedHeight(tracks)?.let { height -> _quality.update { it.copy(playing = height) } }
             val info = current ?: return
-            _state.value = State.Playing(info, describeSelection(tracks))
+            _state.value = State.Playing(info)
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -622,18 +622,6 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, (0 until group.length).toList()))
             .build()
-    }
-
-    private fun describeSelection(tracks: Tracks): String? {
-        val video = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
-            ?.let { g -> (0 until g.length).filter { g.isTrackSelected(it) }.map { g.getTrackFormat(it) }.maxByOrNull { it.height } }
-        val audio = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
-            ?.getTrackFormat(0)
-        val parts = buildList {
-            video?.let { add("${it.height}p ${it.codecs ?: it.sampleMimeType ?: ""}".trim()) }
-            audio?.let { add(res.getString(R.string.player_audio, it.language ?: res.getString(R.string.player_audio_single))) }
-        }
-        return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
     }
 
     private companion object {
