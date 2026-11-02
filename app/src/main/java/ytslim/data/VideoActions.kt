@@ -7,6 +7,8 @@ enum class Rating { NONE, LIKED, DISLIKED }
 
 /** O que a página do vídeo mostra além do player: avaliação, inscrição no canal e capítulos. */
 data class VideoState(
+    /** O título pela página do vídeo: o player usa quando o stream vem sem título. */
+    val title: String?,
     val channelId: String?,
     val channelName: String?,
     val subscribed: Boolean,
@@ -20,6 +22,7 @@ object VideoActions {
         io { Engine.mediaItems.getMetadata(videoId) }
     }.getOrNull()?.let { m ->
         VideoState(
+            title = m.title?.takeIf { it.isNotBlank() },
             channelId = m.channelId,
             channelName = m.author,
             subscribed = m.isSubscribed,

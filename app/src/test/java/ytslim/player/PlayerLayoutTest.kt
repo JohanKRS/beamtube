@@ -37,6 +37,13 @@ class PlayerLayoutTest {
             assertEquals(View.GONE, view.findViewById<View>(R.id.player_skip).visibility)
             assertEquals(View.GONE, view.findViewById<View>(R.id.player_captions).visibility)
             assertEquals(View.GONE, view.findViewById<View>(R.id.player_actions).visibility)
+            // A lua fica sempre; o painel de dormir só abre pelo botão.
+            assertEquals(View.VISIBLE, view.findViewById<View>(R.id.player_sleep).visibility)
+            assertEquals(View.GONE, view.findViewById<View>(R.id.player_sleep_panel).visibility)
+            // A resolução aparece quando as faixas do vídeo chegam.
+            assertEquals(View.GONE, view.findViewById<View>(R.id.player_quality_button).visibility)
+            assertEquals(View.GONE, view.findViewById<View>(R.id.player_quality_panel).visibility)
+            assertNotNull(view.overlayFrameLayout)
         } finally {
             player.release()
         }

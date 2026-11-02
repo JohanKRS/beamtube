@@ -13,6 +13,13 @@
             <solid android:color="#40FFFFFF" />
         </shape>
     </item>
+    <!-- A opção escolhida no painel de dormir. -->
+    <item android:state_activated="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="24dp" />
+            <solid android:color="#33FFC861" />
+        </shape>
+    </item>
     <item>
         <shape android:shape="rectangle">
             <corners android:radius="24dp" />

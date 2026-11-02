@@ -1,5 +1,6 @@
 package ytslim.data
 
+import android.util.Log
 import com.liskovsoft.googlecommon.common.helpers.DefaultHeaders
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo
 
@@ -14,13 +15,14 @@ sealed interface Stream {
     /** Manifest HLS do próprio YouTube (lives). */
     class HlsUrl(val url: String) : Stream
 
-    /** Último recurso: arquivo único (qualidade baixa). */
+    /** Último recurso: arquivo único (o YouTube só entrega assim em 360p). */
     class Progressive(val url: String) : Stream
 }
 
 data class PlaybackInfo(
     val videoId: String,
-    val title: String,
+    /** O cliente de TV do YouTube (o primeiro que o app usa) manda o vídeo sem título nem autor. */
+    val title: String?,
     val author: String?,
     val channelId: String?,
     val isLive: Boolean,
@@ -38,31 +40,44 @@ sealed interface PlaybackResult {
 
 /** Obtém os streams de um vídeo pelo motor e escolhe o formato que o Media3 toca. */
 object PlaybackRepository {
+    private const val TAG = "Doorglow"
+
     /** Quantos clientes do YouTube tentar quando um só entrega formatos que não tocamos. */
     private const val MAX_CLIENT_SWITCHES = 6
 
     val userAgent: String get() = DefaultHeaders.APP_USER_AGENT
 
+    /**
+     * Pede o vídeo ao motor, trocando de cliente do YouTube até um entregar DASH ou HLS. Um
+     * cliente que só entrega o arquivo único (360p) fica guardado como último recurso: antes,
+     * o app tocava esse arquivo assim que aparecia, mesmo com outro cliente entregando 1080p.
+     */
     suspend fun load(videoId: String): PlaybackResult = io {
         var lastReason: String? = null
+        var lowQuality: PlaybackResult.Ready? = null
         repeat(MAX_CLIENT_SWITCHES) {
             val attempt = runCatching { Engine.mediaItems.getFormatInfo(videoId) }
             val info = attempt.getOrNull()
+            val client = info?.clientInfo?.clientName
             when {
                 info == null -> lastReason = attempt.exceptionOrNull()?.message ?: lastReason
                 info.isUnplayable -> return@io PlaybackResult.Unplayable(info.playabilityReason)
                 else -> {
                     val stream = runCatching { pickStream(info) }.getOrNull()
-                    if (stream != null) {
-                        return@io PlaybackResult.Ready(info.toPlaybackInfo(videoId), stream, userAgent)
+                    Log.i(TAG, "video $videoId, client $client: ${stream?.let { it::class.simpleName } ?: "nothing playable (sabr=${info.containsSabrFormats()})"}")
+                    when (stream) {
+                        null -> lastReason = info.playabilityReason
+                        is Stream.Progressive -> if (lowQuality == null) {
+                            lowQuality = PlaybackResult.Ready(info.toPlaybackInfo(videoId), stream, userAgent)
+                        }
+                        else -> return@io PlaybackResult.Ready(info.toPlaybackInfo(videoId), stream, userAgent)
                     }
-                    lastReason = info.playabilityReason
                 }
             }
-            // Erro, só formatos SABR (o Media3 não toca) ou nada utilizável: tenta o próximo cliente.
+            // Erro, só SABR (o Media3 não toca), só o arquivo único ou nada utilizável: próximo cliente.
             Engine.service.switchNextClientNow()
         }
-        PlaybackResult.Unplayable(lastReason)
+        lowQuality ?: PlaybackResult.Unplayable(lastReason)
     }
 
     /** Chamado quando o player falha (ex.: HTTP 403): o próximo load usa outro cliente. */
@@ -74,14 +89,17 @@ object PlaybackRepository {
         runCatching { io { Engine.mediaItems.updateHistoryPosition(videoId, positionMs / 1000f) } }
     }
 
-    /** Mesma ordem de preferência do SmartTube, sem SABR. */
+    /**
+     * A ordem de preferência do SmartTube, sem SABR: DASH, depois o HLS (que também tem todas as
+     * qualidades) e só por último o arquivo único.
+     */
     internal fun pickStream(info: MediaItemFormatInfo): Stream? = when {
         info.isLive && info.containsHlsUrl() -> Stream.HlsUrl(info.hlsManifestUrl)
         info.isLive && info.containsDashUrl() -> Stream.DashUrl(info.dashManifestUrl)
         info.isLive -> null
         info.containsDashFormats() -> info.createMpdStream()?.use { Stream.DashManifest(it.readBytes()) }
-        info.containsUrlFormats() -> info.createUrlList()?.firstOrNull()?.let { Stream.Progressive(it) }
         info.containsHlsUrl() -> Stream.HlsUrl(info.hlsManifestUrl)
+        info.containsUrlFormats() -> info.createUrlList()?.firstOrNull()?.let { Stream.Progressive(it) }
         else -> null
     }
 
@@ -92,8 +110,8 @@ object PlaybackRepository {
             .distinct()
         return PlaybackInfo(
             videoId = videoId,
-            title = title.orEmpty(),
-            author = author,
+            title = title?.takeIf { it.isNotBlank() },
+            author = author?.takeIf { it.isNotBlank() },
             channelId = channelId,
             isLive = isLive,
             originalAudioLabel = AudioRules.originalLabel(labels),

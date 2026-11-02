@@ -1,21 +1,27 @@
 package ytslim.player
 
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -26,11 +32,15 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import ytslim.MainActivity
 import ytslim.R
 import ytslim.data.AppScope
 import ytslim.data.ExternalLinks
+import ytslim.data.PlayQueue
 import ytslim.data.Rating
 import ytslim.data.SettingsRepository
 import ytslim.data.VideoLinks
@@ -38,6 +48,9 @@ import ytslim.data.VideoLinks
 /**
  * Tela do player, que é também a "página do vídeo": like/dislike e inscrição ficam nos
  * controles. Usa Views porque o PlayerView do Media3 já cuida do D-pad da TV e do toque.
+ *
+ * O botão da lua abre o painel de dormir: escurecer o vídeo, quantos vídeos da playlist ainda
+ * tocam e o que fazer quando eles acabarem (desligar a TV, pelo [ScreenOffService]).
  */
 @OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
@@ -55,9 +68,38 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var channelButton: TextView
     private lateinit var skipButton: TextView
     private lateinit var captionsButton: ImageButton
+    private lateinit var sleepButton: ImageButton
+    private lateinit var sleepPanel: View
+    private lateinit var qualityButton: TextView
+    private lateinit var qualityPanel: View
+    private lateinit var qualityRow: LinearLayout
+    private lateinit var brightnessRow: LinearLayout
+    private lateinit var queueRow: LinearLayout
+    private lateinit var endRow: LinearLayout
+    private lateinit var dimView: View
 
     private var saveHistory = true
     private var external = false
+
+    /** Brilho do vídeo no modo dormir, em %. Volta a 100 a cada player aberto. */
+    private var brightness = 100
+
+    /** "When done: Turn off", guardado nas configurações. */
+    private var turnOffWhenDone = false
+
+    /** O fim atual já foi tratado (a tela só desliga uma vez por fim). */
+    private var endHandled = false
+    private var turnOffJob: Job? = null
+
+    /** O painel aberto acima da barra de tempo (resolução ou modo dormir), se houver. */
+    private var openPanel: View? = null
+
+    /** As resoluções que o painel de qualidade mostra agora. */
+    private var qualityHeights: List<Int> = emptyList()
+
+    private val closePanelOnBack = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() = closePanel()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,19 +120,31 @@ class PlayerActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
 
+        // Um link de outro app não continua a sequência de uma playlist aberta antes.
+        if (target.external && savedInstanceState == null) PlayQueue.clear()
+
         controller = PlaybackController(this, AppScope)
-        setContentView(buildLayout(intent.getStringExtra(EXTRA_TITLE)))
+        // Recriada no meio de uma sequência, a tela volta ao vídeo que estava tocando.
+        val videoId = savedInstanceState?.getString(KEY_VIDEO) ?: target.videoId
+        val restored = savedInstanceState?.containsKey(KEY_VIDEO) == true
+        val title = (if (restored) savedInstanceState?.getString(KEY_TITLE) else intent.getStringExtra(EXTRA_TITLE))
+            ?.takeIf { it.isNotBlank() }
+        setContentView(buildLayout(title))
         playerView.player = controller.player
         bindButtons()
+        buildSleepPanel()
+        onBackPressedDispatcher.addCallback(this, closePanelOnBack)
 
         val startMs = savedInstanceState?.getLong(KEY_POSITION) ?: target.startMs
         lifecycleScope.launch {
-            if (!target.external) return@launch start(target.videoId, startMs, saveHistory = true)
+            turnOffWhenDone = SettingsRepository.current().turnOffWhenDone
+            renderSleep()
+            if (!target.external) return@launch start(videoId, startMs, saveHistory = true, title)
             // Link de outro app: o padrão é não ir para o histórico (configurável).
             when (SettingsRepository.current().externalLinks) {
-                ExternalLinks.NO_HISTORY -> start(target.videoId, startMs, saveHistory = false)
-                ExternalLinks.SAVE_HISTORY -> start(target.videoId, startMs, saveHistory = true)
-                ExternalLinks.ASK -> ask { save -> start(target.videoId, startMs, save) }
+                ExternalLinks.NO_HISTORY -> start(videoId, startMs, saveHistory = false, title)
+                ExternalLinks.SAVE_HISTORY -> start(videoId, startMs, saveHistory = true, title)
+                ExternalLinks.ASK -> ask { save -> start(videoId, startMs, save, title) }
             }
         }
 
@@ -98,6 +152,9 @@ class PlayerActivity : ComponentActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { controller.state.collect(::render) }
                 launch { controller.controls.collect(::renderControls) }
+                launch { controller.ended.collect(::onEnded) }
+                launch { controller.quality.collect(::renderQuality) }
+                launch { combine(PlayQueue.active, PlayQueue.left) { _, _ -> }.collect { renderSleep() } }
                 launch {
                     controller.notices.collect { notice ->
                         if (notice != null) {
@@ -110,9 +167,9 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun start(videoId: String, startMs: Long, saveHistory: Boolean) {
+    private fun start(videoId: String, startMs: Long, saveHistory: Boolean, title: String?) {
         this.saveHistory = saveHistory
-        controller.open(videoId, startMs, saveHistory)
+        controller.open(videoId, startMs, saveHistory, title)
     }
 
     private fun ask(onChoice: (saveHistory: Boolean) -> Unit) {
@@ -126,10 +183,15 @@ class PlayerActivity : ComponentActivity() {
 
     private fun render(state: PlaybackController.State) {
         when (state) {
-            PlaybackController.State.Loading -> messageView.visibility = View.GONE
+            PlaybackController.State.Loading -> {
+                // Também o próximo vídeo da sequência: título novo, sem os detalhes do anterior.
+                messageView.visibility = View.GONE
+                showTitle()
+                detailView.text = null
+            }
             is PlaybackController.State.Playing -> {
                 messageView.visibility = View.GONE
-                titleView.text = state.info.title
+                showTitle()
                 val noHistory = if (!saveHistory) getString(R.string.player_no_history) else null
                 detailView.text = listOfNotNull(state.info.author, state.selection, noHistory).joinToString(" · ")
             }
@@ -140,7 +202,18 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * O título do vídeo: o do stream; se ele vier sem (o cliente de TV do YouTube não manda), o do
+     * card que abriu o vídeo (ou da sequência); e, nos links de outros apps, o da página do vídeo.
+     */
+    private fun showTitle() {
+        val info = (controller.state.value as? PlaybackController.State.Playing)?.info
+        val title = info?.title ?: controller.titleHint ?: controller.controls.value.page?.title
+        if (titleView.text?.toString().orEmpty() != title.orEmpty()) titleView.text = title
+    }
+
     private fun renderControls(controls: PlaybackController.Controls) {
+        showTitle()
         val page = controls.page
         actions.visibility = if (page != null) View.VISIBLE else View.GONE
         if (page != null) {
@@ -178,6 +251,200 @@ class PlayerActivity : ComponentActivity() {
         skipButton.setOnClickListener {
             if (!controller.skipAhead()) Toast.makeText(this, R.string.player_no_highlight, Toast.LENGTH_SHORT).show()
         }
+        sleepButton.setOnClickListener { togglePanel(sleepPanel) }
+        qualityButton.setOnClickListener { togglePanel(qualityPanel) }
+        // O painel some junto com os controles.
+        playerView.setControllerVisibilityListener(
+            PlayerView.ControllerVisibilityListener { visibility ->
+                if (visibility != View.VISIBLE) closePanel(focusButton = false)
+            },
+        )
+    }
+
+    /**
+     * Botão de resolução: mostra a que está tocando (âmbar quando escolhida à mão). O painel tem
+     * "Auto" e as resoluções do vídeo; a escolha vale só para o vídeo atual e fica mesmo com a rede
+     * oscilando (no Auto, o app desce e volta sozinho).
+     */
+    private fun renderQuality(quality: PlaybackController.Quality) {
+        qualityButton.visibility = if (quality.heights.isEmpty()) View.GONE else View.VISIBLE
+        qualityButton.text = quality.playing?.let { getString(R.string.player_quality_height, it) }
+            ?: getString(R.string.player_quality_auto)
+        qualityButton.setTextColor(color(if (quality.manual != null) R.color.player_accent else R.color.player_icon))
+        if (quality.heights != qualityHeights) {
+            qualityHeights = quality.heights
+            // A primeira view da linha é o nome dela; as opções vêm depois.
+            while (qualityRow.childCount > 1) qualityRow.removeViewAt(1)
+            qualityRow.addView(chip(getString(R.string.player_quality_auto), AUTO_QUALITY) { chooseQuality(null) })
+            quality.heights.forEach { height ->
+                qualityRow.addView(chip(getString(R.string.player_quality_height, height), height) { chooseQuality(height) })
+            }
+            if (quality.heights.isEmpty() && openPanel == qualityPanel) closePanel(focusButton = false)
+        }
+        qualityRow.select(quality.manual ?: AUTO_QUALITY)
+    }
+
+    private fun chooseQuality(height: Int?) {
+        controller.setQuality(height)
+        closePanel()
+    }
+
+    /** As opções do painel de dormir. A lista de "Then play" só aparece numa sequência de playlist. */
+    private fun buildSleepPanel() {
+        BRIGHTNESS_LEVELS.forEach { level ->
+            brightnessRow.addView(chip(getString(R.string.player_brightness_level, level), level) { setBrightness(level) })
+        }
+        PlayQueue.CHOICES.forEach { count ->
+            val label = when (count) {
+                0 -> getString(R.string.player_then_play_none)
+                PlayQueue.ALL -> getString(R.string.player_then_play_all)
+                else -> count.toString()
+            }
+            queueRow.addView(chip(label, count) { PlayQueue.setLeft(count) })
+        }
+        endRow.addView(chip(getString(R.string.player_stay_on), false) { setTurnOff(false) })
+        endRow.addView(chip(getString(R.string.player_turn_off), true) { setTurnOff(true) })
+        renderSleep()
+    }
+
+    private fun chip(text: String, value: Any, onClick: () -> Unit): TextView =
+        TextView(this, null, 0, R.style.PlayerChip).apply {
+            this.text = text
+            tag = value
+            layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, dp(40)).apply { marginEnd = dp(8) }
+            setOnClickListener { onClick() }
+        }
+
+    private fun renderSleep() {
+        if (!::sleepPanel.isInitialized) return
+        brightnessRow.select(brightness)
+        queueRow.visibility = if (PlayQueue.active.value) View.VISIBLE else View.GONE
+        queueRow.select(PlayQueue.left.value)
+        // Sem a ação de dormir do sistema (antes do Android 9), não há o que escolher.
+        endRow.visibility = if (ScreenOffService.supported) View.VISIBLE else View.GONE
+        endRow.select(turnOffWhenDone)
+        val limited = PlayQueue.active.value && PlayQueue.left.value != PlayQueue.ALL
+        sleepButton.setActive(brightness < 100 || turnOffWhenDone || limited)
+    }
+
+    /** Marca a opção de [value] na linha (a primeira view, sem tag, é o nome da linha). */
+    private fun LinearLayout.select(value: Any) {
+        for (i in 0 until childCount) {
+            val option = getChildAt(i) as? TextView ?: continue
+            val tag = option.tag ?: continue
+            val on = tag == value
+            option.isActivated = on
+            option.setTextColor(color(if (on) R.color.player_accent else R.color.player_icon))
+        }
+    }
+
+    /** Abre [panel] (fechando o outro) ou fecha, se ele já estiver aberto. */
+    private fun togglePanel(panel: View) {
+        if (openPanel == panel) return closePanel()
+        closePanel(focusButton = false)
+        if (panel == sleepPanel) renderSleep()
+        panel.visibility = View.VISIBLE
+        openPanel = panel
+        closePanelOnBack.isEnabled = true
+        // Com o painel aberto, os controles não somem sozinhos (no celular os toques não contam).
+        playerView.controllerShowTimeoutMs = 0
+        playerView.showController()
+        val focus = if (panel == sleepPanel) {
+            brightnessRow.findViewWithTag<View>(brightness)
+        } else {
+            qualityRow.findViewWithTag<View>(controller.quality.value.manual ?: AUTO_QUALITY)
+        }
+        focus?.requestFocus()
+    }
+
+    private fun closePanel(focusButton: Boolean = true) {
+        val panel = openPanel ?: return
+        panel.visibility = View.GONE
+        openPanel = null
+        closePanelOnBack.isEnabled = false
+        playerView.controllerShowTimeoutMs = CONTROLS_TIMEOUT_MS
+        if (focusButton) {
+            playerView.showController()
+            (if (panel == sleepPanel) sleepButton else qualityButton).requestFocus()
+        }
+    }
+
+    /** Escurece o vídeo (a legenda junto), sem mexer nos controles nem no brilho da TV. */
+    private fun setBrightness(level: Int) {
+        brightness = level
+        dimView.alpha = 1f - level / 100f
+        dimView.visibility = if (level < 100) View.VISIBLE else View.GONE
+        // Escurecido, os controles não acendem sozinhos na troca de vídeo nem no fim.
+        playerView.controllerAutoShow = level == 100
+        renderSleep()
+    }
+
+    private fun setTurnOff(on: Boolean) {
+        turnOffWhenDone = on
+        AppScope.launch { SettingsRepository.setTurnOffWhenDone(on) }
+        renderSleep()
+        if (on && ScreenOffService.supported && !ScreenOffService.enabled) {
+            // Uma vez só: o Android pede que o serviço seja ligado à mão.
+            Toast.makeText(this, R.string.player_turn_off_setup, Toast.LENGTH_LONG).show()
+            try {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            } catch (_: ActivityNotFoundException) {
+                // Sem a tela de Acessibilidade: o aviso já diz onde ligar.
+            }
+        }
+    }
+
+    /**
+     * O vídeo acabou sem próximo na sequência: a tela pode apagar e, com "Turn off", o aparelho
+     * dorme depois de alguns segundos (qualquer botão cancela). Tocar de novo volta a manter a
+     * tela acesa.
+     */
+    private fun onEnded(ended: Boolean) {
+        keepScreenOn(!ended)
+        if (!ended) {
+            endHandled = false
+            cancelTurnOff(announce = false)
+            return
+        }
+        if (endHandled) return
+        endHandled = true
+        if (!turnOffWhenDone || !ScreenOffService.supported) return
+        if (!ScreenOffService.enabled) {
+            Toast.makeText(this, R.string.player_turn_off_not_allowed, Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(this, R.string.player_turning_off, Toast.LENGTH_LONG).show()
+        turnOffJob = lifecycleScope.launch {
+            delay(TURN_OFF_DELAY_MS)
+            turnOffJob = null
+            ScreenOffService.turnOff()
+        }
+    }
+
+    private fun cancelTurnOff(announce: Boolean) {
+        val job = turnOffJob ?: return
+        turnOffJob = null
+        job.cancel()
+        if (announce) Toast.makeText(this, R.string.player_turn_off_canceled, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun keepScreenOn(on: Boolean) {
+        playerView.keepScreenOn = on
+        if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && turnOffJob != null) {
+            cancelTurnOff(announce = true)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && turnOffJob != null) cancelTurnOff(announce = true)
+        return super.dispatchTouchEvent(event)
     }
 
     private fun ImageButton.setActive(active: Boolean) {
@@ -195,13 +462,18 @@ class PlayerActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (!::controller.isInitialized) return
+        // Saiu do app durante a contagem: não desliga nada.
+        cancelTurnOff(announce = false)
         controller.saveProgress()
         controller.player.pause()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        if (::controller.isInitialized) outState.putLong(KEY_POSITION, controller.player.currentPosition)
+        if (!::controller.isInitialized) return
+        outState.putLong(KEY_POSITION, controller.player.currentPosition)
+        controller.videoId?.let { outState.putString(KEY_VIDEO, it) }
+        controller.titleHint?.let { outState.putString(KEY_TITLE, it) }
     }
 
     override fun onDestroy() {
@@ -221,6 +493,21 @@ class PlayerActivity : ComponentActivity() {
         channelButton = playerView.findViewById(R.id.player_channel)
         skipButton = playerView.findViewById(R.id.player_skip)
         captionsButton = playerView.findViewById(R.id.player_captions)
+        sleepButton = playerView.findViewById(R.id.player_sleep)
+        sleepPanel = playerView.findViewById(R.id.player_sleep_panel)
+        qualityButton = playerView.findViewById(R.id.player_quality_button)
+        qualityPanel = playerView.findViewById(R.id.player_quality_panel)
+        qualityRow = playerView.findViewById(R.id.player_quality_options)
+        brightnessRow = playerView.findViewById(R.id.player_sleep_brightness)
+        queueRow = playerView.findViewById(R.id.player_sleep_queue)
+        endRow = playerView.findViewById(R.id.player_sleep_end)
+
+        // Por cima do vídeo e da legenda, por baixo dos controles.
+        dimView = View(this).apply {
+            setBackgroundColor(Color.BLACK)
+            visibility = View.GONE
+        }
+        (playerView.overlayFrameLayout ?: playerView).addView(dimView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
         messageView = TextView(this).apply {
             setTextColor(Color.WHITE)
@@ -261,6 +548,20 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_VIDEO_ID = "video_id"
         private const val EXTRA_TITLE = "title"
         private const val KEY_POSITION = "position"
+        private const val KEY_VIDEO = "video"
+        private const val KEY_TITLE = "video_title"
+
+        /** O mesmo show_timeout do player_view. */
+        private const val CONTROLS_TIMEOUT_MS = 4000
+
+        /** A opção "Auto" do painel de resolução (as outras são as alturas). */
+        private const val AUTO_QUALITY = 0
+
+        /** Opções de brilho do painel de dormir, em %. */
+        private val BRIGHTNESS_LEVELS = listOf(100, 50, 25, 10, 0)
+
+        /** Tempo para cancelar o "Turn off" depois que os vídeos acabam. */
+        private const val TURN_OFF_DELAY_MS = 10_000L
 
         fun intent(context: Context, videoId: String, title: String?): Intent =
             Intent(context, PlayerActivity::class.java)

@@ -3,6 +3,7 @@ package ytslim.player
 import ytslim.R
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -18,6 +19,8 @@ import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.dash.manifest.DashManifestParser
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -29,6 +32,7 @@ import androidx.media3.extractor.text.DefaultSubtitleParserFactory
 import androidx.media3.extractor.text.SubtitleExtractor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,6 +46,7 @@ import ytslim.data.HeatmapRepository
 import ytslim.data.PlaybackInfo
 import ytslim.data.PlaybackRepository
 import ytslim.data.PlaybackResult
+import ytslim.data.PlayQueue
 import ytslim.data.PlaylistEditor
 import ytslim.data.Rating
 import ytslim.data.SavedVideos
@@ -56,7 +61,8 @@ import java.util.Locale
 /**
  * Dono do ExoPlayer. Busca os streams pelo motor e aplica as regras do player:
  * qualidade sempre na máxima, áudio sempre o original, legenda com um toque e
- * "pular partes menos interessantes".
+ * "pular partes menos interessantes". Quando o vídeo acaba, toca o próximo da
+ * sequência da playlist ([PlayQueue]), se houver.
  */
 @OptIn(UnstableApi::class)
 class PlaybackController(context: Context, private val scope: CoroutineScope) {
@@ -78,11 +84,21 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         val saved: Boolean? = null,
     )
 
+    /** O botão de resolução: as do vídeo, a que está tocando e a escolhida à mão (null = Auto). */
+    data class Quality(val heights: List<Int> = emptyList(), val playing: Int? = null, val manual: Int? = null)
+
+    private val _quality = MutableStateFlow(Quality())
+    val quality: StateFlow<Quality> = _quality.asStateFlow()
+
     private val _state = MutableStateFlow<State>(State.Loading)
     val state: StateFlow<State> = _state.asStateFlow()
 
     private val _controls = MutableStateFlow(Controls())
     val controls: StateFlow<Controls> = _controls.asStateFlow()
+
+    private val _ended = MutableStateFlow(false)
+    /** O vídeo acabou e a sequência não tem próximo: a tela pode apagar (e a TV desligar, se escolhido). */
+    val ended: StateFlow<Boolean> = _ended.asStateFlow()
 
     /** Mensagens curtas para o usuário (ex.: uma ação que falhou). */
     private val _notices = MutableStateFlow<String?>(null)
@@ -97,28 +113,97 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         .build().apply {
         playWhenReady = true
         addListener(PlayerListener())
+        addAnalyticsListener(DroppedFramesListener())
     }
 
+    /** A qualidade deste vídeo já foi escolhida ([pickQuality]). */
+    private var qualityChecked = false
+
+    /** A altura que o app escolheu sozinho para este vídeo (null = escolha do Media3 ou do usuário). */
+    private var playingHeight: Int? = null
+
+    /** A resolução escolhida à mão para este vídeo (null = Auto). Vale só para o vídeo atual. */
+    private var manualHeight: Int? = null
+
+    /** O teto deste vídeo: cai quando ele para várias vezes para carregar (a rede não dá conta). */
+    private var videoCeiling = QualityRules.MAX_HEIGHT
+
+    /** Depois de descer por causa da rede, tenta voltar ao topo ([scheduleClimb]). */
+    private var climbJob: Job? = null
+
+    /** Quantas vezes o aparelho perdeu muitos quadros, e quantas o vídeo parou para carregar. */
+    private var stutters = 0
+    private var rebuffers = 0
+
+    /** O próximo "carregando" foi o usuário (ou o app) que causou: pular na barra, trocar de faixa. */
+    private var expectBuffering = false
+    private var lastPlaybackState = Player.STATE_IDLE
+
     private var current: PlaybackInfo? = null
-    private var videoId: String? = null
     private var saveHistory = true
     private var errorRetries = 0
     private var loadJob: Job? = null
     private var extrasJob: Job? = null
+    private var nextJob: Job? = null
     private var heatmap: List<HeatSegment> = emptyList()
+
+    /** O vídeo aberto agora. */
+    var videoId: String? = null
+        private set
+
+    /** O título que veio com o vídeo (do card ou da sequência): o stream do cliente de TV não traz. */
+    var titleHint: String? = null
+        private set
+
+    /** O vídeo atual foi aberto pela sequência (e não pelo usuário)? */
+    private var fromQueue = false
 
     /**
      * @param saveHistory false para links externos: toca com a conta (Premium), mas não manda
      * o progresso para o histórico do YouTube.
+     * @param title o título conhecido antes de carregar (o do card).
      */
-    fun open(videoId: String, startPositionMs: Long = 0, saveHistory: Boolean = true) {
+    fun open(videoId: String, startPositionMs: Long = 0, saveHistory: Boolean = true, title: String? = null) {
+        nextJob?.cancel()
+        start(videoId, startPositionMs, saveHistory, title, fromQueue = false)
+    }
+
+    private fun start(videoId: String, startPositionMs: Long, saveHistory: Boolean, title: String?, fromQueue: Boolean) {
         this.videoId = videoId
         this.saveHistory = saveHistory
+        this.titleHint = title?.takeIf { it.isNotBlank() }
+        this.fromQueue = fromQueue
+        _ended.value = false
         errorRetries = 0
         heatmap = emptyList()
+        manualHeight = null
+        _quality.value = Quality()
         _controls.value = Controls()
         load(videoId, startPositionMs)
         loadExtras(videoId)
+    }
+
+    /**
+     * Passa para o próximo vídeo da sequência; sem próximo, marca [ended].
+     * @param counts false quando o atual não tocou: o próximo toma o lugar dele no limite.
+     */
+    private fun playNext(counts: Boolean, delayMs: Long = 0) {
+        nextJob?.cancel()
+        nextJob = scope.launch {
+            if (delayMs > 0) delay(delayMs)
+            val next = PlayQueue.next(counts)
+            if (next == null) {
+                _ended.value = true
+                return@launch
+            }
+            start(next.id, 0, saveHistory, next.title, fromQueue = true)
+        }
+    }
+
+    /** Mostra o erro. Um vídeo da sequência que não toca (apagado, privado) é pulado. */
+    private fun fail(message: String) {
+        _state.value = State.Failed(message)
+        if (fromQueue) playNext(counts = false, delayMs = FAILED_PAUSE_MS)
     }
 
     private fun load(videoId: String, startPositionMs: Long) {
@@ -128,8 +213,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
             val result = runCatching { PlaybackRepository.load(videoId) }
                 .getOrElse { PlaybackResult.Unplayable(it.message) }
             when (result) {
-                is PlaybackResult.Unplayable ->
-                    _state.value = State.Failed(result.reason ?: res.getString(R.string.player_unplayable))
+                is PlaybackResult.Unplayable -> fail(result.reason ?: res.getString(R.string.player_unplayable))
                 is PlaybackResult.Ready -> play(result, startPositionMs)
             }
         }
@@ -147,7 +231,8 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
                 launch {
                     val target = SettingsRepository.current().saveTarget.playlistId
                     val saved = PlaylistEditor.isSaved(videoId, target)
-                    _controls.update { it.copy(saved = saved) }
+                    // Um toque longo recente (talvez ainda indo para a conta) vale mais que a leitura.
+                    _controls.update { it.copy(saved = saved?.let { server -> SavedVideos.changedHere(videoId) ?: server }) }
                 }
                 val page = VideoActions.state(videoId)
                 _controls.update { it.copy(page = page, skipAvailable = it.skipAvailable || !page?.chapterStartsMs.isNullOrEmpty()) }
@@ -157,6 +242,12 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
 
     private suspend fun play(result: PlaybackResult.Ready, startPositionMs: Long) {
         current = result.info
+        qualityChecked = false
+        playingHeight = null
+        videoCeiling = QualityRules.MAX_HEIGHT
+        climbJob?.cancel()
+        stutters = 0
+        rebuffers = 0
         val caption = if (result.info.isLive) null else SubtitleRules.pick(
             captions = result.info.captions,
             deviceLanguage = Locale.getDefault().language,
@@ -261,25 +352,20 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    /** Botão "Save": põe ou tira o vídeo da playlist escolhida nas configurações (Assistir mais tarde). */
+    /**
+     * Botão "Save": põe ou tira o vídeo da playlist escolhida nas configurações (Assistir mais tarde).
+     * O ícone e o aviso mudam na hora; a conta é atualizada em segundo plano ([SavedVideos.toggle]).
+     */
     fun toggleSaved() {
         val id = videoId ?: return
         val saved = _controls.value.saved ?: return
-        _controls.update { it.copy(saved = !saved) }
-        scope.launch {
-            val target = SettingsRepository.current().saveTarget
-            val name = target.title ?: res.getString(R.string.watch_later)
-            runCatching { PlaylistEditor.setSaved(id, target.playlistId, !saved) }.fold(
-                {
-                    SavedVideos.mark(id, !saved)
-                    _notices.value = res.getString(if (saved) R.string.player_removed_from else R.string.player_saved_to, name)
-                },
-                {
-                    _controls.update { c -> c.copy(saved = saved) }
-                    _notices.value = res.getString(R.string.action_failed, it.message ?: it.javaClass.simpleName)
-                },
-            )
+        val now = SavedVideos.toggle(id, current = saved) { error ->
+            if (videoId == id) _controls.update { c -> c.copy(saved = SavedVideos.isSaved(id)) }
+            _notices.value = res.getString(R.string.action_failed, error.message ?: error.javaClass.simpleName)
         }
+        _controls.update { it.copy(saved = now) }
+        val name = SavedVideos.target.value.title ?: res.getString(R.string.watch_later)
+        _notices.value = res.getString(if (now) R.string.player_saved_to else R.string.player_removed_from, name)
     }
 
     fun noticeShown() {
@@ -297,26 +383,230 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
     fun release() {
         loadJob?.cancel()
         extrasJob?.cancel()
+        nextJob?.cancel()
+        climbJob?.cancel()
         player.release()
     }
 
     private inner class PlayerListener : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            watchRebuffering(playbackState)
+            when (playbackState) {
+                Player.STATE_ENDED -> {
+                    saveProgress()
+                    playNext(counts = true)
+                }
+                // Tocar de novo depois do fim (ou voltar na barra) mantém a tela acesa outra vez.
+                Player.STATE_BUFFERING, Player.STATE_READY -> {
+                    nextJob?.cancel()
+                    _ended.value = false
+                }
+            }
+        }
+
+        override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                expectBuffering = true
+            }
+        }
+
         override fun onTracksChanged(tracks: Tracks) {
             enforceOriginalAudio(tracks)
+            pickQuality(tracks)
+            selectedHeight(tracks)?.let { height -> _quality.update { it.copy(playing = height) } }
             val info = current ?: return
             _state.value = State.Playing(info, describeSelection(tracks))
         }
 
         override fun onPlayerError(error: PlaybackException) {
             val id = videoId ?: return
+            Log.w(TAG, "player error ${error.errorCodeName} (playing ${playingHeight}p, manual ${manualHeight}p)", error)
+            val manual = manualHeight
+            if (manual != null && error.errorCode in DECODER_ERRORS) {
+                // A resolução escolhida à mão não tocou neste aparelho: avisa e volta ao Auto.
+                _notices.value = res.getString(R.string.player_quality_failed, manual)
+                setQuality(null)
+                player.prepare()
+                return
+            }
+            if (playingHeight != null && error.errorCode in DECODER_ERRORS) {
+                // O decodificador não deu conta desta resolução: desce um degrau e continua do mesmo ponto.
+                stepDown(sessionWide = true, reason = error.errorCodeName)
+                player.prepare()
+                return
+            }
             // 403 e afins costumam ser do cliente do YouTube: troca de cliente e recarrega no mesmo ponto.
             if (errorRetries < MAX_ERROR_RETRIES) {
                 errorRetries++
                 PlaybackRepository.switchClient()
                 load(id, player.currentPosition.coerceAtLeast(0))
             } else {
-                _state.value = State.Failed(res.getString(R.string.player_error, error.errorCodeName))
+                fail(res.getString(R.string.player_error, error.errorCodeName))
             }
+        }
+    }
+
+    /** O aparelho perdeu muitos quadros duas vezes: o decodificador não dá conta, desce um degrau. */
+    private inner class DroppedFramesListener : AnalyticsListener {
+        override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+            Log.i(TAG, "dropped $droppedFrames frames in $elapsedMs ms (playing ${playingHeight}p)")
+            if (playingHeight == null || droppedFrames < STUTTER_FRAMES || elapsedMs > STUTTER_WINDOW_MS) return
+            if (++stutters >= MAX_STUTTERS) stepDown(sessionWide = true, reason = "dropped frames")
+        }
+    }
+
+    /** O vídeo parou para carregar várias vezes sem o usuário pular: a rede não dá conta, desce um degrau. */
+    private fun watchRebuffering(state: Int) {
+        val previous = lastPlaybackState
+        lastPlaybackState = state
+        when (state) {
+            Player.STATE_READY -> expectBuffering = false
+            Player.STATE_BUFFERING -> {
+                if (previous != Player.STATE_READY || expectBuffering || !player.playWhenReady) return
+                Log.i(TAG, "rebuffering (playing ${playingHeight}p)")
+                if (playingHeight == null) return
+                // Já abaixo do topo por causa da rede: a volta espera a rede ficar calma de novo.
+                if (videoCeiling < QualityRules.MAX_HEIGHT) scheduleClimb()
+                if (++rebuffers >= MAX_REBUFFERS) stepDown(sessionWide = false, reason = "rebuffering")
+            }
+        }
+    }
+
+    /** Botão de resolução: [height] à mão, só neste vídeo, ou null para o Auto. */
+    fun setQuality(height: Int?) {
+        manualHeight = height
+        stutters = 0
+        rebuffers = 0
+        qualityChecked = false
+        pickQuality(player.currentTracks)
+    }
+
+    /**
+     * A faixa do vídeo. No Auto, a maior que [QualityRules] aceita até o teto: 4K primeiro, mesmo
+     * que o decodificador declare menos (muitas TVs declaram menos do que decodificam). Com uma
+     * resolução escolhida à mão, a dela. Uma vez por vídeo, e de novo quando o teto ou a escolha mudam.
+     */
+    private fun pickQuality(tracks: Tracks) {
+        if (qualityChecked) return
+        val (video, described) = videoTracks(tracks)
+        if (video.none { it.selected }) return
+        qualityChecked = true
+        val ceiling = minOf(sessionCeiling, videoCeiling)
+        Log.i(TAG, "video tracks (ceiling ${ceiling}p, manual ${manualHeight}p): ${described.joinToString(" | ")}")
+        val manual = manualHeight?.let { QualityRules.manual(video, it) }
+        // Uma escolha à mão que este vídeo não tem (outro cliente do YouTube, outras resoluções) vira Auto.
+        if (manual == null) manualHeight = null
+        val target = manual ?: QualityRules.best(video, ceiling)
+        // Só o Auto desce sozinho; a escolha à mão fica até o usuário mudar.
+        playingHeight = if (manual == null) target?.height else null
+        _quality.value = Quality(
+            heights = QualityRules.heights(video),
+            playing = (target ?: video.first { it.selected }).height,
+            manual = manualHeight,
+        )
+        val parameters = player.trackSelectionParameters.buildUpon()
+        if (target == null) {
+            // Nenhuma faixa com decodificador de hardware até o teto: fica a escolha do Media3.
+            parameters.clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+        } else {
+            Log.i(TAG, "playing ${described[video.indexOf(target)]}")
+            if (target.selected) return
+            parameters.setOverrideForType(TrackSelectionOverride(tracks.groups[target.group].mediaTrackGroup, target.index))
+        }
+        expectBuffering = true
+        player.trackSelectionParameters = parameters.build()
+    }
+
+    /** As faixas de vídeo como [QualityRules] as vê, e uma descrição de cada uma para o log. */
+    private fun videoTracks(tracks: Tracks): Pair<List<VideoTrack>, List<String>> {
+        val video = ArrayList<VideoTrack>()
+        val described = ArrayList<String>()
+        tracks.groups.forEachIndexed { g, group ->
+            if (group.type != C.TRACK_TYPE_VIDEO) return@forEachIndexed
+            for (i in 0 until group.length) {
+                val format = group.getTrackFormat(i)
+                val support = group.getTrackSupport(i)
+                val track = VideoTrack(
+                    group = g,
+                    index = i,
+                    height = minOf(format.width, format.height).takeIf { format.width > 0 } ?: format.height,
+                    frameRate = format.frameRate,
+                    bitrate = format.bitrate,
+                    handled = support == C.FORMAT_HANDLED,
+                    exceeds = support == C.FORMAT_EXCEEDS_CAPABILITIES,
+                    hardware = hasHardwareDecoder(format.sampleMimeType),
+                    hdr = isHdr(format),
+                    selected = group.isTrackSelected(i),
+                )
+                video += track
+                described += "${format.width}x${format.height}@${format.frameRate} ${format.codecs} " +
+                    "${Util.getFormatSupportString(support)}${if (track.hardware) " hw" else ""}${if (track.selected) " SELECTED" else ""}"
+            }
+        }
+        return video to described
+    }
+
+    /** A resolução (o lado menor do quadro) da faixa de vídeo tocando. */
+    private fun selectedHeight(tracks: Tracks): Int? {
+        val group = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected } ?: return null
+        val format = (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { group.getTrackFormat(it) } ?: return null
+        return if (format.width > 0) minOf(format.width, format.height) else format.height.takeIf { it > 0 }
+    }
+
+    /**
+     * A resolução atual não deu conta: o teto cai para o degrau de baixo e a faixa é escolhida de
+     * novo. [sessionWide]: o decodificador falhou, e o teto vale até o app fechar; senão (rede),
+     * só para este vídeo.
+     */
+    private fun stepDown(sessionWide: Boolean, reason: String) {
+        val height = playingHeight ?: return
+        val lower = QualityRules.lowerCeiling(height)
+        if (sessionWide) {
+            sessionCeiling = minOf(sessionCeiling, lower)
+        } else {
+            videoCeiling = minOf(videoCeiling, lower)
+            scheduleClimb()
+        }
+        Log.w(TAG, "${height}p failed ($reason): ceiling now ${minOf(sessionCeiling, videoCeiling)}p")
+        stutters = 0
+        rebuffers = 0
+        qualityChecked = false
+        // Sem a faixa que falhou; se as faixas ainda não estiverem à mão, a escolha vem no próximo onTracksChanged.
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+            .build()
+        pickQuality(player.currentTracks)
+    }
+
+    /**
+     * A rede costuma melhorar: depois de [CLIMB_BACK_MS] sem o vídeo parar para carregar, o teto do
+     * vídeo volta ao topo (o app oficial do YouTube não volta sozinho, e o Johan não gosta disso).
+     */
+    private fun scheduleClimb() {
+        climbJob?.cancel()
+        climbJob = scope.launch {
+            delay(CLIMB_BACK_MS)
+            Log.i(TAG, "network calm for ${CLIMB_BACK_MS / 1000} s: trying the top quality again")
+            videoCeiling = QualityRules.MAX_HEIGHT
+            rebuffers = 0
+            qualityChecked = false
+            pickQuality(player.currentTracks)
+        }
+    }
+
+    /** HDR (10 bits) só toca se o decodificador aceitar de verdade: forçar daria erro ou cores erradas. */
+    private fun isHdr(format: Format): Boolean {
+        val transfer = format.colorInfo?.colorTransfer
+        if (transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG) return true
+        val codecs = format.codecs ?: return false
+        return codecs.startsWith("vp09.02") || HDR_AV1.containsMatchIn(codecs)
+    }
+
+    private fun hasHardwareDecoder(mimeType: String?): Boolean {
+        mimeType ?: return false
+        return hardwareDecoders.getOrPut(mimeType) {
+            runCatching { MediaCodecUtil.getDecoderInfos(mimeType, false, false).firstOrNull()?.hardwareAccelerated == true }
+                .getOrDefault(false)
         }
     }
 
@@ -347,7 +637,34 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
     }
 
     private companion object {
+        const val TAG = "Doorglow"
         const val MAX_ERROR_RETRIES = 3
+
+        /** Erros do decodificador (ERROR_CODE_DECODER_INIT_FAILED até DECODING_FORMAT_UNSUPPORTED). */
+        val DECODER_ERRORS = PlaybackException.ERROR_CODE_DECODER_INIT_FAILED..PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
+
+        /** O Media3 avisa a cada 50 quadros perdidos; 50 em menos de 10 s é engasgo visível. */
+        const val STUTTER_FRAMES = 50
+        const val STUTTER_WINDOW_MS = 10_000L
+        const val MAX_STUTTERS = 2
+
+        /** AV1 de 10 bits ("av01.0.12M.10"): os vídeos HDR do YouTube. */
+        val HDR_AV1 = Regex("^av01\\.\\d\\.\\d{2}[MH]\\.10")
+
+        /** Paradas para carregar, no mesmo vídeo, antes de descer um degrau. */
+        const val MAX_REBUFFERS = 3
+
+        /** Quanto tempo sem parar para carregar antes de tentar o topo de novo. */
+        const val CLIMB_BACK_MS = 120_000L
+
+        /** O teto até o app fechar: começa em 4K e cai quando o decodificador do aparelho não dá conta. */
+        var sessionCeiling = QualityRules.MAX_HEIGHT
+
+        /** Codec -> o decodificador principal é de hardware? */
+        val hardwareDecoders = HashMap<String, Boolean>()
+
+        /** Quanto o erro de um vídeo da sequência fica na tela antes de ir para o próximo. */
+        const val FAILED_PAUSE_MS = 3_000L
     }
 }
 

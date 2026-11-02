@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -21,8 +22,12 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AuthRepository
 import ytslim.data.Channel
+import ytslim.data.Engine
+import ytslim.data.PlayQueue
 import ytslim.data.Playlist
 import ytslim.data.SavedVideos
 import ytslim.data.Video
@@ -44,7 +49,12 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
     val nav = rememberNavController()
     var signed by remember { mutableStateOf(AuthRepository.isSigned()) }
     val start: Any = remember { if (signed) HomeRoute else SignInRoute }
-    val play: (Video) -> Unit = { video -> context.startActivity(PlayerActivity.intent(context, video.id, video.title)) }
+    val openPlayer: (Video) -> Unit = { video -> context.startActivity(PlayerActivity.intent(context, video.id, video.title)) }
+    // Só a página de uma playlist toca em sequência; o resto abre um vídeo sozinho.
+    val play: (Video) -> Unit = { video ->
+        PlayQueue.clear()
+        openPlayer(video)
+    }
     val openPlaylist: (Playlist) -> Unit = { nav.navigate(PlaylistRoute.from(it)) }
     val openChannel: (Channel) -> Unit = { nav.navigate(ChannelRoute(it.id, it.title)) }
     val signedOut: () -> Unit = {
@@ -67,6 +77,19 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                 }
                 composable<HomeRoute> { entry ->
                     var tab by rememberSaveable { mutableStateOf(HomeTab.SUBSCRIPTIONS) }
+                    // Cada aba guarda o próprio estado (a posição da lista) quando sai da tela.
+                    val tabStates = rememberSaveableStateHolder()
+                    // As outras abas carregam logo depois das Inscrições, para já estarem prontas ao trocar.
+                    LaunchedEffect(Unit) {
+                        val vms = ViewModelProvider.create(entry)
+                        withTimeoutOrNull(6_000) { vms[FeedViewModel::class].state.first { it !is UiState.Loading } }
+                        vms[RecommendedViewModel::class]
+                        vms[PlaylistsViewModel::class]
+                        vms[HistoryViewModel::class]
+                        // Adianta o que o primeiro vídeo precisa (o player do YouTube e a decifragem),
+                        // que numa TV fraca leva segundos. O SmartTube faz o mesmo ao abrir.
+                        Engine.service.refreshCacheIfNeeded()
+                    }
                     // Os ViewModels das abas são os do início (os mesmos que viewModel() devolve abaixo).
                     val reload: (HomeTab) -> Unit = { which ->
                         val vms = ViewModelProvider.create(entry)
@@ -79,29 +102,35 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                         }
                     }
                     ui.Home(tab = tab, onTab = { tab = it }, onReload = reload) { current ->
-                        when (current) {
-                            HomeTab.SUBSCRIPTIONS -> ui.Feed(viewModel<FeedViewModel>(), onPlay = play, onOpenChannel = openChannel)
-                            HomeTab.RECOMMENDED -> ui.Recommended(viewModel<RecommendedViewModel>(), onPlay = play, onOpenChannel = openChannel)
-                            HomeTab.SEARCH -> ui.Search(
-                                vm = viewModel<SearchViewModel>(),
-                                onPlay = play,
-                                onOpenChannel = openChannel,
-                                onOpenPlaylist = openPlaylist,
-                            )
-                            HomeTab.PLAYLISTS -> ui.Playlists(viewModel<PlaylistsViewModel>(), onOpen = openPlaylist)
-                            HomeTab.HISTORY -> ui.History(viewModel<HistoryViewModel>(), onPlay = play, onOpenChannel = openChannel)
-                            HomeTab.SETTINGS -> ui.Settings(
-                                vm = viewModel<SettingsViewModel>(),
-                                onOpenPlaylist = openPlaylist,
-                                onSignedOut = signedOut,
-                            )
+                        tabStates.SaveableStateProvider(current.name) {
+                            when (current) {
+                                HomeTab.SUBSCRIPTIONS -> ui.Feed(viewModel<FeedViewModel>(), onPlay = play, onOpenChannel = openChannel)
+                                HomeTab.RECOMMENDED -> ui.Recommended(viewModel<RecommendedViewModel>(), onPlay = play, onOpenChannel = openChannel)
+                                HomeTab.SEARCH -> ui.Search(
+                                    vm = viewModel<SearchViewModel>(),
+                                    onPlay = play,
+                                    onOpenChannel = openChannel,
+                                    onOpenPlaylist = openPlaylist,
+                                )
+                                HomeTab.PLAYLISTS -> ui.Playlists(viewModel<PlaylistsViewModel>(), onOpen = openPlaylist)
+                                HomeTab.HISTORY -> ui.History(viewModel<HistoryViewModel>(), onPlay = play, onOpenChannel = openChannel)
+                                HomeTab.SETTINGS -> ui.Settings(
+                                    vm = viewModel<SettingsViewModel>(),
+                                    onOpenPlaylist = openPlaylist,
+                                    onSignedOut = signedOut,
+                                )
+                            }
                         }
                     }
                 }
                 composable<PlaylistRoute> { entry ->
                     val route = entry.toRoute<PlaylistRoute>()
                     val vm = viewModel { PlaylistViewModel(route.toPlaylist()) }
-                    ui.PlaylistPage(title = route.title, vm = vm, onPlay = play, onOpenChannel = openChannel, onBack = { nav.popBackStack() })
+                    val playInOrder: (Video) -> Unit = { video ->
+                        vm.queueFrom(video)
+                        openPlayer(video)
+                    }
+                    ui.PlaylistPage(title = route.title, vm = vm, onPlay = playInOrder, onOpenChannel = openChannel, onBack = { nav.popBackStack() })
                 }
                 composable<ChannelRoute> { entry ->
                     val route = entry.toRoute<ChannelRoute>()

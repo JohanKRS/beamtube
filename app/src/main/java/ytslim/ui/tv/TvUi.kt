@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,12 +43,14 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,6 +98,8 @@ import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.Glow
 import androidx.tv.material3.Icon
+import androidx.tv.material3.IconButton
+import androidx.tv.material3.IconButtonDefaults
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.ListItemDefaults
 import androidx.tv.material3.MaterialTheme
@@ -116,6 +121,7 @@ import ytslim.data.AuthRepository
 import ytslim.data.Channel
 import ytslim.data.Playlist
 import ytslim.data.SavedVideos
+import ytslim.data.SearchFilters
 import ytslim.data.SearchItem
 import ytslim.data.Topic
 import ytslim.data.TopicRules
@@ -129,12 +135,15 @@ import ytslim.ui.HomeTab
 import ytslim.ui.LightSlit
 import ytslim.ui.Look
 import ytslim.ui.Notice
+import ytslim.ui.Notices
 import ytslim.ui.PlaylistViewModel
 import ytslim.ui.PlaylistViewModel.Reorder
 import ytslim.ui.PlaylistsViewModel
+import ytslim.ui.PrefetchThumbnails
 import ytslim.ui.QrCode
 import ytslim.ui.RecommendedViewModel
 import ytslim.ui.Screens
+import ytslim.ui.SearchFilterChoice
 import ytslim.ui.SearchViewModel
 import ytslim.ui.SettingsViewModel
 import ytslim.ui.SettingsViewModel.TopicList
@@ -143,9 +152,11 @@ import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
 import ytslim.ui.channelOf
 import ytslim.ui.externalLinkOptions
+import ytslim.ui.feedFilterChoices
 import ytslim.ui.formatDuration
 import ytslim.ui.searchFilterChoices
 import ytslim.ui.subtitleOf
+import ytslim.ui.text
 import ytslim.ui.toggleSaved
 
 /**
@@ -398,8 +409,14 @@ object TvUi : Screens {
     @Composable
     override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
-        Loadable(state, onRetry = vm::reload) { content ->
-            VideoGrid(content, stringResource(R.string.recommended_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
+        val filters by vm.filters.collectAsStateWithLifecycle()
+        Column(Modifier.fillMaxSize()) {
+            FilterButtons(feedFilterChoices(filters), onChange = vm::setFilters)
+            Spacer(Modifier.height(16.dp))
+            Loadable(state, onRetry = vm::reload) { content ->
+                val empty = stringResource(if (filters.isDefault) R.string.recommended_empty else R.string.recommended_filtered_empty)
+                VideoGrid(content, empty, vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
+            }
         }
     }
 
@@ -442,17 +459,7 @@ object TvUi : Screens {
                 modifier = Modifier.fillMaxWidth(0.6f),
             )
             Spacer(Modifier.height(12.dp))
-            // Cada botão passa para o próximo valor do filtro.
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                searchFilterChoices(filters).forEach { choice ->
-                    val label = stringResource(R.string.search_filter_value, stringResource(choice.label), stringResource(choice.selected.label))
-                    if (choice.isDefault) {
-                        OutlinedButton(onClick = { vm.setFilters(choice.next()) }) { Text(label) }
-                    } else {
-                        Button(onClick = { vm.setFilters(choice.next()) }) { Text(label) }
-                    }
-                }
-            }
+            FilterButtons(searchFilterChoices(filters), onChange = vm::setFilters)
             if (suggestions.isNotEmpty() && text.trim() != searched) {
                 Spacer(Modifier.height(12.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -467,6 +474,79 @@ object TvUi : Screens {
                     SearchResults(data, vm::loadMore, onPlay, onOpenChannel, onOpenPlaylist)
                 }
             }
+        }
+    }
+
+    /** Os filtros (busca e Recomendações): cada botão abre a lista dos valores, com o atual em foco. */
+    @Composable
+    private fun FilterButtons(choices: List<SearchFilterChoice>, onChange: (SearchFilters) -> Unit) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            choices.forEach { choice ->
+                key(choice.label) {
+                    var open by remember { mutableStateOf(false) }
+                    Box {
+                        val label = stringResource(R.string.search_filter_value, stringResource(choice.label), choice.selected.text())
+                        if (choice.isDefault) {
+                            OutlinedButton(onClick = { open = true }) { Text(label) }
+                        } else {
+                            Button(onClick = { open = true }) { Text(label) }
+                        }
+                        if (open) {
+                            FilterMenu(choice, onDismiss = { open = false }) { picked ->
+                                open = false
+                                onChange(picked)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** A lista de valores de um filtro, embaixo do botão. "Voltar" fecha sem mudar. */
+    @Composable
+    private fun FilterMenu(choice: SearchFilterChoice, onDismiss: () -> Unit, onPick: (SearchFilters) -> Unit) {
+        val gap = with(LocalDensity.current) { 10.dp.roundToPx() }
+        val selected = choice.options.indexOfFirst { it.selected }.coerceAtLeast(0)
+        val focus = remember { FocusRequester() }
+        val list = rememberLazyListState(initialFirstVisibleItemIndex = (selected - 2).coerceAtLeast(0))
+        Popup(
+            popupPositionProvider = remember(gap) { BelowAnchor(gap) },
+            onDismissRequest = onDismiss,
+            properties = PopupProperties(focusable = true),
+        ) {
+            LazyColumn(
+                state = list,
+                modifier = Modifier.width(300.dp).heightIn(max = 420.dp)
+                    .background(Floating, RoundedCornerShape(22.dp))
+                    .border(1.dp, Look.Hairline, RoundedCornerShape(22.dp)),
+                contentPadding = PaddingValues(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                itemsIndexed(choice.options) { index, option ->
+                    MenuItem(
+                        text = option.text(),
+                        supporting = null,
+                        leading = {
+                            if (option.selected) Icon(Icons.Filled.Check, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(20.dp))
+                            else Spacer(Modifier.size(20.dp))
+                        },
+                        modifier = if (index == selected) Modifier.focusRequester(focus) else Modifier,
+                    ) { onPick(option.filters) }
+                }
+            }
+            LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+        }
+    }
+
+    /** Põe a lista embaixo do botão (ou em cima, se não couber). */
+    private class BelowAnchor(private val gap: Int) : PopupPositionProvider {
+        override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+            val x = anchorBounds.left.coerceAtMost(windowSize.width - popupContentSize.width).coerceAtLeast(0)
+            val below = anchorBounds.bottom + gap
+            val y = if (below + popupContentSize.height <= windowSize.height) below
+            else (anchorBounds.top - gap - popupContentSize.height).coerceAtLeast(0)
+            return IntOffset(x, y)
         }
     }
 
@@ -964,18 +1044,8 @@ object TvUi : Screens {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                Spacer(Modifier.width(24.dp))
-                OutlinedButton(onClick = vm::toggleBlocked) {
-                    Text(stringResource(if (blocked) R.string.channel_unblock else R.string.channel_block))
-                }
-            }
-            if (blocked) {
-                Text(
-                    stringResource(R.string.channel_blocked_hint),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+                Spacer(Modifier.width(16.dp))
+                BlockButton(blocked, onToggle = vm::toggleBlocked)
             }
             Spacer(Modifier.height(16.dp))
             Loadable(state, onRetry = vm::reload) { content ->
@@ -1012,6 +1082,37 @@ object TvUi : Screens {
         }
     }
 
+    /**
+     * Bloquear o canal: um ícone pequeno ao lado do nome (âmbar quando bloqueado). O texto só
+     * aparece com o foco nele; o resultado vem num aviso.
+     */
+    @Composable
+    private fun BlockButton(blocked: Boolean, onToggle: () -> Unit) {
+        val res = LocalContext.current.resources
+        var focused by remember { mutableStateOf(false) }
+        val label = stringResource(if (blocked) R.string.channel_unblock else R.string.channel_block)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = {
+                    onToggle()
+                    Notices.show(res.getString(if (blocked) R.string.channel_unblocked_notice else R.string.channel_blocked_notice))
+                },
+                modifier = Modifier.size(36.dp).onFocusChanged { focused = it.isFocused },
+                colors = IconButtonDefaults.colors(
+                    containerColor = Color.Transparent,
+                    contentColor = if (blocked) Look.Glow else Look.Sub,
+                    focusedContainerColor = Look.GlowSoft.copy(alpha = 0.18f),
+                    focusedContentColor = Look.Text,
+                ),
+            ) {
+                Icon(Icons.Outlined.Block, contentDescription = label, modifier = Modifier.size(18.dp))
+            }
+            if (focused) {
+                Text(label, style = MaterialTheme.typography.bodySmall, color = Look.Sub, modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+    }
+
     @Composable
     private fun VideoGrid(
         content: VideoListContent,
@@ -1025,13 +1126,14 @@ object TvUi : Screens {
     ) {
         val firstFocus = remember { FocusRequester() }
         val saved by SavedVideos.ids.collectAsStateWithLifecycle()
+        PrefetchThumbnails(content.videos)
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
             verticalArrangement = Arrangement.spacedBy(GridGapY),
             contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
         ) {
-            if (content.videos.isEmpty() && !content.hasMore) {
+            if (content.videos.isEmpty() && !content.loadingMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(emptyText, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(24.dp))
                 }
@@ -1044,6 +1146,14 @@ object TvUi : Screens {
                     onOpenChannel = onOpenChannel,
                     modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
                 ) { onPlay(video) }
+            }
+            // Parou com mais páginas (os filtros esvaziaram várias seguidas): um botão para continuar.
+            if (content.hasMore && !content.loadingMore) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
+                        OutlinedButton(onClick = onNearEnd) { Text(stringResource(R.string.load_more)) }
+                    }
+                }
             }
         }
         LaunchedEffect(content.videos.isNotEmpty()) {

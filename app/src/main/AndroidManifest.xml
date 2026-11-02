@@ -181,5 +181,20 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- Painel de dormir do player: desligar a TV quando os vídeos acabam ("When done: Turn off").
+             Só o sistema se liga a ele (BIND_ACCESSIBILITY_SERVICE). -->
+        <service
+            android:name=".player.ScreenOffService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/screen_off_service" />
+        </service>
     </application>
 </manifest>
