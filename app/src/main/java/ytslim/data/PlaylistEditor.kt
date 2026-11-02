@@ -1,5 +1,6 @@
 package ytslim.data
 
+import com.liskovsoft.googlecommon.common.helpers.DefaultHeaders
 import com.liskovsoft.youtubeapi.common.helpers.PostDataHelper
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -189,10 +190,14 @@ internal object Innertube {
     private const val BASE = "https://www.youtube.com/youtubei/v1/"
     private val json = KJson { ignoreUnknownKeys = true }
 
-    suspend fun post(endpoint: String, body: String): JsonElement = io {
+    /** O cliente de TV do motor manda o User-Agent e o Referer da TV junto: [TV_HEADERS]. */
+    val TV_HEADERS = mapOf("User-Agent" to DefaultHeaders.USER_AGENT_TV, "Referer" to "https://www.youtube.com/tv")
+
+    suspend fun post(endpoint: String, body: String, headers: Map<String, String> = emptyMap()): JsonElement = io {
         val request = Request.Builder()
             .url(BASE + endpoint)
             .post(RequestBody.create(MediaType.parse("application/json"), body))
+            .apply { headers.forEach { (name, value) -> header(name, value) } }
             .build()
         EngineHttp.client().newCall(request).execute().use { response ->
             val text = response.body()?.string().orEmpty()

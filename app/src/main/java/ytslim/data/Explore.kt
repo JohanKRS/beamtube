@@ -1,6 +1,7 @@
 package ytslim.data
 
 import android.content.Context
+import android.util.Log
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -180,6 +181,7 @@ class ExploreDraw(val videos: List<Video>, val channels: List<String>, val hasMo
  * de cada canal sorteado, que traz os vídeos recentes e as prateleiras com os mais antigos.
  */
 object ExploreRepository {
+    private const val TAG = "Doorglow"
     /** Canais inscritos lidos de uma vez antes do primeiro sorteio (até [FIRST_BATCHES] vezes, até ter [MIN_CANDIDATES]). */
     private const val FIRST_SCAN = 12
     private const val FIRST_BATCHES = 3
@@ -224,10 +226,18 @@ object ExploreRepository {
         ChannelPhotos.putAll(chosen.mapNotNull { c -> c.photo?.let { c.id to it } }.toMap())
         val gate = Semaphore(PARALLEL)
         val videos = coroutineScope {
-            chosen.map { channel -> async { gate.withPermit { runCatching { videosOf(channel) }.getOrNull() } } }.awaitAll()
+            chosen.map { channel ->
+                async {
+                    gate.withPermit {
+                        runCatching { videosOf(channel) }.onFailure { Log.w(TAG, "explore: no videos from ${channel.id}", it) }.getOrNull()
+                    }
+                }
+            }.awaitAll()
         }.filterNotNull().map { ExploreRules.pick(it, filters, random) }
         remember(chosen.map { it.id })
         val hasMore = candidates.size > shown.size + chosen.size
+        Log.i(TAG, "explore: ${subscribed.size} subscriptions, ${load().sources.count { it.key in ids }} read, " +
+            "${candidates.size} candidates, ${chosen.size} drawn, ${videos.count { it.isNotEmpty() }} with videos, ${videos.sumOf { it.size }} videos")
         return ExploreDraw(ExploreRules.mix(videos.shuffled(random)), chosen.map { it.id }, hasMore)
     }
 
@@ -268,7 +278,15 @@ object ExploreRepository {
         val gate = Semaphore(parallel)
         channels.chunked(SAVE_EVERY).forEach { chunk ->
             val read = coroutineScope {
-                chunk.map { channel -> async { gate.withPermit { runCatching { channel.id to sourceOf(channel) }.getOrNull() } } }.awaitAll()
+                chunk.map { channel ->
+                    async {
+                        gate.withPermit {
+                            runCatching { channel.id to sourceOf(channel) }
+                                .onFailure { Log.w(TAG, "explore: couldn't read ${channel.id}", it) }
+                                .getOrNull()
+                        }
+                    }
+                }.awaitAll()
             }.filterNotNull()
             if (read.isNotEmpty()) save { it.copy(sources = it.sources + read) }
         }

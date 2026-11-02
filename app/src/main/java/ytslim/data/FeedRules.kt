@@ -1,5 +1,7 @@
 package ytslim.data
 
+import kotlinx.serialization.Serializable
+
 /** Regras do feed de Inscrições. Sem Android, para dar para testar no JVM. */
 object FeedRules {
     /** Shorts nunca aparecem; lives e agendados só com o toggle das configurações ligado. */
@@ -8,6 +10,7 @@ object FeedRules {
 }
 
 /** Um vídeo com a data (estimada) em que ele entrou no feed. */
+@Serializable
 data class Timed(val video: Video, val atMs: Long)
 
 /**

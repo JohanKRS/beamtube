@@ -51,6 +51,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - As páginas de playlist e de canal não têm a barra de abas: só a barra de cima, com "voltar".
 - **Trocar de aba** não perde a posição da lista, e Recommended, Playlists e History carregam logo depois das Inscrições, ao abrir o app, para já estarem prontas (0.4.1).
 - **Atualizar as listas** (pedido do Johan, 2026-11-02): no celular e no tablet, **puxar para baixo** no topo da lista recarrega Subscriptions, Recommended, Playlists, History, a página da playlist e a do canal. A lista continua na tela até a nova chegar. Na TV, **segurar OK na aba** Subscriptions, Recommended, Playlists ou History recarrega a lista (quando o OK é solto). Nada recarrega sozinho: as abas carregam quando o app abre e depois só quando o usuário pede.
+- **Inscrições guardadas no aparelho** (0.5.3, pedido do Johan, 2026-11-02): o app abre **na hora** com a primeira página das Inscrições (e os vídeos das playlists inscritas) da última vez, e atualiza por trás, com o indicador de atualizar no topo. O feed guardado vale por até 3 dias; sem rede, ele fica na tela. Sair da conta apaga (`FeedCache`, arquivo `feed.json`).
 - **Cards de vídeo:** a miniatura com a duração e o progresso; embaixo, o título, o avatar e o nome do canal (abrem o canal) e o resto da linha (visualizações e data). Canal sem foto (em que o usuário não é inscrito) mostra a inicial num círculo colorido.
 - **Sem o @ do canal** (0.4.2, pedido do Johan): o YouTube manda o @ junto com o nome nos cartões da TV ("Veritasium • @veritasium") e na linha dos canais da busca; o app tira o @ das listas, do player e da busca (`Handles`).
 - **Menu do OK longo na TV** (0.4.2, pedido do Johan): o menu aparece assim que o toque longo é reconhecido, com o OK ainda apertado. Ele só pega o foco quando o OK é solto, para o "soltar" não escolher a primeira opção sozinho.
@@ -131,6 +132,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 Pedido do Johan (2026-11-02): os filtros das Recomendações só filtram o que o YouTube já mandou, e muita coisa é difícil de descobrir. Ele quer descobrir canais, sem perder as Recomendações.
 
 - Histórico da ideia: na 0.5.0, categorias feitas à mão (buscas por palavra-chave); na 0.5.1, temas achados nos títulos do histórico, que trouxeram "muita recomendação, nada a ver". Na **0.5.2**, o pedido dele: **vídeos dos canais que os canais que ele segue destacam**, misturando vídeos recentes e antigos, e **um subconjunto bem diferente a cada atualização**, com a lista dos canais guardada para não ficar lento.
+- **A lista dos canais inscritos** (0.5.3): o motor entrega essa lista **sem o id dos canais** (o `TabMediaItem` dele não lê o browseId), e por isso a Explore da 0.5.2 vinha vazia no aparelho: sem ids, nenhuma página era lida. O app agora lê a página de inscrições da TV (`FEsubscriptions`, uma aba por canal) direto no Innertube, com o login do motor, e tira o id de cada canal dos params da aba (protobuf em base64 com o "UC…" dentro; `SubscribedChannels`). Conferido com as respostas reais da TV guardadas nos testes do motor (956 canais, todos com id).
 - **De onde vêm os canais:** a página de cada canal inscrito traz os canais que o criador destaca ("Featured channels", "Other channels to check out"). O app lê essa página pelo motor (o mesmo pedido da página do canal), um por canal inscrito, e guarda o resultado num arquivo do aparelho (`explore.json`). Cada página é lida de novo depois de 30 dias.
   - Na primeira vez, o app lê 12 canais inscritos antes de mostrar a lista (mais 12, até 3 vezes, se aparecerem menos de 30 canais), e o resto em segundo plano, 2 por vez.
   - Ficam de fora os canais que o usuário já segue, os bloqueados e os **canais-irmãos do mesmo criador** (traduções, segundo canal, podcast: "Veritasium em Português", "2veritasium", "Dinge Erklärt – Kurzgesagt", "Mentour Now!"), pelo nome e pelo @ (`ExploreRules.isSibling`). O irmão sai só para quem o destacou.
@@ -152,6 +154,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
 - **O que é "novo" numa playlist:** os vídeos de playlist não trazem data. Por isso o app anota, neste aparelho, quando cada vídeo apareceu na playlist (`PlaylistLedger`). O que já estava lá na primeira leitura não entra no feed; o que entrar depois aparece com a data em que foi visto. Por isso, logo depois de se inscrever, a playlist ainda não mostra nada nas Inscrições.
 - O feed de Inscrições junta o feed dos canais com os vídeos das playlists inscritas.
 - **Sem duplicados:** um vídeo de playlist inscrita só entra no feed se o usuário **não** estiver inscrito no canal do vídeo (se estiver, o vídeo já vem pelo canal).
+  - Até a 0.5.2 essa regra não funcionava no aparelho, pela mesma falta de ids da lista de canais inscritos (ver "Explore"); a 0.5.3 corrige. As fotos dos canais inscritos nos cards vêm da mesma lista.
 - Ordenação junto com o resto do feed: a data dos vídeos dos canais vem do texto "há 3 horas" do YouTube; os de playlist usam a data em que foram vistos. Vídeos de playlists respeitam os mesmos filtros (Shorts, lives e, quando existirem, tópicos e canais bloqueados).
 - Limite: o app lê até 10 páginas de cada playlist. Numa playlist enorme em ordem "mais antigos primeiro", vídeos novos além disso não aparecem.
 - Validado fora do aparelho (2026-11-01): o motor abre uma playlist pública só pelo id (`VL<id>`), com paginação, e cada vídeo traz o canal, que é o que a regra de duplicados precisa.
@@ -188,7 +191,8 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
-   - *Versão 0.5.2 (2026-11-02), a Explore pelos canais que os canais inscritos destacam, pedida pelo Johan depois de testar a 0.5.1, aguardando o teste no aparelho* (ver "Como testar a 0.5.2"). A leitura dos destaques e dos vídeos foi conferida contra o YouTube.
+   - *Versão 0.5.3 (2026-11-02), correções depois de o Johan testar a 0.5.2, aguardando o teste no aparelho* (ver "Como testar a 0.5.3"): a Explore vazia (a lista de canais inscritos vinha sem ids; achado pelos logs do celular, via ADB pelo PC) e as Inscrições guardadas no aparelho para o app abrir na hora.
+   - *Versão 0.5.2 (2026-11-02), a Explore pelos canais que os canais inscritos destacam, pedida pelo Johan depois de testar a 0.5.1.* No aparelho, a aba veio vazia (corrigido na 0.5.3). A leitura dos destaques e dos vídeos foi conferida contra o YouTube.
    - *Versão 0.5.1 (2026-11-02), ajustes pedidos pelo Johan depois de testar a 0.5.0; o Johan testou e aprovou tudo menos a Explore* (ver "Como testar a 0.5.1"): legendas centralizadas com contorno, toques no vídeo, Skip ahead pelos vales do gráfico com marcas na barra, girar a tela, 1080p no celular e no tablet, 3 colunas no tablet em pé, Histórico em linhas e a Explore automática.
    - *Versão 0.5.0 (2026-11-02), a aba Explore pedida pelo Johan* (ver "Como testar a 0.5.0"). A busca das categorias foi conferida contra o YouTube, sem login.
    - *Versão 0.4.2 (2026-11-02), pedidos do Johan depois de testar a 0.4.1, aguardando o teste no aparelho* (ver "Como testar a 0.4.2"): sem o @ do canal, "When done" só na TV, reordenar arrastando no celular, tirar vídeos do Histórico e das playlists, deslizar entre abas, as Configurações pelo avatar, o menu do OK longo abrindo antes de soltar (TV) e o **player novo (opção A)**. A aba Explore vem na versão seguinte.
@@ -201,6 +205,13 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 0.5.3
+
+1. Explore: na primeira vez, alguns segundos com o indicador de carregar, e então vídeos de uns 10 canais que você não segue. Os itens 1 a 6 de "Como testar a 0.5.2" valem a partir desta versão.
+2. Fechar o app (tirar dos recentes) e abrir de novo: as Inscrições aparecem na hora, com o indicador de atualizar no topo, e trocam pela lista nova quando ela chega.
+3. Os cards das Inscrições mostram a foto dos canais inscritos (antes, muitos mostravam só a inicial).
+4. Uma playlist inscrita com um vídeo novo de um canal que você segue: o vídeo aparece uma vez só, pelo canal.
 
 ## Como testar a 0.5.2
 
