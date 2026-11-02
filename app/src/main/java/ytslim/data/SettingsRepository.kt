@@ -52,11 +52,16 @@ object SettingsRepository {
     private val SAVE_TARGET_ID = stringPreferencesKey("save_target_id")
     private val SAVE_TARGET_TITLE = stringPreferencesKey("save_target_title")
     private val TURN_OFF_WHEN_DONE = booleanPreferencesKey("turn_off_when_done")
-    private val EXPLORE = stringPreferencesKey("explore_themes")
-    private val HIDDEN_THEMES = stringSetPreferencesKey("explore_hidden")
 
-    /** As categorias feitas à mão da 0.5.0: a Explore passou a achar os temas sozinha. */
-    private val OLD_CATEGORIES = stringPreferencesKey("explore_categories")
+    /**
+     * O que a Explore guardava até a 0.5.1: as categorias da 0.5.0, os temas do histórico e os
+     * temas escondidos. A Explore agora vem dos canais destacados ([ExploreRepository]).
+     */
+    private val OLD_EXPLORE = listOf(
+        stringPreferencesKey("explore_categories"),
+        stringPreferencesKey("explore_themes"),
+        stringSetPreferencesKey("explore_hidden"),
+    )
 
     private val json = Json { ignoreUnknownKeys = true }
     private val topics = ListSerializer(Topic.serializer())
@@ -113,32 +118,10 @@ object SettingsRepository {
         p[BLOCKED_CHANNELS] = json.encodeToString(channels, current.filterNot { it.id == channelId })
     }
 
-    /** Os temas da Explore (null antes da primeira vez). Fora do [Settings]: mudam sozinhos (miniaturas). */
-    val explore: Flow<ThemeSet?>
-        get() = store.data.map { p -> p[EXPLORE]?.let { decode(it, ThemeSet.serializer()) } }.distinctUntilChanged()
-
-    val categories: Flow<List<Category>>
-        get() = explore.map { it?.categories.orEmpty() }.distinctUntilChanged()
-
-    /** Os temas que o usuário escondeu: não voltam quando a Explore procura de novo. */
-    val hiddenThemes: Flow<Set<String>>
-        get() = store.data.map { p -> p[HIDDEN_THEMES].orEmpty() }.distinctUntilChanged()
-
-    suspend fun saveExplore(themes: ThemeSet) = store.edit { p ->
-        p[EXPLORE] = json.encodeToString(ThemeSet.serializer(), themes)
-        p.remove(OLD_CATEGORIES)
-    }
-
-    /** Muda só a categoria [id] (se ela ainda existir). */
-    suspend fun updateCategory(id: String, change: (Category) -> Category) = store.edit { p ->
-        val current = p[EXPLORE]?.let { decode(it, ThemeSet.serializer()) } ?: return@edit
-        p[EXPLORE] = json.encodeToString(ThemeSet.serializer(), current.copy(categories = current.categories.map { if (it.id == id) change(it) else it }))
-    }
-
-    suspend fun hideTheme(id: String) = store.edit { p ->
-        p[HIDDEN_THEMES] = p[HIDDEN_THEMES].orEmpty() + id
-        val current = p[EXPLORE]?.let { decode(it, ThemeSet.serializer()) } ?: return@edit
-        p[EXPLORE] = json.encodeToString(ThemeSet.serializer(), current.copy(categories = current.categories.filterNot { it.id == id }))
+    /** Apaga o que a Explore antiga deixou guardado (uma vez, ao abrir o app). */
+    suspend fun dropOldExplore() {
+        if (OLD_EXPLORE.none { it in store.data.first() }) return
+        store.edit { p -> OLD_EXPLORE.forEach { p.remove(it) } }
     }
 
     suspend fun setSaveTarget(value: SaveTarget) = store.edit { p ->

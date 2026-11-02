@@ -46,7 +46,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -122,8 +121,6 @@ import kotlinx.coroutines.launch
 import ytslim.R
 import ytslim.data.AppIcon
 import ytslim.data.AuthRepository
-import ytslim.data.Category
-import ytslim.data.CategoryRules
 import ytslim.data.Channel
 import ytslim.data.Playlist
 import ytslim.data.SavedVideos
@@ -133,10 +130,8 @@ import ytslim.data.Topic
 import ytslim.data.TopicRules
 import ytslim.data.Video
 import ytslim.ui.AppIconPreview
-import ytslim.ui.CategoryViewModel
 import ytslim.ui.ChannelViewModel
 import ytslim.ui.ExploreViewModel
-import ytslim.ui.categoryFilterChoices
 import ytslim.ui.DoorGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
@@ -431,183 +426,13 @@ object TvUi : Screens {
     }
 
     @Composable
-    override fun Explore(vm: ExploreViewModel, onOpen: (Category) -> Unit) {
-        val categories by vm.categories.collectAsStateWithLifecycle()
-        val error by vm.error.collectAsStateWithLifecycle()
-        val refreshing by vm.refreshing.collectAsStateWithLifecycle()
-        val res = LocalContext.current.resources
-        val list = categories
-        if (list == null && error == null) {
-            Box(Modifier.fillMaxSize(), Alignment.Center) { Text(stringResource(R.string.explore_finding), style = MaterialTheme.typography.titleMedium) }
-            return
-        }
-        val state = if (list != null) UiState.Ready(list) else UiState.Error(error.orEmpty())
-        Loadable(state, onRetry = vm::retry) { themes ->
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                horizontalArrangement = Arrangement.spacedBy(GridGapX),
-                verticalArrangement = Arrangement.spacedBy(GridGapY),
-                contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
-            ) {
-                if (themes.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) { Text(stringResource(R.string.explore_empty), style = MaterialTheme.typography.titleMedium) }
-                }
-                itemsIndexed(themes, key = { _, c -> c.id }) { _, category ->
-                    CategoryCard(
-                        category,
-                        onOpen = { onOpen(category) },
-                        onHide = {
-                            vm.hide(category.id)
-                            Notices.show(res.getString(R.string.explore_hidden, category.name))
-                        },
-                    )
-                }
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Hint(stringResource(if (refreshing) R.string.explore_finding else R.string.explore_hint_tv))
-                }
-            }
-        }
-    }
-
-    /**
-     * Um tema: OK abre; segurar o OK abre o menu com esconder (como no card de vídeo, o menu
-     * aparece no toque longo e pega o foco quando o OK é solto).
-     */
-    @Composable
-    private fun CategoryCard(category: Category, onOpen: () -> Unit, onHide: () -> Unit) {
-        var menu by remember { mutableStateOf(false) }
-        var menuFocusable by remember { mutableStateOf(false) }
-        Column {
-            Box(
-                Modifier.onPreviewKeyEvent { event ->
-                    if (menu && !menuFocusable && event.type == KeyEventType.KeyUp && event.nativeKeyEvent.keyCode in OkKeys) {
-                        menuFocusable = true
-                    }
-                    false
-                },
-            ) {
-                GlowCard(
-                    onClick = onOpen,
-                    onLongClick = {
-                        menuFocusable = false
-                        menu = true
-                    },
-                ) { CategoryMosaic(category) }
-                if (menu) {
-                    HoldMenu(
-                        focusable = menuFocusable,
-                        onDismiss = { menu = false },
-                        items = listOf(Triple(stringResource(R.string.explore_hide), Icons.Outlined.VisibilityOff, onHide)),
-                    )
-                }
-            }
-            CardText(category.name, null)
-        }
-    }
-
-    /** Quatro miniaturas da última busca da categoria; sem elas, a cor e a letra do nome. */
-    @Composable
-    private fun CategoryMosaic(category: Category) {
-        val thumbs = category.thumbnails
-        Box(Modifier.fillMaxSize().background(Look.Surface)) {
-            when {
-                thumbs.size >= CategoryRules.MAX_THUMBNAILS -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    thumbs.chunked(2).forEach { row ->
-                        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            row.forEach { url ->
-                                AsyncImage(
-                                    model = url,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.weight(1f).fillMaxHeight().background(Look.SurfaceHigh),
-                                )
-                            }
-                        }
-                    }
-                }
-                thumbs.isNotEmpty() -> AsyncImage(
-                    model = thumbs.first(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                else -> Box(Modifier.fillMaxSize().background(Look.monogramTone(category.name).copy(alpha = 0.55f)), Alignment.Center) {
-                    Text(ytslim.ui.monogramOf(category.name), style = MaterialTheme.typography.headlineMedium, color = Look.Text)
-                }
-            }
-        }
-    }
-
-    /** Um menu pequeno ao lado do card, do OK longo. Só pega o foco quando [focusable] (OK solto). */
-    @Composable
-    private fun HoldMenu(focusable: Boolean, onDismiss: () -> Unit, items: List<Triple<String, ImageVector, () -> Unit>>) {
-        val gap = with(LocalDensity.current) { 18.dp.roundToPx() }
-        val first = remember { FocusRequester() }
-        Popup(
-            popupPositionProvider = remember(gap) { BesideAnchor(gap) },
-            onDismissRequest = onDismiss,
-            properties = PopupProperties(focusable = focusable),
-        ) {
-            Column(
-                Modifier.width(320.dp)
-                    .background(Floating, RoundedCornerShape(22.dp))
-                    .border(1.dp, Look.Hairline, RoundedCornerShape(22.dp))
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                items.forEachIndexed { index, (text, icon, action) ->
-                    MenuItem(
-                        text = text,
-                        supporting = null,
-                        leading = { Icon(icon, contentDescription = null, tint = Look.Sub, modifier = Modifier.size(22.dp)) },
-                        modifier = if (index == 0) Modifier.focusRequester(first) else Modifier,
-                    ) {
-                        onDismiss()
-                        action()
-                    }
-                }
-            }
-            LaunchedEffect(focusable) { if (focusable) runCatching { first.requestFocus() } }
-        }
-    }
-
-    @Composable
-    override fun CategoryPage(
-        title: String,
-        vm: CategoryViewModel,
-        onPlay: (Video) -> Unit,
-        onOpenChannel: (Channel) -> Unit,
-        onBack: () -> Unit,
-    ) {
-        val category by vm.category.collectAsStateWithLifecycle()
-        val gone by vm.gone.collectAsStateWithLifecycle()
+    override fun Explore(vm: ExploreViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
-        val filters by vm.filters.collectAsStateWithLifecycle()
-
-        Column(Modifier.fillMaxSize().padding(screenPadding)) {
-            Text(
-                category?.name ?: title,
-                style = MaterialTheme.typography.headlineMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(16.dp))
-            if (gone) {
-                Text(stringResource(R.string.category_gone), style = MaterialTheme.typography.titleMedium)
-                return@Column
-            }
-            FilterButtons(categoryFilterChoices(filters), onChange = vm::setFilters)
+        Column(Modifier.fillMaxSize()) {
+            Hint(stringResource(R.string.explore_hint_tv))
             Spacer(Modifier.height(16.dp))
             Loadable(state, onRetry = vm::reload) { content ->
-                VideoGrid(
-                    content = content,
-                    emptyText = stringResource(R.string.category_empty),
-                    onNearEnd = vm::loadMore,
-                    onPlay = onPlay,
-                    onOpenChannel = onOpenChannel,
-                    takeFocus = true,
-                    onFocusTaken = {},
-                )
+                VideoGrid(content, stringResource(R.string.explore_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
             }
         }
     }

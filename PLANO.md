@@ -42,7 +42,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 | Busca | "Melhorada": filtros de duração, data, tipo e ordenação, e sugestões enquanto se digita. Resultados misturam vídeos, canais e playlists. Lives só aparecem aqui. |
 | Playlists | Inclui **Assistir mais tarde** (o real, que o motor acessa). Reordenar e tirar vídeos, inclusive pela TV. |
 | Histórico | Lista do que foi assistido, **no formato das playlists** (miniatura à esquerda e o título ao lado; 0.5.1, pedido do Johan). Tirar vídeos dela (0.4.2). |
-| Explore | **Temas achados no histórico**, cada um uma busca nova com filtros (0.5.1; na 0.5.0 eram categorias feitas à mão; ver "Explore"). Aba a mais: **Recommended continua**. |
+| Explore | **Vídeos dos canais que os canais inscritos destacam**, recentes e antigos, num sorteio diferente a cada atualização (0.5.2; na 0.5.0 eram categorias feitas à mão e na 0.5.1 temas do histórico; ver "Explore"). Aba a mais: **Recommended continua**. |
 | Canal | Página básica do canal: vídeos e playlists (duas abas) e o bloquear, que é só um ícone pequeno (na barra de cima no celular, ao lado do nome na TV). Abre pela busca, pelo nome do canal no player, pelo avatar e nome do canal nos cards (celular e tablet) e pelo menu do OK longo (TV). |
 | Configurações | Mínimas: **mostrar lives nas Inscrições**, playlist do botão Save, tópicos excluídos e preferidos, canais bloqueados, links externos, playlists inscritas, **cor do ícone** e conta (com o Sign out). |
 
@@ -128,19 +128,18 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 
 ## Explore
 
-Pedido do Johan (2026-11-02): os filtros das Recomendações só filtram o que o YouTube já mandou, e muita coisa é difícil de descobrir. Ele escolheu um **catálogo de categorias por buscas**, sem perder as Recomendações. Na 0.5.0 as categorias eram feitas à mão; depois de testar, ele quis "uma coisa mais automatizada" e escolheu **temas do seu histórico** (0.5.1).
+Pedido do Johan (2026-11-02): os filtros das Recomendações só filtram o que o YouTube já mandou, e muita coisa é difícil de descobrir. Ele quer descobrir canais, sem perder as Recomendações.
 
-- Uma aba, **Explore**, entre Recommended e Playlists, com os temas em grade. Cada cartão mostra um mosaico com quatro miniaturas da busca do tema e o nome.
-- **Como os temas são achados** (`ThemeRules`): o app lê até 200 vídeos do histórico (5 páginas) e conta as palavras e os pares de palavras dos títulos. Vira tema o que aparece em pelo menos 3 vídeos de pelo menos 2 canais diferentes (um tema de um canal só seria o próprio canal, que já está nas Inscrições). Ficam de fora as palavras do nome do canal, números e palavras comuns do português e do inglês e o jargão do YouTube ("tutorial", "review", "hours"…). Siglas de duas letras em maiúsculas ("AI", "F1") valem.
-  - O peso de um tema é canais × 3 + vídeos, e um par ("Star Wars") vale 1,5 vez. Dois temas com quase os mesmos vídeos (70%) são o mesmo assunto, e fica o de mais peso. Até 12 temas. O nome aparece como nos títulos.
-  - Os tópicos excluídos (Configurações) também não viram tema.
-- Os temas são achados de novo **a cada 3 dias** ao abrir a aba, ou quando o usuário puxa para atualizar (OK longo na aba, na TV). Um tema que continua guarda os filtros e o mosaico.
-- **Esconder um tema:** segurar o cartão (OK longo na TV) > "Hide topic". Ele **não volta** mais.
-- Abrir um tema faz **uma busca nova no YouTube** pelo nome do tema, só de vídeos. Rolar até o fim busca a próxima página. Os filtros (ordem, duração, data e "Before <ano>") ficam na página do tema e são guardados com ele. Shorts e canais bloqueados ficam de fora, como na busca.
-- Os temas ficam só no aparelho (não vão para a conta do YouTube). As categorias feitas à mão na 0.5.0 foram descartadas.
-- As buscas vão com a conta logada (o motor põe o login em todo pedido), então podem entrar no histórico de pesquisa e mexer nas Recomendações. Dá para mandá-las sem a conta (`RetrofitOkHttpHelper.addAuthSkip`) se o Johan quiser.
-- Descartado: as seções prontas do YouTube (Gaming, News, Sports, Live, Podcasts), que o motor tem, mas que trazem conteúdo popular e pouco controle.
-- O desenho está no canvas "Doorglow: player, Explore e conta" (https://claude.ai/artifact/9aFHesFxs28wHzHnWkzWgB).
+- Histórico da ideia: na 0.5.0, categorias feitas à mão (buscas por palavra-chave); na 0.5.1, temas achados nos títulos do histórico, que trouxeram "muita recomendação, nada a ver". Na **0.5.2**, o pedido dele: **vídeos dos canais que os canais que ele segue destacam**, misturando vídeos recentes e antigos, e **um subconjunto bem diferente a cada atualização**, com a lista dos canais guardada para não ficar lento.
+- **De onde vêm os canais:** a página de cada canal inscrito traz os canais que o criador destaca ("Featured channels", "Other channels to check out"). O app lê essa página pelo motor (o mesmo pedido da página do canal), um por canal inscrito, e guarda o resultado num arquivo do aparelho (`explore.json`). Cada página é lida de novo depois de 30 dias.
+  - Na primeira vez, o app lê 12 canais inscritos antes de mostrar a lista (mais 12, até 3 vezes, se aparecerem menos de 30 canais), e o resto em segundo plano, 2 por vez.
+  - Ficam de fora os canais que o usuário já segue, os bloqueados e os **canais-irmãos do mesmo criador** (traduções, segundo canal, podcast: "Veritasium em Português", "2veritasium", "Dinge Erklärt – Kurzgesagt", "Mentour Now!"), pelo nome e pelo @ (`ExploreRules.isSibling`). O irmão sai só para quem o destacou.
+- **O sorteio** (`ExploreRules`): 10 canais por vez, com mais chance para os destacados por mais canais inscritos. Os canais dos últimos sorteios (os 40 mais recentes) ficam de fora enquanto houver outros, então cada atualização traz canais diferentes.
+- **Os vídeos de cada canal sorteado:** a página dele traz a aba de vídeos (os recentes) e as prateleiras (os populares e os escolhidos pelo criador, quase sempre antigos). O app sorteia 2 entre os 12 mais recentes e 2 das prateleiras; se faltar de um lado, o outro completa. Só vídeos do próprio canal (as prateleiras também mostram participações em outros canais). Sem Shorts, lives, vídeos já assistidos (90% ou mais) e tópicos excluídos.
+- A lista junta os canais em rodadas (um vídeo de cada canal, depois o segundo…), para não ter vídeos do mesmo canal seguidos. Rolar até o fim sorteia mais 10 canais. **Puxar para atualizar** (OK longo na aba, na TV) faz um sorteio novo.
+- Os pedidos vão com a conta logada (o motor põe o login em todo pedido), como abrir a página de um canal no app. Sem login (ou sem as inscrições), a aba mostra o erro.
+- Conferido contra o YouTube em 2026-11-02, com 8 canais de exemplo: 41 canais candidatos, e cada sorteio de 10 canais com 40 vídeos levou 2 a 3 s.
+- Descartado: as seções prontas do YouTube (Gaming, News, Sports, Live, Podcasts), que trazem conteúdo popular e pouco controle.
 
 ## Inscrição em playlists
 
@@ -189,7 +188,8 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
-   - *Versão 0.5.1 (2026-11-02), ajustes pedidos pelo Johan depois de testar a 0.5.0, aguardando o teste no aparelho* (ver "Como testar a 0.5.1"): legendas centralizadas com contorno, toques no vídeo, Skip ahead pelos vales do gráfico com marcas na barra, girar a tela, 1080p no celular e no tablet, 3 colunas no tablet em pé, Histórico em linhas e a Explore automática.
+   - *Versão 0.5.2 (2026-11-02), a Explore pelos canais que os canais inscritos destacam, pedida pelo Johan depois de testar a 0.5.1, aguardando o teste no aparelho* (ver "Como testar a 0.5.2"). A leitura dos destaques e dos vídeos foi conferida contra o YouTube.
+   - *Versão 0.5.1 (2026-11-02), ajustes pedidos pelo Johan depois de testar a 0.5.0; o Johan testou e aprovou tudo menos a Explore* (ver "Como testar a 0.5.1"): legendas centralizadas com contorno, toques no vídeo, Skip ahead pelos vales do gráfico com marcas na barra, girar a tela, 1080p no celular e no tablet, 3 colunas no tablet em pé, Histórico em linhas e a Explore automática.
    - *Versão 0.5.0 (2026-11-02), a aba Explore pedida pelo Johan* (ver "Como testar a 0.5.0"). A busca das categorias foi conferida contra o YouTube, sem login.
    - *Versão 0.4.2 (2026-11-02), pedidos do Johan depois de testar a 0.4.1, aguardando o teste no aparelho* (ver "Como testar a 0.4.2"): sem o @ do canal, "When done" só na TV, reordenar arrastando no celular, tirar vídeos do Histórico e das playlists, deslizar entre abas, as Configurações pelo avatar, o menu do OK longo abrindo antes de soltar (TV) e o **player novo (opção A)**. A aba Explore vem na versão seguinte.
    - *Versão 0.4.1 (2026-11-02), ajustes pedidos pelo Johan depois da 0.4.0, aguardando o teste no aparelho* (ver "Como testar a 0.4.1"): filtros nas Recomendações, duração de 30/45/60 min ou mais, "Before <ano>", salvar com resposta na hora, título no player, bloquear discreto, desempenho, playlists em sequência, o modo dormir no player (escurecer, quantos vídeos seguem e desligar a TV no fim) e a correção dos vídeos em 360p e lentos para começar na TV.
@@ -202,6 +202,15 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
 
+## Como testar a 0.5.2
+
+1. Abrir a Explore pela primeira vez: alguns segundos com o indicador de carregar, e então vídeos de uns 10 canais que você não segue, um de cada canal por vez, recentes e antigos misturados.
+2. Nenhum canal da lista é tradução ou segundo canal de um canal que você segue (ex.: "Veritasium em Português").
+3. Puxar para baixo (OK longo na aba, na TV): a lista troca por outros canais. Repetir algumas vezes: os canais não se repetem logo.
+4. Rolar até o fim: chegam mais canais.
+5. Fechar e abrir o app: a Explore abre mais rápido que na primeira vez (os destaques ficam guardados).
+6. O avatar e o nome do canal no cartão abrem a página do canal.
+
 ## Como testar a 0.5.1
 
 1. Legenda (CC): centralizada, branca com contorno preto e sem fundo, também na automática.
@@ -212,7 +221,7 @@ Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) 
 6. Celular e tablet começam em 1080p (a etiqueta mostra "1080p"); a TV continua em 2160p.
 7. Tablet em pé: 3 vídeos por linha.
 8. History: linhas como nas playlists, e deslizar para a esquerda ainda tira o vídeo.
-9. Explore: na primeira vez, "Looking for topics in your history…" e depois os temas. Segurar um tema > "Hide topic", e ele não volta ao puxar para atualizar.
+9. *(Até a 0.5.1; a 0.5.2 troca os temas pelos canais destacados.)* Explore: na primeira vez, "Looking for topics in your history…" e depois os temas. Segurar um tema > "Hide topic", e ele não volta ao puxar para atualizar.
 
 ## Como testar a 0.5.0
 

@@ -25,7 +25,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AuthRepository
-import ytslim.data.Category
 import ytslim.data.Channel
 import ytslim.data.Engine
 import ytslim.data.PlayQueue
@@ -58,7 +57,6 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
     }
     val openPlaylist: (Playlist) -> Unit = { nav.navigate(PlaylistRoute.from(it)) }
     val openChannel: (Channel) -> Unit = { nav.navigate(ChannelRoute(it.id, it.title)) }
-    val openCategory: (Category) -> Unit = { nav.navigate(CategoryRoute(it.id, it.name)) }
     val signedOut: () -> Unit = {
         signed = false
         nav.signedOut()
@@ -109,7 +107,7 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                             when (current) {
                                 HomeTab.SUBSCRIPTIONS -> ui.Feed(viewModel<FeedViewModel>(), onPlay = play, onOpenChannel = openChannel)
                                 HomeTab.RECOMMENDED -> ui.Recommended(viewModel<RecommendedViewModel>(), onPlay = play, onOpenChannel = openChannel)
-                                HomeTab.EXPLORE -> ui.Explore(viewModel<ExploreViewModel>(), onOpen = openCategory)
+                                HomeTab.EXPLORE -> ui.Explore(viewModel<ExploreViewModel>(), onPlay = play, onOpenChannel = openChannel)
                                 HomeTab.SEARCH -> ui.Search(
                                     vm = viewModel<SearchViewModel>(),
                                     onPlay = play,
@@ -135,17 +133,6 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                         openPlayer(video)
                     }
                     ui.PlaylistPage(title = route.title, vm = vm, onPlay = playInOrder, onOpenChannel = openChannel, onBack = { nav.popBackStack() })
-                }
-                composable<CategoryRoute> { entry ->
-                    val route = entry.toRoute<CategoryRoute>()
-                    val vm = viewModel { CategoryViewModel(route.id) }
-                    ui.CategoryPage(
-                        title = route.name,
-                        vm = vm,
-                        onPlay = play,
-                        onOpenChannel = openChannel,
-                        onBack = { nav.popBackStack() },
-                    )
                 }
                 composable<ChannelRoute> { entry ->
                     val route = entry.toRoute<ChannelRoute>()
@@ -219,19 +206,9 @@ interface Screens {
         onOpenPlaylist: (Playlist) -> Unit,
     )
 
-    /** Os temas achados no histórico (cada um, uma busca nova); segurar um tema o esconde. */
+    /** Vídeos dos canais que os canais inscritos destacam; atualizar sorteia outros canais. */
     @Composable
-    fun Explore(vm: ExploreViewModel, onOpen: (Category) -> Unit)
-
-    /** Os vídeos de um tema, com os filtros dele. [title] vale até a categoria carregar. */
-    @Composable
-    fun CategoryPage(
-        title: String,
-        vm: CategoryViewModel,
-        onPlay: (Video) -> Unit,
-        onOpenChannel: (Channel) -> Unit,
-        onBack: () -> Unit,
-    )
+    fun Explore(vm: ExploreViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit)
 
     @Composable
     fun Playlists(vm: PlaylistsViewModel, onOpen: (Playlist) -> Unit)

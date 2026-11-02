@@ -120,40 +120,31 @@ class EngineOnlineTest {
         assertTrue(page.videos.videos.none { it.isShorts })
     }
 
-    /** Uma categoria do Explore: uma busca por palavra, alternadas, e a segunda página de cada uma. */
-    @Test
-    fun categorySearchMixesItsKeywords() = withMainLooper {
-        val category = Category("t", "Woodworking", listOf("joinery", "hand tools", "workbench"))
-            .withFilters(SearchFilters(sort = SortBy.VIEWS, duration = SearchDuration.OVER_20))
-        val first = CategorySearch.first(category)
-        println("[online] categoria: ${first.videos.size} vídeos, tem mais: ${first.hasMore}")
-        first.videos.take(6).forEach { println("[online]   ${it.title.take(70)} (${it.durationMs / 60_000} min)") }
-        assertTrue(first.videos.size >= 20)
-        assertTrue(first.hasMore)
-        assertTrue("filtro de duração ignorado", first.videos.filter { it.durationMs > 0 }.all { it.durationMs >= 20 * 60_000 })
-        assertTrue("mosaico vazio", CategoryRules.thumbnails(first.videos).size == CategoryRules.MAX_THUMBNAILS)
-        val more = CategorySearch.more(first)
-        println("[online] depois de mais: ${more.videos.size} vídeos")
-        assertTrue(more.videos.size > first.videos.size)
-        assertTrue(more.videos.map { it.id }.distinct().size == more.videos.size)
-    }
-
     /**
-     * Os temas da Explore com títulos reais: um "histórico" de buscas de vários assuntos, como
-     * alguém que assiste a esses assuntos em canais diferentes.
+     * A Explore com páginas de canal reais: o que um canal destaca (sem os irmãos) e os vídeos
+     * recentes e das prateleiras de um canal destacado, só os do próprio canal.
      */
     @Test
-    fun themesComeOutOfRealTitles() = withMainLooper {
-        val history = listOf("sourdough bread", "star wars lore", "formula 1 race highlights", "minecraft survival", "python tutorial", "pão caseiro")
-            .flatMap { query -> SearchRepository.search(query, SearchFilters(type = ResultType.VIDEO)).items.mapNotNull { (it as? SearchItem.VideoItem)?.video } }
-        val themes = ThemeRules.themes(history)
-        println("[online] histórico: ${history.size} vídeos; temas: ${themes.joinToString { "${it.name} (${it.videos}/${it.channels})" }}")
-        assertTrue(themes.size >= 4)
-        println("[online] temas: ${themes.joinToString { it.key }}")
-        val names = themes.joinToString(" ") { it.key }
-        // "sourdough" e "bread" têm quase os mesmos vídeos: fica um dos dois.
-        assertTrue("faltou o pão em $names", "sourdough" in names || "bread" in names)
-        listOf("star wars", "minecraft", "python").forEach { assertTrue("faltou $it em $names", it in names) }
+    fun exploreReadsFeaturedChannelsAndTheirVideos() = withMainLooper {
+        val source = ExploreRepository.sourceOf(Channel(THREE_BLUE_ONE_BROWN, "3Blue1Brown", null, null))
+        println("[online] 3Blue1Brown (${source.handle}) destaca: ${source.featured.joinToString { it.name + " " + it.handle }}")
+        assertTrue(source.featured.any { it.name == "Mathologer" })
+        assertTrue("o próprio canal entrou", source.featured.none { it.id == THREE_BLUE_ONE_BROWN })
+
+        val veritasium = ExploreRepository.sourceOf(Channel(VERITASIUM, "Veritasium", null, null))
+        val kept = veritasium.featured.filterNot { ExploreRules.isSibling(veritasium.name, veritasium.handle, it) }
+        println("[online] Veritasium destaca: ${veritasium.featured.size}; sem os irmãos: ${kept.joinToString { it.name }}")
+        assertTrue(kept.none { it.name.contains("Veritasium", ignoreCase = true) })
+
+        val featured = source.featured.firstOrNull { it.name == "Mathologer" } ?: source.featured.first()
+        val videos = ExploreRepository.videosOf(featured)
+        println("[online] ${featured.name}: ${videos.recent.size} recentes, ${videos.older.size} das prateleiras")
+        videos.older.take(4).forEach { println("[online]   ${it.title.take(60)} | ${it.channelName} | ${it.info}") }
+        assertTrue(videos.recent.isNotEmpty())
+        assertTrue((videos.recent + videos.older).all { it.channelId == featured.id })
+        val picked = ExploreRules.pick(videos, ContentFilters(), kotlin.random.Random(1))
+        println("[online] sorteados: ${picked.joinToString { it.title.take(40) }}")
+        assertTrue(picked.size == ExploreRules.RECENT_PER_CHANNEL + ExploreRules.OLDER_PER_CHANNEL)
     }
 
     private fun checkVideo(videoId: String, expectOriginal: Boolean) {
@@ -241,5 +232,7 @@ class EngineOnlineTest {
         const val MULTI_AUDIO_VIDEO = "0e3GPea1Tyg"
         const val REGULAR_VIDEO = "jNQXAC9IVRw"
         const val CLIENTS_TO_TRY = 12
+        const val THREE_BLUE_ONE_BROWN = "UCYO_jab_esuFRV4b17AJtAw"
+        const val VERITASIUM = "UCHnyfMqiRRG1u-2MsSQLbXA"
     }
 }

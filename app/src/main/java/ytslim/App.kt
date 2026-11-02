@@ -3,8 +3,11 @@ package ytslim
 import android.app.Application
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import kotlinx.coroutines.launch
 import ytslim.data.AppIcons
+import ytslim.data.AppScope
 import ytslim.data.Engine
+import ytslim.data.ExploreRepository
 import ytslim.data.PlaylistSubscriptions
 import ytslim.data.SettingsRepository
 import ytslim.player.ScreenOffService
@@ -15,7 +18,9 @@ class App : Application() {
         Engine.init(this)
         SettingsRepository.init(this)
         PlaylistSubscriptions.init(this)
+        ExploreRepository.init(this)
         AppIcons.init(this)
+        AppScope.launch { SettingsRepository.dropOldExplore() }
         if (!isTv()) removeScreenOffService()
     }
 
