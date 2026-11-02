@@ -45,4 +45,28 @@ internal object QualityRules {
 
     /** O teto depois de o aparelho não dar conta de [failedHeight]: o degrau de baixo. */
     fun lowerCeiling(failedHeight: Int): Int = failedHeight - 1
+
+    /** As resoluções do botão de qualidade: todas que têm decodificador, da maior para a menor. */
+    fun heights(tracks: List<VideoTrack>): List<Int> = tracks
+        .filter { (it.handled || it.exceeds) && it.height > 0 }
+        .map { it.height }
+        .distinct()
+        .sortedDescending()
+
+    /**
+     * A faixa para a resolução escolhida à mão: o usuário pediu para tentar, então vale mesmo acima
+     * do teto. Entre as faixas dessa altura, a com decodificador de hardware, que o decodificador
+     * aceita, sem HDR, até 60 fps e de maior bitrate, nessa ordem.
+     */
+    fun manual(tracks: List<VideoTrack>, height: Int): VideoTrack? = tracks
+        .filter { (it.handled || it.exceeds) && it.height == height }
+        .maxWithOrNull(
+            compareBy<VideoTrack>(
+                { it.hardware },
+                { it.handled },
+                { !it.hdr },
+                { it.frameRate <= MAX_FRAME_RATE },
+                { it.bitrate },
+            ),
+        )
 }

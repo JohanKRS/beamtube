@@ -162,6 +162,10 @@
     <string name="player_no_highlight">Nothing more to skip to.</string>
     <string name="player_captions">Turn on captions</string>
     <string name="player_captions_off">Turn off captions</string>
+    <string name="player_quality">Quality</string>
+    <string name="player_quality_auto">Auto</string>
+    <string name="player_quality_height">%1$dp</string>
+    <string name="player_quality_failed">Couldn\'t play %1$dp on this device. Back to Auto.</string>
     <string name="player_sleep">Sleep mode</string>
     <string name="player_brightness">Brightness</string>
     <string name="player_brightness_level">%1$d%%</string>

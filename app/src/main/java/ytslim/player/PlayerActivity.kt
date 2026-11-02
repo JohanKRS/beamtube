@@ -70,6 +70,9 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var captionsButton: ImageButton
     private lateinit var sleepButton: ImageButton
     private lateinit var sleepPanel: View
+    private lateinit var qualityButton: TextView
+    private lateinit var qualityPanel: View
+    private lateinit var qualityRow: LinearLayout
     private lateinit var brightnessRow: LinearLayout
     private lateinit var queueRow: LinearLayout
     private lateinit var endRow: LinearLayout
@@ -88,8 +91,14 @@ class PlayerActivity : ComponentActivity() {
     private var endHandled = false
     private var turnOffJob: Job? = null
 
+    /** O painel aberto acima da barra de tempo (resolução ou modo dormir), se houver. */
+    private var openPanel: View? = null
+
+    /** As resoluções que o painel de qualidade mostra agora. */
+    private var qualityHeights: List<Int> = emptyList()
+
     private val closePanelOnBack = object : OnBackPressedCallback(false) {
-        override fun handleOnBackPressed() = closeSleepPanel()
+        override fun handleOnBackPressed() = closePanel()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -144,6 +153,7 @@ class PlayerActivity : ComponentActivity() {
                 launch { controller.state.collect(::render) }
                 launch { controller.controls.collect(::renderControls) }
                 launch { controller.ended.collect(::onEnded) }
+                launch { controller.quality.collect(::renderQuality) }
                 launch { combine(PlayQueue.active, PlayQueue.left) { _, _ -> }.collect { renderSleep() } }
                 launch {
                     controller.notices.collect { notice ->
@@ -241,13 +251,42 @@ class PlayerActivity : ComponentActivity() {
         skipButton.setOnClickListener {
             if (!controller.skipAhead()) Toast.makeText(this, R.string.player_no_highlight, Toast.LENGTH_SHORT).show()
         }
-        sleepButton.setOnClickListener { if (sleepPanel.visibility == View.VISIBLE) closeSleepPanel() else openSleepPanel() }
+        sleepButton.setOnClickListener { togglePanel(sleepPanel) }
+        qualityButton.setOnClickListener { togglePanel(qualityPanel) }
         // O painel some junto com os controles.
         playerView.setControllerVisibilityListener(
             PlayerView.ControllerVisibilityListener { visibility ->
-                if (visibility != View.VISIBLE) closeSleepPanel(focusButton = false)
+                if (visibility != View.VISIBLE) closePanel(focusButton = false)
             },
         )
+    }
+
+    /**
+     * Botão de resolução: mostra a que está tocando (âmbar quando escolhida à mão). O painel tem
+     * "Auto" e as resoluções do vídeo; a escolha vale só para o vídeo atual e fica mesmo com a rede
+     * oscilando (no Auto, o app desce e volta sozinho).
+     */
+    private fun renderQuality(quality: PlaybackController.Quality) {
+        qualityButton.visibility = if (quality.heights.isEmpty()) View.GONE else View.VISIBLE
+        qualityButton.text = quality.playing?.let { getString(R.string.player_quality_height, it) }
+            ?: getString(R.string.player_quality_auto)
+        qualityButton.setTextColor(color(if (quality.manual != null) R.color.player_accent else R.color.player_icon))
+        if (quality.heights != qualityHeights) {
+            qualityHeights = quality.heights
+            // A primeira view da linha é o nome dela; as opções vêm depois.
+            while (qualityRow.childCount > 1) qualityRow.removeViewAt(1)
+            qualityRow.addView(chip(getString(R.string.player_quality_auto), AUTO_QUALITY) { chooseQuality(null) })
+            quality.heights.forEach { height ->
+                qualityRow.addView(chip(getString(R.string.player_quality_height, height), height) { chooseQuality(height) })
+            }
+            if (quality.heights.isEmpty() && openPanel == qualityPanel) closePanel(focusButton = false)
+        }
+        qualityRow.select(quality.manual ?: AUTO_QUALITY)
+    }
+
+    private fun chooseQuality(height: Int?) {
+        controller.setQuality(height)
+        closePanel()
     }
 
     /** As opções do painel de dormir. A lista de "Then play" só aparece numa sequência de playlist. */
@@ -299,24 +338,34 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun openSleepPanel() {
-        renderSleep()
-        sleepPanel.visibility = View.VISIBLE
+    /** Abre [panel] (fechando o outro) ou fecha, se ele já estiver aberto. */
+    private fun togglePanel(panel: View) {
+        if (openPanel == panel) return closePanel()
+        closePanel(focusButton = false)
+        if (panel == sleepPanel) renderSleep()
+        panel.visibility = View.VISIBLE
+        openPanel = panel
         closePanelOnBack.isEnabled = true
         // Com o painel aberto, os controles não somem sozinhos (no celular os toques não contam).
         playerView.controllerShowTimeoutMs = 0
         playerView.showController()
-        brightnessRow.findViewWithTag<View>(brightness)?.requestFocus()
+        val focus = if (panel == sleepPanel) {
+            brightnessRow.findViewWithTag<View>(brightness)
+        } else {
+            qualityRow.findViewWithTag<View>(controller.quality.value.manual ?: AUTO_QUALITY)
+        }
+        focus?.requestFocus()
     }
 
-    private fun closeSleepPanel(focusButton: Boolean = true) {
-        if (sleepPanel.visibility != View.VISIBLE) return
-        sleepPanel.visibility = View.GONE
+    private fun closePanel(focusButton: Boolean = true) {
+        val panel = openPanel ?: return
+        panel.visibility = View.GONE
+        openPanel = null
         closePanelOnBack.isEnabled = false
         playerView.controllerShowTimeoutMs = CONTROLS_TIMEOUT_MS
         if (focusButton) {
             playerView.showController()
-            sleepButton.requestFocus()
+            (if (panel == sleepPanel) sleepButton else qualityButton).requestFocus()
         }
     }
 
@@ -446,6 +495,9 @@ class PlayerActivity : ComponentActivity() {
         captionsButton = playerView.findViewById(R.id.player_captions)
         sleepButton = playerView.findViewById(R.id.player_sleep)
         sleepPanel = playerView.findViewById(R.id.player_sleep_panel)
+        qualityButton = playerView.findViewById(R.id.player_quality_button)
+        qualityPanel = playerView.findViewById(R.id.player_quality_panel)
+        qualityRow = playerView.findViewById(R.id.player_quality_options)
         brightnessRow = playerView.findViewById(R.id.player_sleep_brightness)
         queueRow = playerView.findViewById(R.id.player_sleep_queue)
         endRow = playerView.findViewById(R.id.player_sleep_end)
@@ -501,6 +553,9 @@ class PlayerActivity : ComponentActivity() {
 
         /** O mesmo show_timeout do player_view. */
         private const val CONTROLS_TIMEOUT_MS = 4000
+
+        /** A opção "Auto" do painel de resolução (as outras são as alturas). */
+        private const val AUTO_QUALITY = 0
 
         /** Opções de brilho do painel de dormir, em %. */
         private val BRIGHTNESS_LEVELS = listOf(100, 50, 25, 10, 0)

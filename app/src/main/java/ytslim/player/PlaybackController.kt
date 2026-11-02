@@ -84,6 +84,12 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         val saved: Boolean? = null,
     )
 
+    /** O botão de resolução: as do vídeo, a que está tocando e a escolhida à mão (null = Auto). */
+    data class Quality(val heights: List<Int> = emptyList(), val playing: Int? = null, val manual: Int? = null)
+
+    private val _quality = MutableStateFlow(Quality())
+    val quality: StateFlow<Quality> = _quality.asStateFlow()
+
     private val _state = MutableStateFlow<State>(State.Loading)
     val state: StateFlow<State> = _state.asStateFlow()
 
@@ -113,11 +119,17 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
     /** A qualidade deste vídeo já foi escolhida ([pickQuality]). */
     private var qualityChecked = false
 
-    /** A altura que o app escolheu para este vídeo (null = a escolha é do Media3). */
+    /** A altura que o app escolheu sozinho para este vídeo (null = escolha do Media3 ou do usuário). */
     private var playingHeight: Int? = null
+
+    /** A resolução escolhida à mão para este vídeo (null = Auto). Vale só para o vídeo atual. */
+    private var manualHeight: Int? = null
 
     /** O teto deste vídeo: cai quando ele para várias vezes para carregar (a rede não dá conta). */
     private var videoCeiling = QualityRules.MAX_HEIGHT
+
+    /** Depois de descer por causa da rede, tenta voltar ao topo ([scheduleClimb]). */
+    private var climbJob: Job? = null
 
     /** Quantas vezes o aparelho perdeu muitos quadros, e quantas o vídeo parou para carregar. */
     private var stutters = 0
@@ -164,6 +176,8 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         _ended.value = false
         errorRetries = 0
         heatmap = emptyList()
+        manualHeight = null
+        _quality.value = Quality()
         _controls.value = Controls()
         load(videoId, startPositionMs)
         loadExtras(videoId)
@@ -231,6 +245,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         qualityChecked = false
         playingHeight = null
         videoCeiling = QualityRules.MAX_HEIGHT
+        climbJob?.cancel()
         stutters = 0
         rebuffers = 0
         val caption = if (result.info.isLive) null else SubtitleRules.pick(
@@ -369,6 +384,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         loadJob?.cancel()
         extrasJob?.cancel()
         nextJob?.cancel()
+        climbJob?.cancel()
         player.release()
     }
 
@@ -397,13 +413,22 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         override fun onTracksChanged(tracks: Tracks) {
             enforceOriginalAudio(tracks)
             pickQuality(tracks)
+            selectedHeight(tracks)?.let { height -> _quality.update { it.copy(playing = height) } }
             val info = current ?: return
             _state.value = State.Playing(info, describeSelection(tracks))
         }
 
         override fun onPlayerError(error: PlaybackException) {
             val id = videoId ?: return
-            Log.w(TAG, "player error ${error.errorCodeName} (playing ${playingHeight}p)", error)
+            Log.w(TAG, "player error ${error.errorCodeName} (playing ${playingHeight}p, manual ${manualHeight}p)", error)
+            val manual = manualHeight
+            if (manual != null && error.errorCode in DECODER_ERRORS) {
+                // A resolução escolhida à mão não tocou neste aparelho: avisa e volta ao Auto.
+                _notices.value = res.getString(R.string.player_quality_failed, manual)
+                setQuality(null)
+                player.prepare()
+                return
+            }
             if (playingHeight != null && error.errorCode in DECODER_ERRORS) {
                 // O decodificador não deu conta desta resolução: desce um degrau e continua do mesmo ponto.
                 stepDown(sessionWide = true, reason = error.errorCodeName)
@@ -439,18 +464,61 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
             Player.STATE_BUFFERING -> {
                 if (previous != Player.STATE_READY || expectBuffering || !player.playWhenReady) return
                 Log.i(TAG, "rebuffering (playing ${playingHeight}p)")
-                if (playingHeight != null && ++rebuffers >= MAX_REBUFFERS) stepDown(sessionWide = false, reason = "rebuffering")
+                if (playingHeight == null) return
+                // Já abaixo do topo por causa da rede: a volta espera a rede ficar calma de novo.
+                if (videoCeiling < QualityRules.MAX_HEIGHT) scheduleClimb()
+                if (++rebuffers >= MAX_REBUFFERS) stepDown(sessionWide = false, reason = "rebuffering")
             }
         }
     }
 
+    /** Botão de resolução: [height] à mão, só neste vídeo, ou null para o Auto. */
+    fun setQuality(height: Int?) {
+        manualHeight = height
+        stutters = 0
+        rebuffers = 0
+        qualityChecked = false
+        pickQuality(player.currentTracks)
+    }
+
     /**
-     * A maior faixa que [QualityRules] aceita, até o teto: 4K primeiro, mesmo que o decodificador
-     * declare menos (muitas TVs declaram menos do que decodificam). Uma vez por vídeo, e de novo
-     * quando o teto cai.
+     * A faixa do vídeo. No Auto, a maior que [QualityRules] aceita até o teto: 4K primeiro, mesmo
+     * que o decodificador declare menos (muitas TVs declaram menos do que decodificam). Com uma
+     * resolução escolhida à mão, a dela. Uma vez por vídeo, e de novo quando o teto ou a escolha mudam.
      */
     private fun pickQuality(tracks: Tracks) {
         if (qualityChecked) return
+        val (video, described) = videoTracks(tracks)
+        if (video.none { it.selected }) return
+        qualityChecked = true
+        val ceiling = minOf(sessionCeiling, videoCeiling)
+        Log.i(TAG, "video tracks (ceiling ${ceiling}p, manual ${manualHeight}p): ${described.joinToString(" | ")}")
+        val manual = manualHeight?.let { QualityRules.manual(video, it) }
+        // Uma escolha à mão que este vídeo não tem (outro cliente do YouTube, outras resoluções) vira Auto.
+        if (manual == null) manualHeight = null
+        val target = manual ?: QualityRules.best(video, ceiling)
+        // Só o Auto desce sozinho; a escolha à mão fica até o usuário mudar.
+        playingHeight = if (manual == null) target?.height else null
+        _quality.value = Quality(
+            heights = QualityRules.heights(video),
+            playing = (target ?: video.first { it.selected }).height,
+            manual = manualHeight,
+        )
+        val parameters = player.trackSelectionParameters.buildUpon()
+        if (target == null) {
+            // Nenhuma faixa com decodificador de hardware até o teto: fica a escolha do Media3.
+            parameters.clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+        } else {
+            Log.i(TAG, "playing ${described[video.indexOf(target)]}")
+            if (target.selected) return
+            parameters.setOverrideForType(TrackSelectionOverride(tracks.groups[target.group].mediaTrackGroup, target.index))
+        }
+        expectBuffering = true
+        player.trackSelectionParameters = parameters.build()
+    }
+
+    /** As faixas de vídeo como [QualityRules] as vê, e uma descrição de cada uma para o log. */
+    private fun videoTracks(tracks: Tracks): Pair<List<VideoTrack>, List<String>> {
         val video = ArrayList<VideoTrack>()
         val described = ArrayList<String>()
         tracks.groups.forEachIndexed { g, group ->
@@ -475,23 +543,14 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
                     "${Util.getFormatSupportString(support)}${if (track.hardware) " hw" else ""}${if (track.selected) " SELECTED" else ""}"
             }
         }
-        if (video.none { it.selected }) return
-        qualityChecked = true
-        val ceiling = minOf(sessionCeiling, videoCeiling)
-        Log.i(TAG, "video tracks (ceiling ${ceiling}p): ${described.joinToString(" | ")}")
-        val target = QualityRules.best(video, ceiling)
-        playingHeight = target?.height
-        val parameters = player.trackSelectionParameters.buildUpon()
-        if (target == null) {
-            // Nenhuma faixa com decodificador de hardware até o teto: fica a escolha do Media3.
-            parameters.clearOverridesOfType(C.TRACK_TYPE_VIDEO)
-        } else {
-            Log.i(TAG, "playing ${described[video.indexOf(target)]}")
-            if (target.selected) return
-            parameters.setOverrideForType(TrackSelectionOverride(tracks.groups[target.group].mediaTrackGroup, target.index))
-        }
-        expectBuffering = true
-        player.trackSelectionParameters = parameters.build()
+        return video to described
+    }
+
+    /** A resolução (o lado menor do quadro) da faixa de vídeo tocando. */
+    private fun selectedHeight(tracks: Tracks): Int? {
+        val group = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected } ?: return null
+        val format = (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { group.getTrackFormat(it) } ?: return null
+        return if (format.width > 0) minOf(format.width, format.height) else format.height.takeIf { it > 0 }
     }
 
     /**
@@ -502,7 +561,12 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
     private fun stepDown(sessionWide: Boolean, reason: String) {
         val height = playingHeight ?: return
         val lower = QualityRules.lowerCeiling(height)
-        if (sessionWide) sessionCeiling = minOf(sessionCeiling, lower) else videoCeiling = minOf(videoCeiling, lower)
+        if (sessionWide) {
+            sessionCeiling = minOf(sessionCeiling, lower)
+        } else {
+            videoCeiling = minOf(videoCeiling, lower)
+            scheduleClimb()
+        }
         Log.w(TAG, "${height}p failed ($reason): ceiling now ${minOf(sessionCeiling, videoCeiling)}p")
         stutters = 0
         rebuffers = 0
@@ -512,6 +576,22 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
             .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
             .build()
         pickQuality(player.currentTracks)
+    }
+
+    /**
+     * A rede costuma melhorar: depois de [CLIMB_BACK_MS] sem o vídeo parar para carregar, o teto do
+     * vídeo volta ao topo (o app oficial do YouTube não volta sozinho, e o Johan não gosta disso).
+     */
+    private fun scheduleClimb() {
+        climbJob?.cancel()
+        climbJob = scope.launch {
+            delay(CLIMB_BACK_MS)
+            Log.i(TAG, "network calm for ${CLIMB_BACK_MS / 1000} s: trying the top quality again")
+            videoCeiling = QualityRules.MAX_HEIGHT
+            rebuffers = 0
+            qualityChecked = false
+            pickQuality(player.currentTracks)
+        }
     }
 
     /** HDR (10 bits) só toca se o decodificador aceitar de verdade: forçar daria erro ou cores erradas. */
@@ -573,6 +653,9 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
 
         /** Paradas para carregar, no mesmo vídeo, antes de descer um degrau. */
         const val MAX_REBUFFERS = 3
+
+        /** Quanto tempo sem parar para carregar antes de tentar o topo de novo. */
+        const val CLIMB_BACK_MS = 120_000L
 
         /** O teto até o app fechar: começa em 4K e cai quando o decodificador do aparelho não dá conta. */
         var sessionCeiling = QualityRules.MAX_HEIGHT

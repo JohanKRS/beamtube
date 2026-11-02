@@ -74,6 +74,21 @@ class QualityRulesTest {
     }
 
     @Test
+    fun theButtonListsEveryPlayableHeight() {
+        val tracks = tv + track(4320, handled = false, exceeds = false) + track(1080, group = 2)
+        assertEquals(listOf(2160, 1440, 1080, 720, 360), QualityRules.heights(tracks))
+    }
+
+    @Test
+    fun manualChoiceGoesPastTheCeilingAndPrefersHardware() {
+        val software = track(2160, hardware = false, group = 2)
+        val hardware = track(2160, handled = false, exceeds = true, group = 1)
+        val tracks = listOf(software, hardware, track(360, selected = true))
+        assertEquals(hardware, QualityRules.manual(tracks, 2160))
+        assertNull(QualityRules.manual(tracks, 1080))
+    }
+
+    @Test
     fun unsupportedCodecsAreIgnored() {
         val tracks = listOf(track(2160, handled = false, exceeds = false), track(360, hardware = false, selected = true))
         assertNull(QualityRules.best(tracks, QualityRules.MAX_HEIGHT))
