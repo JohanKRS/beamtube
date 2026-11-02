@@ -1,6 +1,5 @@
 package ytslim.data
 
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -27,20 +26,14 @@ class CategoryRulesTest {
     }
 
     @Test
-    fun keywordsAreSplitByCommasWithoutRepeats() {
-        assertEquals(listOf("joinery", "hand tools"), CategoryRules.keywords(" joinery, hand tools,, Joinery ,"))
-        assertEquals(emptyList<String>(), CategoryRules.keywords(" , "))
-    }
-
-    @Test
     fun categoriesSurviveTheTripToTheDevice() {
-        val serializer = ListSerializer(Category.serializer())
-        val category = Category("id1", "Woodworking", listOf("joinery", "workbench"))
+        val category = Category("woodworking", "Woodworking", listOf("Woodworking"))
             .withFilters(SearchFilters(sort = SortBy.VIEWS, duration = SearchDuration.AT_LEAST_30, beforeYear = 2020))
             .copy(thumbnails = listOf("u1"))
+        val themes = ThemeSet(updatedAt = 1_700_000_000_000, categories = listOf(category))
         val json = Json { ignoreUnknownKeys = true }
-        val back = json.decodeFromString(serializer, json.encodeToString(serializer, listOf(category)))
-        assertEquals(listOf(category), back)
-        assertEquals(SearchFilters(sort = SortBy.VIEWS, duration = SearchDuration.AT_LEAST_30, beforeYear = 2020), back.first().filters)
+        val back = json.decodeFromString(ThemeSet.serializer(), json.encodeToString(ThemeSet.serializer(), themes))
+        assertEquals(themes, back)
+        assertEquals(SearchFilters(sort = SortBy.VIEWS, duration = SearchDuration.AT_LEAST_30, beforeYear = 2020), back.categories.first().filters)
     }
 }

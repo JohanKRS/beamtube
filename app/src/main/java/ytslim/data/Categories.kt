@@ -6,9 +6,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.Serializable
 
 /**
- * Uma categoria do Explore: um nome e palavras-chave do próprio usuário. Abrir a categoria faz uma
- * busca nova no YouTube por palavra-chave, com os filtros guardados nela (não é um filtro em cima
- * das Recomendações).
+ * Uma categoria da Explore: um tema achado no histórico ([ThemeRules]), com o id do tema e o nome
+ * como palavra-chave. Abrir a categoria faz uma busca nova no YouTube por palavra-chave, com os
+ * filtros guardados nela (não é um filtro em cima das Recomendações).
  *
  * @param thumbnails até 4 miniaturas da última busca, para o mosaico do cartão.
  */
@@ -54,10 +54,6 @@ object CategoryRules {
     /** As miniaturas do mosaico: as primeiras diferentes da lista. */
     fun thumbnails(videos: List<Video>): List<String> =
         videos.mapNotNull { it.thumbnailUrl }.distinct().take(MAX_THUMBNAILS)
-
-    /** As palavras-chave: separadas por vírgula, sem repetir (sem diferença de maiúsculas). */
-    fun keywords(text: String): List<String> =
-        text.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
 }
 
 /**

@@ -43,11 +43,10 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -434,66 +433,48 @@ object TvUi : Screens {
     @Composable
     override fun Explore(vm: ExploreViewModel, onOpen: (Category) -> Unit) {
         val categories by vm.categories.collectAsStateWithLifecycle()
-        var adding by remember { mutableStateOf(false) }
-        var editing by remember { mutableStateOf<Category?>(null) }
+        val error by vm.error.collectAsStateWithLifecycle()
+        val refreshing by vm.refreshing.collectAsStateWithLifecycle()
         val res = LocalContext.current.resources
         val list = categories
-        if (list == null) {
-            Box(Modifier.fillMaxSize(), Alignment.Center) { Text(stringResource(R.string.loading), style = MaterialTheme.typography.titleMedium) }
-        } else {
+        if (list == null && error == null) {
+            Box(Modifier.fillMaxSize(), Alignment.Center) { Text(stringResource(R.string.explore_finding), style = MaterialTheme.typography.titleMedium) }
+            return
+        }
+        val state = if (list != null) UiState.Ready(list) else UiState.Error(error.orEmpty())
+        Loadable(state, onRetry = vm::retry) { themes ->
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 horizontalArrangement = Arrangement.spacedBy(GridGapX),
                 verticalArrangement = Arrangement.spacedBy(GridGapY),
                 contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
             ) {
-                itemsIndexed(list, key = { _, c -> c.id }) { _, category ->
+                if (themes.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) { Text(stringResource(R.string.explore_empty), style = MaterialTheme.typography.titleMedium) }
+                }
+                itemsIndexed(themes, key = { _, c -> c.id }) { _, category ->
                     CategoryCard(
                         category,
                         onOpen = { onOpen(category) },
-                        onEdit = { editing = category },
-                        onDelete = {
-                            vm.delete(category.id)
-                            Notices.show(res.getString(R.string.category_deleted, category.name))
+                        onHide = {
+                            vm.hide(category.id)
+                            Notices.show(res.getString(R.string.explore_hidden, category.name))
                         },
                     )
                 }
-                item(key = "new-category") {
-                    Column {
-                        GlowCard(onClick = { adding = true }) {
-                            Box(Modifier.fillMaxSize().background(Look.Surface), Alignment.Center) {
-                                Icon(Icons.Filled.Add, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(36.dp))
-                            }
-                        }
-                        CardText(stringResource(R.string.explore_new), stringResource(R.string.explore_new_hint))
-                    }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Hint(stringResource(if (refreshing) R.string.explore_finding else R.string.explore_hint_tv))
                 }
-                item(span = { GridItemSpan(maxLineSpan) }) { Hint(stringResource(R.string.explore_hint)) }
             }
-        }
-        if (adding || editing != null) {
-            val initial = editing
-            CategoryDialog(
-                initial = initial,
-                onDismiss = {
-                    adding = false
-                    editing = null
-                },
-                onSave = { name, keywords ->
-                    vm.save(initial?.id, name, keywords, initial?.filters ?: SearchFilters())
-                    adding = false
-                    editing = null
-                },
-            )
         }
     }
 
     /**
-     * Uma categoria: OK abre; segurar o OK abre o menu com editar e apagar (como no card de vídeo,
-     * o menu aparece no toque longo e pega o foco quando o OK é solto).
+     * Um tema: OK abre; segurar o OK abre o menu com esconder (como no card de vídeo, o menu
+     * aparece no toque longo e pega o foco quando o OK é solto).
      */
     @Composable
-    private fun CategoryCard(category: Category, onOpen: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
+    private fun CategoryCard(category: Category, onOpen: () -> Unit, onHide: () -> Unit) {
         var menu by remember { mutableStateOf(false) }
         var menuFocusable by remember { mutableStateOf(false) }
         Column {
@@ -516,14 +497,11 @@ object TvUi : Screens {
                     HoldMenu(
                         focusable = menuFocusable,
                         onDismiss = { menu = false },
-                        items = listOf(
-                            Triple(stringResource(R.string.category_edit), Icons.Outlined.Edit, onEdit),
-                            Triple(stringResource(R.string.category_delete), Icons.Outlined.Delete, onDelete),
-                        ),
+                        items = listOf(Triple(stringResource(R.string.explore_hide), Icons.Outlined.VisibilityOff, onHide)),
                     )
                 }
             }
-            CardText(category.name, category.keywords.joinToString(" · "))
+            CardText(category.name, null)
         }
     }
 
@@ -593,35 +571,6 @@ object TvUi : Screens {
         }
     }
 
-    /** Criar ou mudar uma categoria na TV: o nome e as palavras, separadas por vírgula. Os filtros ficam na página dela. */
-    @Composable
-    private fun CategoryDialog(initial: Category?, onDismiss: () -> Unit, onSave: (name: String, keywords: List<String>) -> Unit) {
-        var name by rememberSaveable { mutableStateOf(initial?.name.orEmpty()) }
-        var keywords by rememberSaveable { mutableStateOf(initial?.keywords?.joinToString(", ").orEmpty()) }
-        val parsed = CategoryRules.keywords(keywords)
-        val valid = name.isNotBlank() && parsed.isNotEmpty()
-        val first = remember { FocusRequester() }
-        Dialog(onDismissRequest = onDismiss) {
-            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(640.dp)) {
-                Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(
-                        stringResource(if (initial == null) R.string.explore_new else R.string.category_edit),
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    Text(stringResource(R.string.category_name), style = MaterialTheme.typography.labelLarge)
-                    TvTextField(name, { name = it }, placeholder = "", modifier = Modifier.fillMaxWidth().focusRequester(first))
-                    Text(stringResource(R.string.category_keywords_tv), style = MaterialTheme.typography.labelLarge)
-                    TvTextField(keywords, { keywords = it }, placeholder = "", modifier = Modifier.fillMaxWidth())
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(onClick = { onSave(name, parsed) }, enabled = valid) { Text(stringResource(R.string.save)) }
-                        OutlinedButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-                    }
-                }
-            }
-            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
-        }
-    }
-
     @Composable
     override fun CategoryPage(
         title: String,
@@ -634,47 +583,20 @@ object TvUi : Screens {
         val gone by vm.gone.collectAsStateWithLifecycle()
         val state by vm.state.collectAsStateWithLifecycle()
         val filters by vm.filters.collectAsStateWithLifecycle()
-        var editing by remember { mutableStateOf(false) }
 
         Column(Modifier.fillMaxSize().padding(screenPadding)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    category?.name ?: title,
-                    style = MaterialTheme.typography.headlineMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                if (category != null) {
-                    Spacer(Modifier.width(16.dp))
-                    IconButton(
-                        onClick = { editing = true },
-                        modifier = Modifier.size(36.dp),
-                        colors = IconButtonDefaults.colors(
-                            containerColor = Color.Transparent,
-                            contentColor = Look.Sub,
-                            focusedContainerColor = Look.GlowSoft.copy(alpha = 0.18f),
-                            focusedContentColor = Look.Text,
-                        ),
-                    ) {
-                        Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.category_edit), modifier = Modifier.size(18.dp))
-                    }
-                }
-            }
+            Text(
+                category?.name ?: title,
+                style = MaterialTheme.typography.headlineMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Spacer(Modifier.height(16.dp))
             if (gone) {
                 Text(stringResource(R.string.category_gone), style = MaterialTheme.typography.titleMedium)
                 return@Column
             }
             FilterButtons(categoryFilterChoices(filters), onChange = vm::setFilters)
-            category?.let {
-                Text(
-                    stringResource(R.string.category_searching, it.keywords.joinToString(" · ")),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Look.Sub,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
             Spacer(Modifier.height(16.dp))
             Loadable(state, onRetry = vm::reload) { content ->
                 VideoGrid(
@@ -687,17 +609,6 @@ object TvUi : Screens {
                     onFocusTaken = {},
                 )
             }
-        }
-        val current = category
-        if (editing && current != null) {
-            CategoryDialog(
-                initial = current,
-                onDismiss = { editing = false },
-                onSave = { name, keywords ->
-                    vm.edit(name, keywords, current.filters)
-                    editing = false
-                },
-            )
         }
     }
 

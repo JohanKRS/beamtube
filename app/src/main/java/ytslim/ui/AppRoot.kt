@@ -100,7 +100,8 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                             HomeTab.RECOMMENDED -> vms[RecommendedViewModel::class].reload()
                             HomeTab.PLAYLISTS -> vms[PlaylistsViewModel::class].reload()
                             HomeTab.HISTORY -> vms[HistoryViewModel::class].reload()
-                            HomeTab.EXPLORE, HomeTab.SEARCH, HomeTab.SETTINGS -> Unit
+                            HomeTab.EXPLORE -> vms[ExploreViewModel::class].refresh()
+                            HomeTab.SEARCH, HomeTab.SETTINGS -> Unit
                         }
                     }
                     ui.Home(tab = tab, onTab = { tab = it }, onReload = reload) { current ->
@@ -218,11 +219,11 @@ interface Screens {
         onOpenPlaylist: (Playlist) -> Unit,
     )
 
-    /** As categorias do usuário (cada uma, uma busca nova), com criar, mudar e apagar. */
+    /** Os temas achados no histórico (cada um, uma busca nova); segurar um tema o esconde. */
     @Composable
     fun Explore(vm: ExploreViewModel, onOpen: (Category) -> Unit)
 
-    /** Os vídeos de uma categoria, com os filtros dela. [title] vale até a categoria carregar. */
+    /** Os vídeos de um tema, com os filtros dele. [title] vale até a categoria carregar. */
     @Composable
     fun CategoryPage(
         title: String,

@@ -1,17 +1,24 @@
 package ytslim.player
 
+import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.TypedValue
+import android.view.GestureDetector
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowManager
@@ -24,14 +31,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -53,6 +66,9 @@ import ytslim.data.VideoLinks
  *
  * O botão da lua abre o painel de dormir: escurecer o vídeo, quantos vídeos da playlist ainda
  * tocam e o que fazer quando eles acabarem (desligar a TV, pelo [ScreenOffService]).
+ *
+ * No celular e no tablet: toques no vídeo como no YouTube ([TouchRules]), e a tela gira conforme
+ * o vídeo (deitada para vídeo horizontal, em pé para vertical), com um botão para girar à mão.
  */
 @OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
@@ -71,6 +87,10 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var skipButton: TextView
     private lateinit var captionsButton: ImageButton
     private lateinit var sleepButton: ImageButton
+    private lateinit var rotateButton: ImageButton
+    private lateinit var island: PlayerIsland
+    private lateinit var captionsView: SubtitleView
+    private lateinit var seekBadge: TextView
     private lateinit var sleepPanel: View
     private lateinit var qualityButton: TextView
     private lateinit var qualityPanel: View
@@ -102,6 +122,21 @@ class PlayerActivity : ComponentActivity() {
     /** As resoluções que o painel de qualidade mostra agora. */
     private var qualityHeights: List<Int> = emptyList()
 
+    /** Os trechos do "Skip ahead" marcados agora na barra de tempo. */
+    private var shownSkipSpots: List<Long> = emptyList()
+
+    /** Celular ou tablet (toques no vídeo, girar a tela, 1080p). */
+    private val touch by lazy { !isTv() }
+
+    /** O sentido escolhido no botão de girar; vale até fechar o player. null = segue o vídeo. */
+    private var chosenOrientation: Int? = null
+
+    /** Pulos seguidos com dois toques: o lado, até quando um toque só ainda soma, e o total. */
+    private var streakZone: TouchRules.Zone? = null
+    private var streakUntil = 0L
+    private var streakSeconds = 0
+    private var streakTap = false
+
     private val closePanelOnBack = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() = closePanel()
     }
@@ -128,7 +163,7 @@ class PlayerActivity : ComponentActivity() {
         // Um link de outro app não continua a sequência de uma playlist aberta antes.
         if (target.external && savedInstanceState == null) PlayQueue.clear()
 
-        controller = PlaybackController(this, AppScope)
+        controller = PlaybackController(this, AppScope, QualityRules.top(tv = !touch))
         // Recriada no meio de uma sequência, a tela volta ao vídeo que estava tocando.
         val videoId = savedInstanceState?.getString(KEY_VIDEO) ?: target.videoId
         val restored = savedInstanceState?.containsKey(KEY_VIDEO) == true
@@ -136,7 +171,9 @@ class PlayerActivity : ComponentActivity() {
             ?.takeIf { it.isNotBlank() }
         setContentView(buildLayout(title))
         playerView.player = controller.player
+        controller.player.addListener(PlayerScreenListener())
         bindButtons()
+        if (touch) bindTouchGestures()
         buildSleepPanel()
         onBackPressedDispatcher.addCallback(this, closePanelOnBack)
 
@@ -245,6 +282,10 @@ class PlayerActivity : ComponentActivity() {
         saveButton.setActive(controls.saved == true)
         saveButton.contentDescription = getString(if (controls.saved == true) R.string.player_saved else R.string.player_save)
         skipButton.visibility = if (controls.skipAvailable) View.VISIBLE else View.GONE
+        if (controls.skipSpots != shownSkipSpots) {
+            shownSkipSpots = controls.skipSpots
+            playerView.setExtraAdGroupMarkers(controls.skipSpots.toLongArray(), BooleanArray(controls.skipSpots.size))
+        }
         captionsButton.visibility = if (controls.captionsAvailable) View.VISIBLE else View.GONE
         captionsButton.setActive(controls.captionsOn)
         captionsButton.contentDescription =
@@ -267,6 +308,7 @@ class PlayerActivity : ComponentActivity() {
             if (!controller.skipAhead()) Toast.makeText(this, R.string.player_no_highlight, Toast.LENGTH_SHORT).show()
         }
         sleepButton.setOnClickListener { togglePanel(sleepPanel) }
+        rotateButton.setOnClickListener { rotate() }
         qualityButton.setOnClickListener { togglePanel(qualityPanel) }
         // O painel some junto com os controles.
         playerView.setControllerVisibilityListener(
@@ -473,6 +515,109 @@ class PlayerActivity : ComponentActivity() {
         return super.dispatchTouchEvent(event)
     }
 
+    /** A legenda (centralizada, [CaptionRules]) e o sentido da tela seguem o player. */
+    private inner class PlayerScreenListener : Player.Listener {
+        override fun onCues(cueGroup: CueGroup) {
+            captionsView.setCues(CaptionRules.centered(cueGroup.cues))
+        }
+
+        override fun onVideoSizeChanged(videoSize: VideoSize) = followVideo(videoSize)
+    }
+
+    /** Celular e tablet: deitado para vídeo horizontal, em pé para vertical (a não ser que o botão tenha escolhido). */
+    private fun followVideo(size: VideoSize) {
+        if (!touch || chosenOrientation != null || size.width <= 0 || size.height <= 0) return
+        val landscape = size.width * size.pixelWidthHeightRatio >= size.height
+        requestedOrientation =
+            if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+    }
+
+    /** O botão de girar: troca entre deitado e em pé, e a escolha fica até fechar o player. */
+    private fun rotate() {
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val next = if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        chosenOrientation = next
+        requestedOrientation = next
+    }
+
+    /**
+     * Toques no vídeo ([TouchRules]): um toque mostra ou esconde os controles (o PlayerView faz
+     * isso no performClick); dois toques nos lados voltam ou avançam 10 s, e cada toque a mais do
+     * mesmo lado logo em seguida soma outros 10 s; dois toques no meio pausam ou tocam.
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun bindTouchGestures() {
+        val detector = GestureDetector(
+            this,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: MotionEvent) = true
+
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean = playerView.performClick()
+
+                override fun onDoubleTap(e: MotionEvent): Boolean {
+                    when (val zone = TouchRules.zone(e.x, playerView.width)) {
+                        TouchRules.Zone.PLAY_PAUSE -> togglePlay()
+                        else -> seek(zone)
+                    }
+                    return true
+                }
+            },
+        )
+        playerView.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                val zone = TouchRules.zone(event.x, playerView.width)
+                streakTap = zone != TouchRules.Zone.PLAY_PAUSE && zone == streakZone && SystemClock.uptimeMillis() < streakUntil
+            }
+            val streak = streakZone
+            if (streakTap && streak != null) {
+                if (event.actionMasked == MotionEvent.ACTION_UP) seek(streak)
+            } else {
+                detector.onTouchEvent(event)
+            }
+            true
+        }
+    }
+
+    private fun seek(zone: TouchRules.Zone) {
+        val now = SystemClock.uptimeMillis()
+        streakSeconds = if (zone == streakZone && now < streakUntil) streakSeconds + STEP_SECONDS else STEP_SECONDS
+        streakZone = zone
+        streakUntil = now + TouchRules.STREAK_MS
+        val player = controller.player
+        player.seekTo(TouchRules.seekTarget(player.currentPosition, player.duration, zone))
+        val back = zone == TouchRules.Zone.BACK
+        flash(
+            text = getString(if (back) R.string.player_seek_back else R.string.player_seek_forward, streakSeconds),
+            icon = 0,
+            gravity = (if (back) Gravity.START else Gravity.END) or Gravity.CENTER_VERTICAL,
+        )
+    }
+
+    private fun togglePlay() {
+        val player = controller.player
+        // O ícone mostra o que acabou de acontecer.
+        val icon = if (Util.shouldShowPlayButton(player)) R.drawable.ic_play else R.drawable.ic_pause
+        Util.handlePlayPauseButtonAction(player)
+        flash(text = "", icon = icon, gravity = Gravity.CENTER)
+    }
+
+    /** Um aviso rápido por cima do vídeo (o pulo de 10 s ou o tocar/pausar). */
+    private fun flash(text: String, icon: Int, gravity: Int) {
+        seekBadge.animate().cancel()
+        seekBadge.text = text
+        seekBadge.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0)
+        val params = seekBadge.layoutParams as FrameLayout.LayoutParams
+        params.gravity = gravity
+        val side = (playerView.width * 0.12f).toInt()
+        params.marginStart = side
+        params.marginEnd = side
+        seekBadge.layoutParams = params
+        seekBadge.alpha = 1f
+        seekBadge.visibility = View.VISIBLE
+        seekBadge.animate().alpha(0f).setStartDelay(FLASH_MS).setDuration(FLASH_FADE_MS)
+            .withEndAction { seekBadge.visibility = View.GONE }
+    }
+
     private fun ImageButton.setActive(active: Boolean) {
         setColorFilter(color(if (active) R.color.player_accent else R.color.player_icon))
         isActivated = active
@@ -520,6 +665,10 @@ class PlayerActivity : ComponentActivity() {
         skipButton = playerView.findViewById(R.id.player_skip)
         captionsButton = playerView.findViewById(R.id.player_captions)
         sleepButton = playerView.findViewById(R.id.player_sleep)
+        rotateButton = playerView.findViewById<ImageButton>(R.id.player_rotate).apply {
+            visibility = if (touch) View.VISIBLE else View.GONE
+        }
+        island = PlayerIsland(playerView).apply { fit(resources.configuration.screenWidthDp) }
         sleepPanel = playerView.findViewById(R.id.player_sleep_panel)
         qualityButton = playerView.findViewById(R.id.player_quality_button)
         qualityPanel = playerView.findViewById(R.id.player_quality_panel)
@@ -535,6 +684,41 @@ class PlayerActivity : ComponentActivity() {
         }
         (playerView.overlayFrameLayout ?: playerView).addView(dimView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
+        // A legenda no estilo do YouTube ([CaptionRules]). Fica no lugar da do PlayerView, que
+        // seguiria a posição e o fundo que vêm do YouTube; as falas chegam pelo PlayerScreenListener.
+        captionsView = SubtitleView(this).apply {
+            setApplyEmbeddedStyles(false)
+            setApplyEmbeddedFontSizes(false)
+            setStyle(CaptionRules.style(ResourcesCompat.getFont(this@PlayerActivity, R.font.figtree_semibold)))
+            setUserDefaultTextSize()
+        }
+        val original = playerView.subtitleView
+        val captionsParent = original?.parent as? ViewGroup
+        if (original != null && captionsParent != null) {
+            original.visibility = View.GONE
+            captionsParent.addView(captionsView, captionsParent.indexOfChild(original) + 1, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        } else {
+            (playerView.overlayFrameLayout ?: playerView).addView(captionsView, 0, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        }
+
+        // O aviso dos toques no vídeo (celular e tablet), por cima do escurecer.
+        seekBadge = TextView(this).apply {
+            setBackgroundResource(R.drawable.player_pill_bg)
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.figtree_semibold)
+            compoundDrawableTintList = ColorStateList.valueOf(Color.WHITE)
+            gravity = Gravity.CENTER
+            minWidth = dp(64)
+            minHeight = dp(48)
+            setPadding(dp(18), dp(10), dp(18), dp(10))
+            visibility = View.GONE
+        }
+        (playerView.overlayFrameLayout ?: playerView).addView(
+            seekBadge,
+            FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER),
+        )
+
         messageView = TextView(this).apply {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
@@ -549,6 +733,11 @@ class PlayerActivity : ComponentActivity() {
             addView(playerView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
             addView(messageView, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER))
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::island.isInitialized) island.fit(newConfig.screenWidthDp)
     }
 
     private data class Target(val videoId: String, val startMs: Long, val external: Boolean)
@@ -588,6 +777,12 @@ class PlayerActivity : ComponentActivity() {
 
         /** Tempo para cancelar o "Turn off" depois que os vídeos acabam. */
         private const val TURN_OFF_DELAY_MS = 10_000L
+
+        private const val STEP_SECONDS = (TouchRules.SEEK_STEP_MS / 1000).toInt()
+
+        /** O aviso dos toques fica este tempo e some em [FLASH_FADE_MS]. */
+        private const val FLASH_MS = 450L
+        private const val FLASH_FADE_MS = 250L
 
         fun intent(context: Context, videoId: String, title: String?): Intent =
             Intent(context, PlayerActivity::class.java)

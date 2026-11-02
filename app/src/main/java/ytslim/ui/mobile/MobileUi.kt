@@ -18,8 +18,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -56,7 +54,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -73,7 +70,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.History
@@ -81,6 +77,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -94,11 +91,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.InputChip
-import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -132,11 +125,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -157,6 +146,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -651,13 +641,20 @@ object MobileUi : Screens {
     @Composable
     override fun Explore(vm: ExploreViewModel, onOpen: (Category) -> Unit) {
         val categories by vm.categories.collectAsStateWithLifecycle()
-        var adding by remember { mutableStateOf(false) }
-        var editing by remember { mutableStateOf<Category?>(null) }
+        val error by vm.error.collectAsStateWithLifecycle()
         val res = LocalContext.current.resources
         val list = categories
-        if (list == null) {
-            Box(Modifier.fillMaxSize().padding(LocalBars.current), Alignment.Center) { CircularProgressIndicator() }
-        } else {
+        if (list == null && error == null) {
+            Box(Modifier.fillMaxSize().padding(LocalBars.current), Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CircularProgressIndicator()
+                    Text(stringResource(R.string.explore_finding), color = Look.Sub, textAlign = TextAlign.Center)
+                }
+            }
+            return
+        }
+        val state = if (list != null) UiState.Ready(list) else UiState.Error(error.orEmpty())
+        Loadable(state, onRetry = vm::retry, refresh = vm) { themes ->
             LazyVerticalGrid(
                 // Duas colunas no celular em pé; mais no tablet e deitado.
                 columns = GridCells.Adaptive(minSize = 156.dp),
@@ -665,76 +662,49 @@ object MobileUi : Screens {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                items(list, key = { it.id }) { category ->
+                if (themes.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text(stringResource(R.string.explore_empty), textAlign = TextAlign.Center, color = Look.Sub, modifier = Modifier.fillMaxWidth().padding(32.dp))
+                    }
+                }
+                items(themes, key = { it.id }) { category ->
                     CategoryTile(
                         category,
                         onOpen = { onOpen(category) },
-                        onEdit = { editing = category },
-                        onDelete = {
-                            vm.delete(category.id)
-                            Notices.show(res.getString(R.string.category_deleted, category.name))
+                        onHide = {
+                            vm.hide(category.id)
+                            Notices.show(res.getString(R.string.explore_hidden, category.name))
                         },
+                        modifier = Modifier.animateItem(),
                     )
                 }
-                item(key = "new-category") { NewCategoryTile { adding = true } }
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Hint(stringResource(R.string.explore_hint), Modifier.padding(horizontal = 2.dp, vertical = 6.dp))
                 }
             }
         }
-        if (adding || editing != null) {
-            val initial = editing
-            CategorySheet(
-                initial = initial,
-                onDismiss = {
-                    adding = false
-                    editing = null
-                },
-                onSave = { name, keywords, filters ->
-                    vm.save(initial?.id, name, keywords, filters)
-                    adding = false
-                    editing = null
-                },
-            )
-        }
     }
 
-    /** Uma categoria: o mosaico das miniaturas, o nome e as palavras. Segurar abre editar e apagar. */
+    /** Um tema: o mosaico das miniaturas e o nome. Segurar oferece esconder o tema. */
     @OptIn(ExperimentalFoundationApi::class)
     @Composable
-    private fun CategoryTile(category: Category, onOpen: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
+    private fun CategoryTile(category: Category, onOpen: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier) {
         var menu by remember { mutableStateOf(false) }
-        Box {
+        Box(modifier) {
             Column(
                 Modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = { menu = true }),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 CategoryMosaic(category, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)))
-                Column(Modifier.padding(horizontal = 2.dp)) {
-                    Text(category.name, style = RowTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        category.keywords.joinToString(" · "),
-                        style = Meta.copy(fontSize = 12.sp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Text(category.name, style = RowTitle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp))
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.category_edit)) },
-                    leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
+                    text = { Text(stringResource(R.string.explore_hide)) },
+                    leadingIcon = { Icon(Icons.Outlined.VisibilityOff, contentDescription = null) },
                     onClick = {
                         menu = false
-                        onEdit()
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.category_delete)) },
-                    leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-                    onClick = {
-                        menu = false
-                        onDelete()
+                        onHide()
                     },
                 )
             }
@@ -775,147 +745,6 @@ object MobileUi : Screens {
     }
 
     @Composable
-    private fun NewCategoryTile(onClick: () -> Unit) {
-        Column(
-            Modifier.fillMaxWidth().clickable(onClick = onClick),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Box(
-                Modifier.fillMaxWidth().aspectRatio(16f / 9f).drawBehind {
-                    val stroke = 1.5.dp.toPx()
-                    drawRoundRect(
-                        color = Look.Outline,
-                        topLeft = androidx.compose.ui.geometry.Offset(stroke / 2, stroke / 2),
-                        size = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke),
-                        cornerRadius = CornerRadius(14.dp.toPx()),
-                        style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))),
-                    )
-                },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(28.dp))
-            }
-            Column(Modifier.padding(horizontal = 2.dp)) {
-                Text(stringResource(R.string.explore_new), style = RowTitle)
-                Text(stringResource(R.string.explore_new_hint), style = Meta.copy(fontSize = 12.sp))
-            }
-        }
-    }
-
-    /**
-     * Criar ou mudar uma categoria: o nome, as palavras (cada uma vira uma busca) e os filtros com
-     * que ela abre. Uma vírgula ou o "Done" do teclado viram a palavra digitada num chip.
-     */
-    @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-    @Composable
-    private fun CategorySheet(
-        initial: Category?,
-        onDismiss: () -> Unit,
-        onSave: (name: String, keywords: List<String>, filters: SearchFilters) -> Unit,
-    ) {
-        var name by remember { mutableStateOf(initial?.name.orEmpty()) }
-        var keywords by remember { mutableStateOf(initial?.keywords.orEmpty()) }
-        var draft by remember { mutableStateOf("") }
-        var filters by remember { mutableStateOf(initial?.filters ?: SearchFilters()) }
-        val all = CategoryRules.keywords((keywords + draft).joinToString(","))
-        val valid = name.isNotBlank() && all.isNotEmpty()
-        val addDraft = {
-            keywords = CategoryRules.keywords((keywords + draft).joinToString(","))
-            draft = ""
-        }
-        val fieldColors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = Look.Ground,
-            unfocusedContainerColor = Look.Ground,
-            focusedBorderColor = Look.Glow.copy(alpha = 0.55f),
-            unfocusedBorderColor = Look.Outline,
-            cursorColor = Look.Glow,
-        )
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = Look.Surface,
-        ) {
-            Column(
-                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Text(
-                    stringResource(if (initial == null) R.string.explore_new else R.string.category_edit),
-                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 19.sp),
-                )
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(R.string.category_name)) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = fieldColors,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.category_keywords), style = MaterialTheme.typography.labelMedium, color = Look.Sub)
-                    if (keywords.isNotEmpty()) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            keywords.forEach { keyword ->
-                                InputChip(
-                                    selected = false,
-                                    onClick = { keywords = keywords - keyword },
-                                    label = { Text(keyword) },
-                                    trailingIcon = {
-                                        Icon(
-                                            Icons.Filled.Close,
-                                            contentDescription = stringResource(R.string.category_keyword_remove, keyword),
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    },
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = InputChipDefaults.inputChipColors(containerColor = Look.SurfaceHigh, labelColor = Look.Text, trailingIconColor = Look.Sub),
-                                    border = null,
-                                )
-                            }
-                        }
-                    }
-                    OutlinedTextField(
-                        value = draft,
-                        onValueChange = { text ->
-                            // Uma vírgula fecha a palavra: o que vem antes vira chip, o resto continua no campo.
-                            if (',' in text) {
-                                keywords = CategoryRules.keywords((keywords + text.substringBeforeLast(',')).joinToString(","))
-                                draft = text.substringAfterLast(',').trimStart()
-                            } else {
-                                draft = text
-                            }
-                        },
-                        placeholder = { Text(stringResource(R.string.category_keyword_add)) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = fieldColors,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { addDraft() }),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.category_opens_with), style = MaterialTheme.typography.labelMedium, color = Look.Sub)
-                    FilterRow(categoryFilterChoices(filters), onChange = { filters = it }, padding = PaddingValues(0.dp))
-                    Text(stringResource(R.string.category_filters_hint), style = MaterialTheme.typography.bodySmall, color = Look.Sub)
-                }
-                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).height(48.dp)) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                    Button(
-                        onClick = { onSave(name, all, filters) },
-                        enabled = valid,
-                        modifier = Modifier.weight(1f).height(48.dp),
-                    ) { Text(stringResource(R.string.save)) }
-                }
-            }
-        }
-    }
-
-    @Composable
     override fun CategoryPage(
         title: String,
         vm: CategoryViewModel,
@@ -927,18 +756,7 @@ object MobileUi : Screens {
         val gone by vm.gone.collectAsStateWithLifecycle()
         val state by vm.state.collectAsStateWithLifecycle()
         val filters by vm.filters.collectAsStateWithLifecycle()
-        var editing by remember { mutableStateOf(false) }
-        DetailFrame(
-            title = category?.name ?: title,
-            navigation = { BackButton(onBack) },
-            actions = {
-                if (category != null) {
-                    IconButton(onClick = { editing = true }) {
-                        Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.category_edit), modifier = Modifier.size(20.dp))
-                    }
-                }
-            },
-        ) {
+        DetailFrame(title = category?.name ?: title, navigation = { BackButton(onBack) }) {
             if (gone) {
                 Box(Modifier.fillMaxSize().padding(LocalBars.current).padding(24.dp), Alignment.Center) {
                     Text(stringResource(R.string.category_gone), color = Look.Sub, textAlign = TextAlign.Center)
@@ -951,33 +769,11 @@ object MobileUi : Screens {
                         onNearEnd = vm::loadMore,
                         onPlay = onPlay,
                         onOpenChannel = onOpenChannel,
-                        // Os filtros e as palavras buscadas rolam junto com a lista, no topo dela.
-                        header = {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                FilterRow(categoryFilterChoices(filters), onChange = vm::setFilters, padding = PaddingValues(0.dp))
-                                category?.let {
-                                    Text(
-                                        stringResource(R.string.category_searching, it.keywords.joinToString(" · ")),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Look.Sub,
-                                    )
-                                }
-                            }
-                        },
+                        // Os filtros rolam junto com a lista, no topo dela.
+                        header = { FilterRow(categoryFilterChoices(filters), onChange = vm::setFilters, padding = PaddingValues(0.dp)) },
                     )
                 }
             }
-        }
-        val current = category
-        if (editing && current != null) {
-            CategorySheet(
-                initial = current,
-                onDismiss = { editing = false },
-                onSave = { name, keywords, newFilters ->
-                    vm.edit(name, keywords, newFilters)
-                    editing = false
-                },
-            )
         }
     }
 
@@ -989,14 +785,18 @@ object MobileUi : Screens {
             vm.remove(video) { Notices.show(res.getString(R.string.history_remove_failed, it)) }
             Notices.show(res.getString(R.string.history_removed))
         }
+        // O mesmo visual das playlists (pedido do Johan): miniatura ao lado do título.
         Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
-            VideoGrid(
+            VideoRows(
                 content,
-                emptyText = stringResource(R.string.history_empty),
                 onNearEnd = vm::loadMore,
                 onPlay = onPlay,
                 onOpenChannel = onOpenChannel,
+                showSaved = true,
+                header = null,
                 onRemove = remove,
+                emptyText = stringResource(R.string.history_empty),
+                removeLabel = stringResource(R.string.history_remove),
             )
         }
     }
@@ -1156,7 +956,7 @@ object MobileUi : Screens {
         val cards = rememberCardState()
         LazyVerticalGrid(
             state = grid,
-            columns = GridCells.Adaptive(minSize = 240.dp),
+            columns = VideoColumns,
             contentPadding = barsPlus(top = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
@@ -1727,7 +1527,6 @@ object MobileUi : Screens {
         onPlay: (Video) -> Unit,
         onOpenChannel: ((Channel) -> Unit)?,
         header: (@Composable () -> Unit)? = null,
-        onRemove: ((Video) -> Unit)? = null,
     ) {
         val grid = rememberLazyGridState()
         NearEnd(grid, content.videos.size, onNearEnd)
@@ -1735,8 +1534,7 @@ object MobileUi : Screens {
         val cards = rememberCardState()
         LazyVerticalGrid(
             state = grid,
-            // Uma coluna no celular, três no tablet em pé, quatro deitado.
-            columns = GridCells.Adaptive(minSize = 240.dp),
+            columns = VideoColumns,
             contentPadding = barsPlus(top = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(26.dp),
@@ -1748,7 +1546,7 @@ object MobileUi : Screens {
                 }
             }
             items(content.videos, key = { it.id + it.playlistIndex }) { video ->
-                VideoCard(video, cards, onPlay, onOpenChannel, onRemove, Modifier.animateItem())
+                VideoCard(video, cards, onPlay, onOpenChannel, Modifier.animateItem())
             }
             listEnd(content, onNearEnd)
         }
@@ -1768,7 +1566,10 @@ object MobileUi : Screens {
         }
     }
 
-    /** Lista de uma playlist: miniatura pequena ao lado do título (uma coluna no celular, duas no tablet deitado). */
+    /**
+     * Lista de uma playlist (e do Histórico): miniatura pequena ao lado do título (uma coluna no
+     * celular, duas no tablet deitado).
+     */
     @Composable
     private fun VideoRows(
         content: VideoListContent,
@@ -1778,6 +1579,8 @@ object MobileUi : Screens {
         showSaved: Boolean,
         header: (@Composable () -> Unit)?,
         onRemove: ((Video) -> Unit)? = null,
+        emptyText: String = stringResource(R.string.list_empty),
+        removeLabel: String = stringResource(R.string.playlist_remove),
     ) {
         val grid = rememberLazyGridState()
         NearEnd(grid, content.videos.size, onNearEnd)
@@ -1793,13 +1596,13 @@ object MobileUi : Screens {
             if (header != null) item(span = { GridItemSpan(maxLineSpan) }) { header() }
             if (content.videos.isEmpty() && !content.loadingMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text(stringResource(R.string.list_empty), textAlign = TextAlign.Center, color = Look.Sub, modifier = Modifier.fillMaxWidth().padding(32.dp))
+                    Text(emptyText, textAlign = TextAlign.Center, color = Look.Sub, modifier = Modifier.fillMaxWidth().padding(32.dp))
                 }
             }
             items(content.videos, key = { it.id + it.playlistIndex }) { video ->
                 SwipeToRemove(
                     enabled = onRemove != null,
-                    label = stringResource(R.string.playlist_remove),
+                    label = removeLabel,
                     corner = 10.dp,
                     onRemove = { onRemove?.invoke(video) },
                     modifier = Modifier.animateItem(),
@@ -1813,8 +1616,7 @@ object MobileUi : Screens {
 
     /**
      * Card de vídeo. Tocar abre o vídeo; tocar e segurar põe ou tira do Watch later (com um aviso);
-     * o avatar e o nome do canal abrem o canal. Com [onRemove] (só no Histórico), deslizar para a
-     * esquerda tira o vídeo da lista.
+     * o avatar e o nome do canal abrem o canal.
      */
     @Composable
     private fun VideoCard(
@@ -1822,17 +1624,10 @@ object MobileUi : Screens {
         cards: CardState,
         onPlay: (Video) -> Unit,
         onOpenChannel: ((Channel) -> Unit)?,
-        onRemove: ((Video) -> Unit)? = null,
         modifier: Modifier = Modifier,
-    ) = SwipeToRemove(
-        enabled = onRemove != null,
-        label = stringResource(R.string.history_remove),
-        corner = 14.dp,
-        onRemove = { onRemove?.invoke(video) },
-        modifier = modifier,
     ) {
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Look.Ground).combinedClickable(
+            modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Look.Ground).combinedClickable(
                 onClickLabel = video.title,
                 onLongClickLabel = stringResource(R.string.video_toggle_save),
                 onLongClick = { cards.onLongPress(video) },
@@ -2086,5 +1881,22 @@ object MobileUi : Screens {
                 }
             }
         }
+    }
+}
+
+/**
+ * As colunas das grades de vídeo: uma no celular em pé; três no tablet em pé (pedido do Johan) e
+ * no celular deitado; quatro ou mais no tablet deitado.
+ */
+private object VideoColumns : GridCells {
+    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
+        val width = availableSize.toDp()
+        val count = when {
+            width < 560.dp -> 1
+            width < 960.dp -> 3
+            else -> maxOf(4, (availableSize + spacing) / (240.dp.roundToPx() + spacing))
+        }
+        val cells = availableSize - spacing * (count - 1)
+        return List(count) { cells / count + if (it < cells % count) 1 else 0 }
     }
 }

@@ -21,15 +21,20 @@ internal data class VideoTrack(
 )
 
 /**
- * Qualidade sempre na máxima (pedido do Johan): o app tenta 4K primeiro e só desce quando o
- * aparelho realmente não dá conta. Os limites que o decodificador declara não bastam para descer:
+ * Qualidade sempre na máxima (pedido do Johan): na TV o app tenta 4K primeiro; no celular e no
+ * tablet, 1080p (também pedido dele). Só desce quando o aparelho realmente não dá conta. Os limites que o decodificador declara não bastam para descer:
  * muitas TVs declaram menos do que decodificam, e o Media3, que confia neles, ficava em 360p numa
  * TV de 32 bits com Android 11. Quem faz descer é o aparelho falhar de verdade (erro do
  * decodificador, quadros perdidos ou o vídeo parando para carregar), e aí o teto cai um degrau.
  */
 internal object QualityRules {
-    /** O teto inicial: 4K. */
+    /** O teto inicial na TV: 4K. */
     const val MAX_HEIGHT = 2160
+
+    /** O teto inicial no celular e no tablet: 1080p (cai para 720p e abaixo se não der conta). */
+    const val TOUCH_HEIGHT = 1080
+
+    fun top(tv: Boolean): Int = if (tv) MAX_HEIGHT else TOUCH_HEIGHT
 
     private const val MAX_FRAME_RATE = 61f
 

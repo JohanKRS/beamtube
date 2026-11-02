@@ -30,7 +30,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - **Barras de vidro de ponta a ponta** no celular e no tablet: a barra de cima e a de baixo passam por trás da barra de status, da barra de gestos e das laterais, e o conteúdo rola por baixo delas. O desfoque só existe no Android 12 ou mais novo; nos mais antigos a barra fica quase opaca.
   - **O recorte da câmera é ignorado:** o conteúdo passa por baixo dele, e só as barras do sistema afastam os botões.
   - Barra de cima compacta (o nome da aba e a lupa). A barra de baixo tem **só ícones**, sem nomes.
-  - **Deitado** (largura maior que a altura e pelo menos 600 dp), a barra de baixo vira uma coluna de ícones à esquerda, que inclui a Busca. O tablet em pé usa o mesmo layout do celular, com 3 colunas.
+  - **Deitado** (largura maior que a altura e pelo menos 600 dp), a barra de baixo vira uma coluna de ícones à esquerda, que inclui a Busca. O tablet em pé usa o mesmo layout do celular, com 3 colunas (até a 0.5.0 ele mostrava 2; a grade agora conta pela largura: 1 coluna abaixo de 560 dp, 3 abaixo de 960 dp e, acima disso, quantas couberem com 240 dp, no mínimo 4).
   - Na TV não tem desfoque: o menu e os avisos usam um cinza quase opaco. O foco aumenta o card em 6%, com borda creme e brilho âmbar.
 
 ## Telas
@@ -41,8 +41,8 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 | Recomendações | Secundária, com exclusão e preferência de tópicos (ver Filtragem) e os filtros de data, duração e ordem da busca. |
 | Busca | "Melhorada": filtros de duração, data, tipo e ordenação, e sugestões enquanto se digita. Resultados misturam vídeos, canais e playlists. Lives só aparecem aqui. |
 | Playlists | Inclui **Assistir mais tarde** (o real, que o motor acessa). Reordenar e tirar vídeos, inclusive pela TV. |
-| Histórico | Lista do que foi assistido. Tirar vídeos dela (0.4.2). |
-| Explore | Catálogo de categorias do próprio Johan, cada uma uma busca nova com filtros (0.5.0; ver "Explore"). Aba a mais: **Recommended continua**. |
+| Histórico | Lista do que foi assistido, **no formato das playlists** (miniatura à esquerda e o título ao lado; 0.5.1, pedido do Johan). Tirar vídeos dela (0.4.2). |
+| Explore | **Temas achados no histórico**, cada um uma busca nova com filtros (0.5.1; na 0.5.0 eram categorias feitas à mão; ver "Explore"). Aba a mais: **Recommended continua**. |
 | Canal | Página básica do canal: vídeos e playlists (duas abas) e o bloquear, que é só um ícone pequeno (na barra de cima no celular, ao lado do nome na TV). Abre pela busca, pelo nome do canal no player, pelo avatar e nome do canal nos cards (celular e tablet) e pelo menu do OK longo (TV). |
 | Configurações | Mínimas: **mostrar lives nas Inscrições**, playlist do botão Save, tópicos excluídos e preferidos, canais bloqueados, links externos, playlists inscritas, **cor do ícone** e conta (com o Sign out). |
 
@@ -78,19 +78,29 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - O cliente de TV do YouTube (o primeiro que o motor usa) manda o vídeo **sem título e sem autor**. Até a 0.4.0 o player trocava o título do card por esse vazio. Agora o título vem do stream, se vier; senão do card que abriu o vídeo; e, nos links de outros apps, da página do vídeo (`getMetadata`).
 - **Áudio original**: escolher sempre a faixa marcada como original, nunca a dublagem automática.
 - **Controles com bem menos elementos.** Manter apenas:
-  - **Pular as partes menos interessantes** (botão "Skip ahead"). O motor não expõe o "pular para frente" do Premium nem o gráfico de "mais repetidos", então o app pede o gráfico à página "next" do cliente WEB, sem login (`HeatmapRepository`). O botão vai para o começo do próximo trecho "quente": acima do meio do caminho entre a mediana e o topo (95%) do gráfico, a pelo menos 5 s de distância (`SkipRules`). No vídeo de teste, cai exatamente onde o YouTube marca "Most replayed". Sem gráfico (vídeos com poucas visualizações), vai para o próximo capítulo; sem os dois, o botão não aparece.
+  - **Pular as partes menos interessantes** (botão "Skip ahead"). O Johan queria o "Jump ahead" do YouTube Premium, que pula a parte de merchandising; esse dado não chega a apps de fora (a página "next" sem login só traz o gráfico de "mais repetidos", conferido em 2026-11-02), e ele recusou o SponsorBlock por ser de terceiros. Então o app usa o gráfico do próprio YouTube, pedido à página "next" do cliente WEB, sem login (`HeatmapRepository`), e procura **vales**: um trecho em que a audiência cai abaixo de 30% da mediana do vídeo por 15 s a 5 min (`SkipRules`, 0.5.1).
+    - O botão pula do começo do vale (até 20 s à frente) para o ponto em que a audiência volta à mediana. Sem vale por perto, e se o ponto atual estiver abaixo da mediana, vai para o próximo pico em até 60 s. Fora disso, avisa "Nothing to skip here." e não pula.
+    - Calibrado com 25 vídeos com patrocínio (o gráfico do YouTube comparado com os trechos que o SponsorBlock marca, só para medir): acerta 33 dos 45 merchandisings, e no meio de conteúdo normal pula em 20% dos toques (a regra da 0.5.0, que ia para o próximo pico, pulava em 91%).
+    - **Marcas na barra** (0.5.1, pedido do Johan, como as do app do YouTube): onde começa cada vale, um traço claro na barra de tempo.
+    - Sem gráfico (vídeos com poucas visualizações), vai para o próximo capítulo; sem os dois, o botão não aparece.
   - **Ligar e desligar a legenda** com um toque. O botão liga uma legenda escolhida sozinha (`SubtitleRules`): feita por pessoa no idioma do aparelho, depois feita por pessoa no idioma original, depois qualquer uma feita por pessoa, e por último a automática no idioma original. A escolha (ligada/desligada) vale para os próximos vídeos. Se o download da legenda falhar, o vídeo toca sem ela.
+    - **Visual da legenda** (0.5.1, pedido do Johan): sempre centralizada, texto branco com um contorno preto fino e sem fundo, na fonte do app (`CaptionRules`). A posição e o fundo que vêm do YouTube (a automática vem alinhada à esquerda) são ignorados; só a altura da linha é mantida.
   - Além disso: tocar/pausar e a barra de tempo. Em cima ficam like, dislike, Save e "Subscribe" (vale para o canal do vídeo); só aparecem com login.
 - **Visual do player: opção A** (0.4.2; o Johan pediu um player "mais elegante, mais compacto, mais moderno" e escolheu a A no canvas, entre três opções):
   - Em cima, à esquerda: o título e, embaixo dele, o nome do canal (um toque, ou OK na TV, abre a página do canal) e o aviso "not saved to history" quando for o caso. À direita, uma **pílula de vidro** com like, dislike, Save (âmbar quando salvo) e "Subscribe" (cheio e claro; inscrito, só o contorno).
-  - Embaixo, uma **ilha de vidro** arredondada: tocar/pausar num círculo claro, o tempo, a barra (âmbar, com o carregado mais claro), a duração e, depois de um divisor, Skip ahead, legenda, a etiqueta da resolução ("2160p", com contorno) e a lua.
+  - Embaixo, uma **ilha de vidro** arredondada: tocar/pausar num círculo claro, o tempo, a barra (âmbar, com o carregado mais claro), a duração e, depois de um divisor, Skip ahead, legenda, a etiqueta da resolução ("2160p", com contorno), girar a tela (só celular e tablet) e a lua.
+    - Numa tela com menos de 720 dp de largura (o celular em pé), a ilha vira **duas linhas** (0.5.1): o tempo e a barra em cima, e embaixo o tocar/pausar e os botões, com o Skip ahead só no ícone (`PlayerIsland`). Numa linha só, os botões não cabiam.
   - Os painéis da resolução e do modo dormir abrem num cartão **à direita, logo acima da ilha**, com as opções em **trilhos segmentados** (a escolhida fica âmbar e cheia). Os trilhos de um painel ficam da mesma largura.
   - Na TV: o foco é um anel âmbar em todos os botões (o tocar/pausar fica âmbar inteiro), e os controles ficam a 48 dp das bordas, dentro da área segura da tela (`values-television`). O título cresce um pouco.
   - Saiu da tela a linha técnica com o codec e o idioma do áudio ("1080p avc1 · audio: en"): a resolução já aparece na etiqueta, e o resto continua no log (tag Doorglow).
+- **Toques no vídeo** (celular e tablet, 0.5.1, pedido do Johan, como no app do YouTube): **um toque** mostra ou esconde os controles; **dois toques** no terço da esquerda ou da direita voltam ou avançam 10 s, e no meio pausam ou continuam. Depois de um pulo, cada toque no mesmo lado (por 0,8 s) pula mais 10 s, e um aviso do lado do toque mostra o total ("+30 s"). O toque único espera um instante para ter certeza de que não vem o segundo, então os controles não piscam num toque duplo (`TouchRules`).
+- **Girar a tela** (celular e tablet, 0.5.1, pedido do Johan, que queria as duas coisas): o player **gira sozinho** conforme o vídeo (deitado para vídeos largos, em pé para os verticais, seguindo o sensor), e o **botão de girar** na ilha troca entre deitado e em pé; a escolha vale até fechar o player.
+  - O Android 16 ignora a orientação pedida pelos apps em telas grandes (tablets). O app declara a exceção que o Android 16 ainda aceita (`PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY` no manifest), que deixa de valer quando o app mirar o SDK 37. Não foi testado num tablet.
 - **Qualidade sempre na máxima.** Uma mudança manual vale só para o vídeo atual; o próximo vídeo volta para a máxima.
+  - **No celular e no tablet o topo é 1080p** (0.5.1, pedido do Johan): o vídeo começa em 1080p e pode cair para 720p. O 4K primeiro é só da TV.
   - **Botão de resolução** (0.4.1, pedido do Johan), na ilha de baixo: mostra a resolução tocando (em âmbar quando escolhida à mão) e abre um painel com "Auto" e as resoluções do vídeo. A escolhida à mão **fica** mesmo com a rede oscilando (o Johan não gosta de o app oficial cair do 4K e não voltar); só sai se o decodificador falhar, com o aviso "Couldn't play …p on this device. Back to Auto."
   - **TV em 360p** (relato do Johan na 0.4.0, TV Hisense com Android 11 de 32 bits; corrigido na 0.4.1 sem log da TV, precisa confirmar nela): duas causas possíveis, as duas tratadas. (1) Um cliente do YouTube que só entrega o arquivo único (360p, o itag 18) era aceito na hora; agora o app tenta os outros clientes antes e prefere o HLS ao arquivo único. (2) Algumas TVs declaram limites de decodificador mais baixos do que decodificam, e o Media3 respeita (`isFormatSupported` com os "performance points" do Android 10+).
-  - **4K primeiro** (decisão do Johan, 2026-11-02: "tentar sempre 4K antes, só cair para uma resolução inferior se realmente necessário"): o app escolhe a faixa sozinho (`QualityRules`), a maior com decodificador de hardware até 4K, mesmo que o decodificador declare menos. Fica de fora só o que não tem como dar certo: codec sem decodificador de hardware, mais de 60 quadros por segundo e HDR que o decodificador não aceita. Na mesma resolução, vale a faixa que o decodificador aceita.
+  - **4K primeiro na TV** (decisão do Johan, 2026-11-02: "tentar sempre 4K antes, só cair para uma resolução inferior se realmente necessário"; era para a TV): o app escolhe a faixa sozinho (`QualityRules`), a maior com decodificador de hardware até 4K, mesmo que o decodificador declare menos. Fica de fora só o que não tem como dar certo: codec sem decodificador de hardware, mais de 60 quadros por segundo e HDR que o decodificador não aceita. Na mesma resolução, vale a faixa que o decodificador aceita.
   - **Descer um degrau** só quando o aparelho falha de verdade: erro do decodificador ou muitos quadros perdidos duas vezes (o teto cai para a resolução de baixo até o app fechar), ou o vídeo parar para carregar três vezes sem o usuário pular (só naquele vídeo, porque é a rede). Depois de descer pela rede, o app tenta o topo de novo após 2 minutos sem parar para carregar.
   - **Demora para começar:** o app agora prepara o player do YouTube (o JavaScript que decifra os links) ao abrir, como o SmartTube faz (`refreshCacheIfNeeded`). Numa TV fraca, isso levava segundos no primeiro vídeo.
 - **Modo dormir** (0.4.1, pedido do Johan, que usa playlists para dormir, principalmente na TV): o botão da lua, na ilha de baixo, abre um painel acima dela com três linhas:
@@ -118,13 +128,17 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 
 ## Explore
 
-Pedido do Johan (2026-11-02): os filtros das Recomendações só filtram o que o YouTube já mandou, e muita coisa é difícil de descobrir. Ele escolheu um **catálogo de categorias por buscas**, sem perder as Recomendações.
+Pedido do Johan (2026-11-02): os filtros das Recomendações só filtram o que o YouTube já mandou, e muita coisa é difícil de descobrir. Ele escolheu um **catálogo de categorias por buscas**, sem perder as Recomendações. Na 0.5.0 as categorias eram feitas à mão; depois de testar, ele quis "uma coisa mais automatizada" e escolheu **temas do seu histórico** (0.5.1).
 
-- Uma aba nova, **Explore** (0.5.0), entre Recommended e Playlists, com as categorias do usuário em grade e um "New category". Cada cartão mostra um mosaico com quatro miniaturas da última busca da categoria, o nome e as palavras.
-- Cada categoria tem um nome e palavras-chave. Abrir a categoria faz **uma busca nova no YouTube por palavra-chave**, só de vídeos, e a lista alterna os resultados (o 1º de cada palavra, depois o 2º…), para nenhuma palavra tomar a lista; um vídeo repetido fica só uma vez. Rolar até o fim busca a próxima página de cada palavra. Não é um filtro em cima das recomendações.
-- Os filtros (ordem, duração, data e "Before <ano>") ficam **guardados com a categoria**: escolhidos ao criar (no celular) e mudados na página dela (celular e TV). Shorts e canais bloqueados ficam de fora, como na busca.
-- Criar: "New category" pede o nome, as palavras e, no celular, os filtros. No celular cada palavra vira um chip (vírgula ou o "Done" do teclado); na TV as palavras vão separadas por vírgula. Mudar: o lápis na página da categoria, ou segurar a categoria (OK longo na TV) > "Edit category". Apagar: segurar > "Delete category".
-- As categorias ficam só no aparelho (não vão para a conta do YouTube).
+- Uma aba, **Explore**, entre Recommended e Playlists, com os temas em grade. Cada cartão mostra um mosaico com quatro miniaturas da busca do tema e o nome.
+- **Como os temas são achados** (`ThemeRules`): o app lê até 200 vídeos do histórico (5 páginas) e conta as palavras e os pares de palavras dos títulos. Vira tema o que aparece em pelo menos 3 vídeos de pelo menos 2 canais diferentes (um tema de um canal só seria o próprio canal, que já está nas Inscrições). Ficam de fora as palavras do nome do canal, números e palavras comuns do português e do inglês e o jargão do YouTube ("tutorial", "review", "hours"…). Siglas de duas letras em maiúsculas ("AI", "F1") valem.
+  - O peso de um tema é canais × 3 + vídeos, e um par ("Star Wars") vale 1,5 vez. Dois temas com quase os mesmos vídeos (70%) são o mesmo assunto, e fica o de mais peso. Até 12 temas. O nome aparece como nos títulos.
+  - Os tópicos excluídos (Configurações) também não viram tema.
+- Os temas são achados de novo **a cada 3 dias** ao abrir a aba, ou quando o usuário puxa para atualizar (OK longo na aba, na TV). Um tema que continua guarda os filtros e o mosaico.
+- **Esconder um tema:** segurar o cartão (OK longo na TV) > "Hide topic". Ele **não volta** mais.
+- Abrir um tema faz **uma busca nova no YouTube** pelo nome do tema, só de vídeos. Rolar até o fim busca a próxima página. Os filtros (ordem, duração, data e "Before <ano>") ficam na página do tema e são guardados com ele. Shorts e canais bloqueados ficam de fora, como na busca.
+- Os temas ficam só no aparelho (não vão para a conta do YouTube). As categorias feitas à mão na 0.5.0 foram descartadas.
+- As buscas vão com a conta logada (o motor põe o login em todo pedido), então podem entrar no histórico de pesquisa e mexer nas Recomendações. Dá para mandá-las sem a conta (`RetrofitOkHttpHelper.addAuthSkip`) se o Johan quiser.
 - Descartado: as seções prontas do YouTube (Gaming, News, Sports, Live, Podcasts), que o motor tem, mas que trazem conteúdo popular e pouco controle.
 - O desenho está no canvas "Doorglow: player, Explore e conta" (https://claude.ai/artifact/9aFHesFxs28wHzHnWkzWgB).
 
@@ -175,7 +189,8 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
-   - *Versão 0.5.0 (2026-11-02), a aba Explore pedida pelo Johan, aguardando o teste no aparelho* (ver "Como testar a 0.5.0"). A busca das categorias foi conferida contra o YouTube, sem login.
+   - *Versão 0.5.1 (2026-11-02), ajustes pedidos pelo Johan depois de testar a 0.5.0, aguardando o teste no aparelho* (ver "Como testar a 0.5.1"): legendas centralizadas com contorno, toques no vídeo, Skip ahead pelos vales do gráfico com marcas na barra, girar a tela, 1080p no celular e no tablet, 3 colunas no tablet em pé, Histórico em linhas e a Explore automática.
+   - *Versão 0.5.0 (2026-11-02), a aba Explore pedida pelo Johan* (ver "Como testar a 0.5.0"). A busca das categorias foi conferida contra o YouTube, sem login.
    - *Versão 0.4.2 (2026-11-02), pedidos do Johan depois de testar a 0.4.1, aguardando o teste no aparelho* (ver "Como testar a 0.4.2"): sem o @ do canal, "When done" só na TV, reordenar arrastando no celular, tirar vídeos do Histórico e das playlists, deslizar entre abas, as Configurações pelo avatar, o menu do OK longo abrindo antes de soltar (TV) e o **player novo (opção A)**. A aba Explore vem na versão seguinte.
    - *Versão 0.4.1 (2026-11-02), ajustes pedidos pelo Johan depois da 0.4.0, aguardando o teste no aparelho* (ver "Como testar a 0.4.1"): filtros nas Recomendações, duração de 30/45/60 min ou mais, "Before <ano>", salvar com resposta na hora, título no player, bloquear discreto, desempenho, playlists em sequência, o modo dormir no player (escurecer, quantos vídeos seguem e desligar a TV no fim) e a correção dos vídeos em 360p e lentos para começar na TV.
    - *Polimento visual implementado em 2026-11-02 (versão 0.4.0), aguardando o teste no aparelho* (ver "Como testar a etapa 6"). Junto, a pedido do Johan: salvar pelas listas (toque longo, e o menu do OK longo na TV), o marcador de salvo, o canal pelos cards, o estado de inscrito mais claro na playlist, puxar para atualizar (OK longo na aba, na TV) e o ícone vermelho. As Configurações só ganharam o visual novo.
@@ -187,10 +202,22 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
 
+## Como testar a 0.5.1
+
+1. Legenda (CC): centralizada, branca com contorno preto e sem fundo, também na automática.
+2. Celular ou tablet: um toque mostra e esconde os controles, sem piscar num toque duplo. Dois toques na esquerda ou na direita voltam ou avançam 10 s, e mais toques no mesmo lado somam ("+30 s"). Dois toques no meio pausam.
+3. Num vídeo com merchandising: os traços claros na barra marcam onde ele começa; "Skip ahead" logo antes de um traço pula para onde o vídeo volta. No meio de uma parte normal, ele avisa "Nothing to skip here."
+4. Um vídeo largo abre deitado e um vertical em pé, sozinhos; o botão de girar troca. **No tablet** (Android 16 ignora a orientação em tela grande, então é o principal a conferir).
+5. Celular em pé (ou o botão de girar): a ilha fica em duas linhas, com todos os botões.
+6. Celular e tablet começam em 1080p (a etiqueta mostra "1080p"); a TV continua em 2160p.
+7. Tablet em pé: 3 vídeos por linha.
+8. History: linhas como nas playlists, e deslizar para a esquerda ainda tira o vídeo.
+9. Explore: na primeira vez, "Looking for topics in your history…" e depois os temas. Segurar um tema > "Hide topic", e ele não volta ao puxar para atualizar.
+
 ## Como testar a 0.5.0
 
 1. A aba Explore aparece entre Recommended e Playlists (no celular, na barra de baixo e no deslizar; na TV, a terceira aba).
-2. Celular: "New category" > nome, algumas palavras (vírgula ou "Done" viram chips), um filtro em "Opens with" > Save. O cartão ganha o mosaico em alguns segundos.
+2. *(Até a 0.5.0; a 0.5.1 troca as categorias à mão pelos temas do histórico.)* Celular: "New category" > nome, algumas palavras (vírgula ou "Done" viram chips), um filtro em "Opens with" > Save. O cartão ganha o mosaico em alguns segundos.
 3. Abrir a categoria: vídeos das várias palavras misturados, com os filtros escolhidos em cima. Mudar um filtro busca de novo, e ele continua lá ao voltar à categoria.
 4. Rolar até o fim carrega mais vídeos. Puxar para baixo atualiza.
 5. O lápis na página muda o nome e as palavras. Segurar uma categoria no Explore > "Delete category" apaga.

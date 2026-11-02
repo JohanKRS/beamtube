@@ -65,7 +65,12 @@ import java.util.Locale
  * sequência da playlist ([PlayQueue]), se houver.
  */
 @OptIn(UnstableApi::class)
-class PlaybackController(context: Context, private val scope: CoroutineScope) {
+class PlaybackController(
+    context: Context,
+    private val scope: CoroutineScope,
+    /** O teto de qualidade do aparelho ([QualityRules.top]): 4K na TV, 1080p no celular e no tablet. */
+    private val top: Int = QualityRules.MAX_HEIGHT,
+) {
     private val res = context.applicationContext.resources
 
     sealed interface State {
@@ -79,6 +84,8 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         val captionsAvailable: Boolean = false,
         val captionsOn: Boolean = false,
         val skipAvailable: Boolean = false,
+        /** Onde começa cada trecho que o "Skip ahead" pula, para marcar na barra de tempo. */
+        val skipSpots: List<Long> = emptyList(),
         val page: VideoState? = null,
         /** O vídeo está na playlist do botão "Save"? null = sem botão (sem login ou não deu para saber). */
         val saved: Boolean? = null,
@@ -126,7 +133,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
     private var manualHeight: Int? = null
 
     /** O teto deste vídeo: cai quando ele para várias vezes para carregar (a rede não dá conta). */
-    private var videoCeiling = QualityRules.MAX_HEIGHT
+    private var videoCeiling = top
 
     /** Depois de descer por causa da rede, tenta voltar ao topo ([scheduleClimb]). */
     private var climbJob: Job? = null
@@ -225,7 +232,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         extrasJob = scope.launch {
             launch {
                 heatmap = HeatmapRepository.load(videoId)
-                if (heatmap.isNotEmpty()) _controls.update { it.copy(skipAvailable = true) }
+                if (heatmap.isNotEmpty()) _controls.update { it.copy(skipAvailable = true, skipSpots = SkipRules.valleys(heatmap)) }
             }
             if (AuthRepository.isSigned()) {
                 launch {
@@ -244,7 +251,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         current = result.info
         qualityChecked = false
         playingHeight = null
-        videoCeiling = QualityRules.MAX_HEIGHT
+        videoCeiling = top
         climbJob?.cancel()
         stutters = 0
         rebuffers = 0
@@ -316,12 +323,17 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         scope.launch { SettingsRepository.setCaptionsOn(on) }
     }
 
-    /** Pula para o próximo trecho mais assistido (ou o próximo capítulo). false se não há para onde. */
+    /**
+     * Pula o trecho que o público pula ([SkipRules.nextSkip]); sem o gráfico, para o próximo
+     * capítulo. false se não há o que pular aqui.
+     */
     fun skipAhead(): Boolean {
         val position = player.currentPosition
-        val target = SkipRules.nextHighlight(heatmap, position)
-            ?: SkipRules.nextChapter(_controls.value.page?.chapterStartsMs.orEmpty(), position)
-            ?: return false
+        val target = if (heatmap.isNotEmpty()) {
+            SkipRules.nextSkip(heatmap, position)
+        } else {
+            SkipRules.nextChapter(_controls.value.page?.chapterStartsMs.orEmpty(), position)
+        } ?: return false
         player.seekTo(target)
         return true
     }
@@ -466,7 +478,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
                 Log.i(TAG, "rebuffering (playing ${playingHeight}p)")
                 if (playingHeight == null) return
                 // Já abaixo do topo por causa da rede: a volta espera a rede ficar calma de novo.
-                if (videoCeiling < QualityRules.MAX_HEIGHT) scheduleClimb()
+                if (videoCeiling < top) scheduleClimb()
                 if (++rebuffers >= MAX_REBUFFERS) stepDown(sessionWide = false, reason = "rebuffering")
             }
         }
@@ -482,7 +494,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
     }
 
     /**
-     * A faixa do vídeo. No Auto, a maior que [QualityRules] aceita até o teto: 4K primeiro, mesmo
+     * A faixa do vídeo. No Auto, a maior que [QualityRules] aceita até o teto ([top] primeiro), mesmo
      * que o decodificador declare menos (muitas TVs declaram menos do que decodificam). Com uma
      * resolução escolhida à mão, a dela. Uma vez por vídeo, e de novo quando o teto ou a escolha mudam.
      */
@@ -587,7 +599,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         climbJob = scope.launch {
             delay(CLIMB_BACK_MS)
             Log.i(TAG, "network calm for ${CLIMB_BACK_MS / 1000} s: trying the top quality again")
-            videoCeiling = QualityRules.MAX_HEIGHT
+            videoCeiling = top
             rebuffers = 0
             qualityChecked = false
             pickQuality(player.currentTracks)
