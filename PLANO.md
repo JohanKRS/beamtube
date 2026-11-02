@@ -38,15 +38,16 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 | Tela | Notas |
 |---|---|
 | **Início = Inscrições** | Feed das inscrições como tela principal. |
-| Recomendações | Secundária, com exclusão e preferência de tópicos (ver Filtragem). |
+| Recomendações | Secundária, com exclusão e preferência de tópicos (ver Filtragem) e os filtros de data, duração e ordem da busca. |
 | Busca | "Melhorada": filtros de duração, data, tipo e ordenação, e sugestões enquanto se digita. Resultados misturam vídeos, canais e playlists. Lives só aparecem aqui. |
 | Playlists | Inclui **Assistir mais tarde** (o real, que o motor acessa). Reordenar vídeos, inclusive pela TV. |
 | Histórico | Lista do que foi assistido. |
-| Canal | Página básica do canal: vídeos e playlists (duas abas) e o botão de bloquear. Abre pela busca, pelo nome do canal no player, pelo avatar e nome do canal nos cards (celular e tablet) e pelo menu do OK longo (TV). |
+| Canal | Página básica do canal: vídeos e playlists (duas abas) e o bloquear, que é só um ícone pequeno (na barra de cima no celular, ao lado do nome na TV). Abre pela busca, pelo nome do canal no player, pelo avatar e nome do canal nos cards (celular e tablet) e pelo menu do OK longo (TV). |
 | Configurações | Mínimas: **mostrar lives nas Inscrições**, playlist do botão Save, tópicos excluídos e preferidos, canais bloqueados, links externos, playlists inscritas, **cor do ícone** e conta. |
 
 - **Abas:** no celular, a barra de baixo tem os ícones de Subscriptions, Recommended, Playlists, History e Settings, e a Busca abre pela lupa da barra de cima (seis abas não cabem). Deitado, a coluna da esquerda tem as seis, com a Busca em terceiro. Na TV, as seis abas ficam na fileira de cima, com Search em terceiro; "voltar" no conteúdo leva às abas, e de novo sai do app.
 - As páginas de playlist e de canal não têm a barra de abas: só a barra de cima, com "voltar".
+- **Trocar de aba** não perde a posição da lista, e Recommended, Playlists e History carregam logo depois das Inscrições, ao abrir o app, para já estarem prontas (0.4.1).
 - **Atualizar as listas** (pedido do Johan, 2026-11-02): no celular e no tablet, **puxar para baixo** no topo da lista recarrega Subscriptions, Recommended, Playlists, History, a página da playlist e a do canal. A lista continua na tela até a nova chegar. Na TV, **segurar OK na aba** Subscriptions, Recommended, Playlists ou History recarrega a lista (quando o OK é solto). Nada recarrega sozinho: as abas carregam quando o app abre e depois só quando o usuário pede.
 - **Cards de vídeo:** a miniatura com a duração e o progresso; embaixo, o título, o avatar e o nome do canal (abrem o canal) e o resto da linha (visualizações e data). Canal sem foto (em que o usuário não é inscrito) mostra a inicial num círculo colorido.
 
@@ -59,12 +60,16 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - **Tópicos preferidos** (lista editável): engenharia, tecnologia, computação, IA, conteúdo técnico. Sobem para o começo de cada página das Recomendações, mantendo a ordem do YouTube entre eles (uma página nova não mexe no que já está na tela).
 - **Como classificar (decidido em 2026-11-01): por palavras-chave**, no título e no nome do canal. Cada tópico é um nome e uma lista de palavras-chave, editável nas Configurações. A comparação ignora maiúsculas e acentos e só casa palavras inteiras ("ai" não casa com "aim"). As listas começam com Sports e Politics (excluídos) e Engineering, Technology, Computing e AI (preferidos), com palavras em inglês e português (`TopicRules`).
   - A categoria oficial ficou de fora: as listas do motor não trazem a categoria nem a descrição, e buscá-las custaria uma chamada a mais por vídeo (ou uma chave da Data API). Dá para acrescentar depois, se as palavras-chave não bastarem.
-- **Filtros da busca** (TV e celular): data de publicação, duração (menos de 4 min, 4 a 20, mais de 20), tipo (vídeos, canais, playlists) e ordenação (relevância, mais novos, mais vistos, nota). Qualquer combinação vale. No celular são menus; na TV, cada botão passa para o próximo valor.
+- **Filtros da busca** (TV e celular): data de publicação, duração, tipo (vídeos, canais, playlists) e ordenação (relevância, mais novos, mais vistos, nota). Qualquer combinação vale. No celular e na TV, cada filtro abre a lista dos valores (na TV, até a 0.4.0, o botão passava para o próximo valor).
+  - **Data:** última hora, hoje, esta semana, este mês, este ano, ou **"Before <ano>"** (do ano atual até 2006): só vídeos publicados antes de 1º de janeiro daquele ano (pedido do Johan, 2026-11-02). Na busca, o app manda o operador `before:AAAA-01-01` no texto, que o YouTube entende.
+  - **Duração:** menos de 4 min, 4 a 20, mais de 20, e **30, 45 e 60 minutos ou mais** (pedido do Johan, 2026-11-02). Para essas três, o app pede "mais de 20" ao YouTube e corta o resto pela duração de cada vídeo, buscando mais páginas se sobrar pouco.
+- **Filtros nas Recomendações** (pedido do Johan, 2026-11-02): data, duração e ordem (relevância, mais novos, mais vistos), num chip no topo da lista (celular) ou numa fileira de botões (TV). O YouTube não filtra essa lista, então o app aplica os filtros em cada vídeo (`FeedFilter`): a duração, o tempo relativo ("3 days ago") e as visualizações. O "Before <ano>" só mostra o que com certeza é anterior: "4 years ago" pode ser de dois anos diferentes e fica de fora. Se os filtros deixarem poucos vídeos, o app busca mais páginas (até 15). Os filtros valem até o app fechar.
 - **Bloquear canal**, pelo botão na página do canal, com a lista para desbloquear nas Configurações. Canal bloqueado some das Recomendações, da Busca, das Inscrições e dos vídeos de playlists inscritas. Quando o YouTube não manda o ID do canal (acontece na busca), o app compara pelo nome.
 
 ## Player
 
 - **Títulos sempre no idioma original**, sem as traduções automáticas do YouTube.
+  - O cliente de TV do YouTube (o primeiro que o motor usa) manda o vídeo **sem título e sem autor**. Até a 0.4.0 o player trocava o título do card por esse vazio. Agora o título vem do stream, se vier; senão do card que abriu o vídeo; e, nos links de outros apps, da página do vídeo (`getMetadata`).
 - **Áudio original**: escolher sempre a faixa marcada como original, nunca a dublagem automática.
 - **Controles com bem menos elementos.** Manter apenas:
   - **Pular as partes menos interessantes** (botão "Skip ahead"). O motor não expõe o "pular para frente" do Premium nem o gráfico de "mais repetidos", então o app pede o gráfico à página "next" do cliente WEB, sem login (`HeatmapRepository`). O botão vai para o começo do próximo trecho "quente": acima do meio do caminho entre a mediana e o topo (95%) do gráfico, a pelo menos 5 s de distância (`SkipRules`). No vídeo de teste, cai exatamente onde o YouTube marca "Most replayed". Sem gráfico (vídeos com poucas visualizações), vai para o próximo capítulo; sem os dois, o botão não aparece.
@@ -76,6 +81,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 
 - **Salvar com um toque**: o botão de marcador na barra de cima do player põe o vídeo direto no "Assistir mais tarde" (ou na playlist escolhida em Settings > Save button) e tira de lá no segundo toque. O ícone cheio mostra que o vídeo já está na playlist.
 - **Salvar pelas listas** (etapa 6): no celular e no tablet, segurar o dedo numa miniatura põe o vídeo na playlist do botão Save, ou tira se já estiver, com um aviso embaixo ("Saved to…"/"Removed from…"). Na TV, segurar o OK abre um menu com duas opções: "Save to…"/"Remove from…" e "Go to channel".
+  - **Resposta na hora** (0.4.1, o Johan achou lento na 0.4.0): o marcador e o aviso mudam no toque, e a conta é atualizada logo depois (`SavedVideos.toggle`). Tocar de novo antes de a conta responder só muda o que o usuário quer; no fim a conta fica como o último toque, sem pedido repetido. Se a conta recusar, o marcador volta e aparece "Couldn't…". O botão Save do player usa o mesmo caminho.
   - Um marcador discreto (âmbar) na miniatura mostra os vídeos que já estão nessa playlist. Ele não aparece dentro da própria playlist.
   - O app guarda a lista dos vídeos da playlist do Save (até 10 páginas), lida ao abrir e ao trocar a playlist em Settings. Na hora de salvar ou tirar, ele confere na conta se o vídeo está lá, então o marcador pode estar desatualizado numa playlist enorme, mas o toque faz sempre a coisa certa.
 - **Reordenar vídeos dentro das playlists do usuário**, principalmente o Assistir mais tarde. As mudanças vão para a conta, então aparecem em todos os aparelhos. O botão "Reorder" só aparece nas playlists do próprio usuário.
@@ -131,6 +137,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
+   - *Versão 0.4.1 (2026-11-02), ajustes pedidos pelo Johan depois da 0.4.0, aguardando o teste no aparelho* (ver "Como testar a 0.4.1"): filtros nas Recomendações, duração de 30/45/60 min ou mais, "Before <ano>", salvar com resposta na hora, título no player, bloquear discreto e desempenho.
    - *Polimento visual implementado em 2026-11-02 (versão 0.4.0), aguardando o teste no aparelho* (ver "Como testar a etapa 6"). Junto, a pedido do Johan: salvar pelas listas (toque longo, e o menu do OK longo na TV), o marcador de salvo, o canal pelos cards, o estado de inscrito mais claro na playlist, puxar para atualizar (OK longo na aba, na TV) e o ícone vermelho. As Configurações só ganharam o visual novo.
    - Falta a rotina de atualização do motor.
 
@@ -139,6 +146,16 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 0.4.1
+
+1. Recomendações: os chips (celular) ou botões (TV) no topo. "Duration: 1 hour or more" deve deixar só vídeos de uma hora ou mais; "Upload date: Before 2022", só vídeos com "5 years ago" ou mais; "Sort by: Most viewed" põe os mais vistos primeiro.
+2. Busca: "Upload date: Before 2022" com um termo qualquer (só vídeos antigos) e "Duration: 45 min or more".
+3. TV: cada botão de filtro abre a lista dos valores, com o atual em foco; "voltar" fecha sem mudar.
+4. Segurar o dedo numa miniatura: o marcador e o aviso aparecem na hora. Segurar de novo logo em seguida tira (confira no app do YouTube depois de alguns segundos: deve ficar como o último toque).
+5. Player: abrir vídeos de várias listas e por um link do WhatsApp: o título aparece sempre.
+6. Canal: o bloquear é o ícone ⊘ pequeno na barra de cima (na TV, ao lado do nome; o texto aparece com o foco). Tocar mostra um aviso.
+7. Desempenho: trocar de aba e voltar mantém a posição da lista; Recommended e History já estão carregadas na primeira visita; as miniaturas aparecem mais rápido ao rolar.
 
 ## Como testar a etapa 6
 
@@ -238,4 +255,8 @@ Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) 
   - **Puxar para atualizar:** o `Modifier.pullToRefresh` do Material 3 em volta da lista, dentro do `Loadable`; os ViewModels das listas implementam `Refreshable` (recarregar sem tirar a lista da tela, e sem "carregar mais" ao mesmo tempo).
   - **OK longo na TV:** o `Surface` do tv-material chama o `onLongClick` no primeiro repeat do ACTION_DOWN e engole o ACTION_UP seguinte. Se o menu abrisse ali, o soltar do OK cairia no primeiro item do menu. Por isso o card só marca o toque longo e abre o menu quando o OK é solto.
   - Fotos dos canais nos cards: vêm da lista de inscrições (`ChannelPhotos`), porque os vídeos dos feeds não trazem a foto do canal.
+- **Desempenho (0.4.1):**
+  - Os tópicos (excluídos e preferidos) eram normalizados de novo para cada vídeo, na thread da tela: com umas 150 recomendações, isso travava a rolagem a cada página. Agora as palavras-chave são normalizadas uma vez (`ContentFilters.excludedNeedles`), e as listas das Recomendações e da busca são montadas fora da thread da tela (`flowOn(Dispatchers.Default)`).
+  - Miniaturas: o Coil já tinha cache na memória e no disco. O app agora adianta o download das miniaturas de cada página que chega para o cache de disco (`Thumbnails.prefetch`), decodificando pequeno.
+  - Abas: um `SaveableStateHolder` guarda o estado de cada aba (a posição da lista), e os ViewModels de Recommended, Playlists e History são criados quando o feed das Inscrições chega.
 - **Compilar:** `./gradlew :app:assembleAppRelease` gera `app/build/outputs/apk/app/release/app-app-release.apk`, assinado com a chave de debug (uso pessoal). Os submódulos precisam estar baixados: `git submodule update --init`.

@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -21,6 +22,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AuthRepository
 import ytslim.data.Channel
 import ytslim.data.Playlist
@@ -67,6 +70,16 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                 }
                 composable<HomeRoute> { entry ->
                     var tab by rememberSaveable { mutableStateOf(HomeTab.SUBSCRIPTIONS) }
+                    // Cada aba guarda o próprio estado (a posição da lista) quando sai da tela.
+                    val tabStates = rememberSaveableStateHolder()
+                    // As outras abas carregam logo depois das Inscrições, para já estarem prontas ao trocar.
+                    LaunchedEffect(Unit) {
+                        val vms = ViewModelProvider.create(entry)
+                        withTimeoutOrNull(6_000) { vms[FeedViewModel::class].state.first { it !is UiState.Loading } }
+                        vms[RecommendedViewModel::class]
+                        vms[PlaylistsViewModel::class]
+                        vms[HistoryViewModel::class]
+                    }
                     // Os ViewModels das abas são os do início (os mesmos que viewModel() devolve abaixo).
                     val reload: (HomeTab) -> Unit = { which ->
                         val vms = ViewModelProvider.create(entry)
@@ -79,22 +92,24 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                         }
                     }
                     ui.Home(tab = tab, onTab = { tab = it }, onReload = reload) { current ->
-                        when (current) {
-                            HomeTab.SUBSCRIPTIONS -> ui.Feed(viewModel<FeedViewModel>(), onPlay = play, onOpenChannel = openChannel)
-                            HomeTab.RECOMMENDED -> ui.Recommended(viewModel<RecommendedViewModel>(), onPlay = play, onOpenChannel = openChannel)
-                            HomeTab.SEARCH -> ui.Search(
-                                vm = viewModel<SearchViewModel>(),
-                                onPlay = play,
-                                onOpenChannel = openChannel,
-                                onOpenPlaylist = openPlaylist,
-                            )
-                            HomeTab.PLAYLISTS -> ui.Playlists(viewModel<PlaylistsViewModel>(), onOpen = openPlaylist)
-                            HomeTab.HISTORY -> ui.History(viewModel<HistoryViewModel>(), onPlay = play, onOpenChannel = openChannel)
-                            HomeTab.SETTINGS -> ui.Settings(
-                                vm = viewModel<SettingsViewModel>(),
-                                onOpenPlaylist = openPlaylist,
-                                onSignedOut = signedOut,
-                            )
+                        tabStates.SaveableStateProvider(current.name) {
+                            when (current) {
+                                HomeTab.SUBSCRIPTIONS -> ui.Feed(viewModel<FeedViewModel>(), onPlay = play, onOpenChannel = openChannel)
+                                HomeTab.RECOMMENDED -> ui.Recommended(viewModel<RecommendedViewModel>(), onPlay = play, onOpenChannel = openChannel)
+                                HomeTab.SEARCH -> ui.Search(
+                                    vm = viewModel<SearchViewModel>(),
+                                    onPlay = play,
+                                    onOpenChannel = openChannel,
+                                    onOpenPlaylist = openPlaylist,
+                                )
+                                HomeTab.PLAYLISTS -> ui.Playlists(viewModel<PlaylistsViewModel>(), onOpen = openPlaylist)
+                                HomeTab.HISTORY -> ui.History(viewModel<HistoryViewModel>(), onPlay = play, onOpenChannel = openChannel)
+                                HomeTab.SETTINGS -> ui.Settings(
+                                    vm = viewModel<SettingsViewModel>(),
+                                    onOpenPlaylist = openPlaylist,
+                                    onSignedOut = signedOut,
+                                )
+                            }
                         }
                     }
                 }

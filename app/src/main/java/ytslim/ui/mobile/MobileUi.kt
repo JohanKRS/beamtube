@@ -43,6 +43,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -65,6 +66,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.History
@@ -168,12 +170,15 @@ import ytslim.ui.HomeTab
 import ytslim.ui.LightSlit
 import ytslim.ui.Look
 import ytslim.ui.Notice
+import ytslim.ui.Notices
 import ytslim.ui.PlaylistViewModel
 import ytslim.ui.PlaylistViewModel.Reorder
 import ytslim.ui.PlaylistsViewModel
+import ytslim.ui.PrefetchThumbnails
 import ytslim.ui.RecommendedViewModel
 import ytslim.ui.Refreshable
 import ytslim.ui.Screens
+import ytslim.ui.SearchFilterChoice
 import ytslim.ui.SearchViewModel
 import ytslim.ui.SettingsViewModel
 import ytslim.ui.SettingsViewModel.TopicList
@@ -182,10 +187,12 @@ import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
 import ytslim.ui.channelOf
 import ytslim.ui.externalLinkOptions
+import ytslim.ui.feedFilterChoices
 import ytslim.ui.formatDuration
 import ytslim.ui.metaAfterChannel
 import ytslim.ui.monogramOf
 import ytslim.ui.searchFilterChoices
+import ytslim.ui.text
 import ytslim.ui.toggleSaved
 
 /** Altura das barras de vidro, sem contar as barras do sistema que ficam atrás delas. */
@@ -558,8 +565,17 @@ object MobileUi : Screens {
     @Composable
     override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
+        val filters by vm.filters.collectAsStateWithLifecycle()
         Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
-            VideoGrid(content, emptyText = stringResource(R.string.recommended_empty), onNearEnd = vm::loadMore, onPlay = onPlay, onOpenChannel = onOpenChannel)
+            VideoGrid(
+                content,
+                emptyText = stringResource(if (filters.isDefault) R.string.recommended_empty else R.string.recommended_filtered_empty),
+                onNearEnd = vm::loadMore,
+                onPlay = onPlay,
+                onOpenChannel = onOpenChannel,
+                // Os filtros rolam junto com a lista, no topo dela.
+                header = { FilterRow(feedFilterChoices(filters), onChange = vm::setFilters, padding = PaddingValues(0.dp)) },
+            )
         }
     }
 
@@ -636,7 +652,7 @@ object MobileUi : Screens {
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { submit(text) }),
             )
-            FilterRow(filters, onChange = vm::setFilters)
+            FilterRow(searchFilterChoices(filters), onChange = vm::setFilters)
             if (fieldFocused && suggestions.isNotEmpty()) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bars.calculateBottomPadding() + 16.dp)) {
                     items(suggestions) { suggestion ->
@@ -659,20 +675,25 @@ object MobileUi : Screens {
         }
     }
 
+    /** Os filtros (busca e Recomendações): um chip por filtro, cada um com o menu dos valores. */
     @Composable
-    private fun FilterRow(filters: SearchFilters, onChange: (SearchFilters) -> Unit) {
+    private fun FilterRow(
+        choices: List<SearchFilterChoice>,
+        onChange: (SearchFilters) -> Unit,
+        padding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+    ) {
         Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(padding),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            searchFilterChoices(filters).forEach { choice ->
+            choices.forEach { choice ->
                 key(choice.label) {
                     var open by remember { mutableStateOf(false) }
                     Box {
                         FilterChip(
                             selected = !choice.isDefault,
                             onClick = { open = true },
-                            label = { Text(stringResource(if (choice.isDefault) choice.label else choice.selected.label)) },
+                            label = { Text(if (choice.isDefault) stringResource(choice.label) else choice.selected.text()) },
                             trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
                             shape = RoundedCornerShape(18.dp),
                             colors = FilterChipDefaults.filterChipColors(
@@ -693,7 +714,7 @@ object MobileUi : Screens {
                         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                             choice.options.forEach { option ->
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(option.label)) },
+                                    text = { Text(option.text()) },
                                     leadingIcon = { if (option.selected) Icon(Icons.Filled.Check, contentDescription = null, tint = Look.Glow) },
                                     onClick = {
                                         open = false
@@ -1127,23 +1148,32 @@ object MobileUi : Screens {
         val state by vm.state.collectAsStateWithLifecycle()
         val blocked by vm.blocked.collectAsStateWithLifecycle()
         var tab by rememberSaveable { mutableIntStateOf(0) }
+        val res = LocalContext.current.resources
         DetailFrame(
             title = title.ifBlank { stringResource(R.string.channel_default_title) },
             navigation = { BackButton(onBack) },
+            // Bloquear: só um ícone pequeno na barra de cima (âmbar quando bloqueado); o resultado vem num aviso.
+            actions = {
+                IconButton(onClick = {
+                    vm.toggleBlocked()
+                    Notices.show(res.getString(if (blocked) R.string.channel_unblocked_notice else R.string.channel_blocked_notice))
+                }) {
+                    Icon(
+                        Icons.Outlined.Block,
+                        contentDescription = stringResource(if (blocked) R.string.channel_unblock else R.string.channel_block),
+                        tint = if (blocked) Look.Glow else Look.Sub,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            },
         ) {
             Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
                 val hasPlaylists = content.playlists.isNotEmpty()
-                val header: @Composable () -> Unit = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(onClick = vm::toggleBlocked, border = BorderStroke(1.dp, Look.Outline)) {
-                            Text(stringResource(if (blocked) R.string.channel_unblock else R.string.channel_block))
-                        }
-                        if (blocked) Hint(stringResource(R.string.channel_blocked_hint), Modifier)
-                        if (hasPlaylists) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf(R.string.channel_videos, R.string.channel_playlists).forEachIndexed { i, label ->
-                                    Segment(stringResource(label), selected = tab == i) { tab = i }
-                                }
+                val header: (@Composable () -> Unit)? = if (!hasPlaylists) null else {
+                    {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(R.string.channel_videos, R.string.channel_playlists).forEachIndexed { i, label ->
+                                Segment(stringResource(label), selected = tab == i) { tab = i }
                             }
                         }
                     }
@@ -1256,6 +1286,7 @@ object MobileUi : Screens {
     ) {
         val grid = rememberLazyGridState()
         NearEnd(grid, content.videos.size, onNearEnd)
+        PrefetchThumbnails(content.videos)
         val cards = rememberCardState()
         LazyVerticalGrid(
             state = grid,
@@ -1266,7 +1297,7 @@ object MobileUi : Screens {
             verticalArrangement = Arrangement.spacedBy(26.dp),
         ) {
             if (header != null) item(span = { GridItemSpan(maxLineSpan) }) { header() }
-            if (content.videos.isEmpty() && !content.hasMore) {
+            if (content.videos.isEmpty() && !content.loadingMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(emptyText, textAlign = TextAlign.Center, color = Look.Sub, modifier = Modifier.fillMaxWidth().padding(32.dp))
                 }
@@ -1274,8 +1305,20 @@ object MobileUi : Screens {
             items(content.videos, key = { it.id + it.playlistIndex }) { video ->
                 VideoCard(video, cards, onPlay, onOpenChannel)
             }
-            if (content.loadingMore) {
-                item(span = { GridItemSpan(maxLineSpan) }) { Progress() }
+            listEnd(content, onNearEnd)
+        }
+    }
+
+    /**
+     * O fim da lista: o círculo enquanto a próxima página carrega; se parou com mais páginas (os
+     * filtros esvaziaram várias seguidas), um botão para continuar.
+     */
+    private fun LazyGridScope.listEnd(content: VideoListContent, onMore: () -> Unit) {
+        if (content.loadingMore) {
+            item(span = { GridItemSpan(maxLineSpan) }) { Progress() }
+        } else if (content.hasMore) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(Modifier.fillMaxWidth(), Alignment.Center) { TextButton(onClick = onMore) { Text(stringResource(R.string.load_more)) } }
             }
         }
     }
@@ -1292,6 +1335,7 @@ object MobileUi : Screens {
     ) {
         val grid = rememberLazyGridState()
         NearEnd(grid, content.videos.size, onNearEnd)
+        PrefetchThumbnails(content.videos)
         val cards = rememberCardState(showSaved)
         LazyVerticalGrid(
             state = grid,
@@ -1301,7 +1345,7 @@ object MobileUi : Screens {
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             if (header != null) item(span = { GridItemSpan(maxLineSpan) }) { header() }
-            if (content.videos.isEmpty() && !content.hasMore) {
+            if (content.videos.isEmpty() && !content.loadingMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(stringResource(R.string.list_empty), textAlign = TextAlign.Center, color = Look.Sub, modifier = Modifier.fillMaxWidth().padding(32.dp))
                 }
@@ -1309,9 +1353,7 @@ object MobileUi : Screens {
             items(content.videos, key = { it.id + it.playlistIndex }) { video ->
                 VideoRow(video, cards, onPlay, onOpenChannel)
             }
-            if (content.loadingMore) {
-                item(span = { GridItemSpan(maxLineSpan) }) { Progress() }
-            }
+            listEnd(content, onNearEnd)
         }
     }
 

@@ -20,7 +20,8 @@ sealed interface Stream {
 
 data class PlaybackInfo(
     val videoId: String,
-    val title: String,
+    /** O cliente de TV do YouTube (o primeiro que o app usa) manda o vídeo sem título nem autor. */
+    val title: String?,
     val author: String?,
     val channelId: String?,
     val isLive: Boolean,
@@ -92,8 +93,8 @@ object PlaybackRepository {
             .distinct()
         return PlaybackInfo(
             videoId = videoId,
-            title = title.orEmpty(),
-            author = author,
+            title = title?.takeIf { it.isNotBlank() },
+            author = author?.takeIf { it.isNotBlank() },
             channelId = channelId,
             isLive = isLive,
             originalAudioLabel = AudioRules.originalLabel(labels),

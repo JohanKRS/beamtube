@@ -36,18 +36,54 @@ class SearchFiltersTest {
     }
 
     @Test
-    fun choicesCycleThroughTheValuesAndBackToAny() {
-        val date = searchFilterChoices(SearchFilters()).first()
+    fun dateChoiceHasTheRecentPeriodsThenBeforeEachYear() {
+        val date = searchFilterChoices(SearchFilters(), currentYear = 2026).first()
         assertTrue(date.isDefault)
-        var filters = SearchFilters()
-        val seen = mutableListOf<UploadDate>()
-        repeat(UploadDate.entries.size) {
-            filters = searchFilterChoices(filters).first().next()
-            seen += filters.date
-        }
-        assertEquals(UploadDate.entries.drop(1) + UploadDate.ANY, seen)
-        val sort = searchFilterChoices(SearchFilters(sort = SortBy.VIEWS))[3]
+        assertEquals(6 + (2026 - 2006 + 1), date.options.size)
+        val before2022 = date.options.single { it.arg == 2022 }
+        assertEquals(SearchFilters(beforeYear = 2022), before2022.filters)
+        // "Before" substitui o período recente, e vice-versa.
+        val picked = searchFilterChoices(SearchFilters(date = UploadDate.WEEK, beforeYear = null), 2026).first()
+            .options.single { it.arg == 2022 }.filters
+        assertEquals(UploadDate.ANY, picked.date)
+        val back = searchFilterChoices(picked, 2026).first()
+        assertEquals(2022, back.selected.arg)
+        assertNull(back.options[3].filters.beforeYear)
+        assertEquals(UploadDate.WEEK, back.options[3].filters.date)
+    }
+
+    @Test
+    fun durationChoiceIncludesThirtyFortyFiveAndSixtyMinutes() {
+        val duration = searchFilterChoices(SearchFilters())[1]
+        assertEquals(
+            listOf(
+                SearchDuration.ANY, SearchDuration.UNDER_4, SearchDuration.FROM_4_TO_20, SearchDuration.OVER_20,
+                SearchDuration.AT_LEAST_30, SearchDuration.AT_LEAST_45, SearchDuration.AT_LEAST_60,
+            ),
+            duration.options.map { it.filters.duration },
+        )
+        // Para o YouTube, "30 minutos ou mais" é "mais de 20"; o app corta o resto.
+        assertEquals(SearchParams.of(SearchFilters(duration = SearchDuration.OVER_20)), SearchParams.of(SearchFilters(duration = SearchDuration.AT_LEAST_45)))
+        assertTrue(SearchDuration.AT_LEAST_30.matches(30 * 60_000L))
+        assertFalse(SearchDuration.AT_LEAST_30.matches(29 * 60_000L + 59_000))
+        assertFalse(SearchDuration.AT_LEAST_60.matches(0))
+        assertTrue(SearchDuration.AT_LEAST_60.checkedLocally)
+        assertFalse(SearchDuration.OVER_20.checkedLocally)
+    }
+
+    @Test
+    fun beforeYearGoesIntoTheQueryText() {
+        assertEquals("minecraft before:2015-01-01", SearchParams.query("minecraft", SearchFilters(beforeYear = 2015)))
+        assertEquals("minecraft", SearchParams.query("minecraft", SearchFilters()))
+    }
+
+    @Test
+    fun feedChoicesLeaveOutTypeAndRating() {
+        val feed = feedFilterChoices(SearchFilters(sort = SortBy.VIEWS), currentYear = 2026)
+        assertEquals(3, feed.size)
+        val sort = feed[2]
         assertFalse(sort.isDefault)
-        assertEquals(SortBy.VIEWS, sort.options.single { it.selected }.filters.sort)
+        assertEquals(listOf(SortBy.RELEVANCE, SortBy.DATE, SortBy.VIEWS), sort.options.map { it.filters.sort })
+        assertEquals(SortBy.VIEWS, sort.selected.filters.sort)
     }
 }

@@ -147,7 +147,8 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
                 launch {
                     val target = SettingsRepository.current().saveTarget.playlistId
                     val saved = PlaylistEditor.isSaved(videoId, target)
-                    _controls.update { it.copy(saved = saved) }
+                    // Um toque longo recente (talvez ainda indo para a conta) vale mais que a leitura.
+                    _controls.update { it.copy(saved = saved?.let { server -> SavedVideos.changedHere(videoId) ?: server }) }
                 }
                 val page = VideoActions.state(videoId)
                 _controls.update { it.copy(page = page, skipAvailable = it.skipAvailable || !page?.chapterStartsMs.isNullOrEmpty()) }
@@ -261,25 +262,20 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    /** Botão "Save": põe ou tira o vídeo da playlist escolhida nas configurações (Assistir mais tarde). */
+    /**
+     * Botão "Save": põe ou tira o vídeo da playlist escolhida nas configurações (Assistir mais tarde).
+     * O ícone e o aviso mudam na hora; a conta é atualizada em segundo plano ([SavedVideos.toggle]).
+     */
     fun toggleSaved() {
         val id = videoId ?: return
         val saved = _controls.value.saved ?: return
-        _controls.update { it.copy(saved = !saved) }
-        scope.launch {
-            val target = SettingsRepository.current().saveTarget
-            val name = target.title ?: res.getString(R.string.watch_later)
-            runCatching { PlaylistEditor.setSaved(id, target.playlistId, !saved) }.fold(
-                {
-                    SavedVideos.mark(id, !saved)
-                    _notices.value = res.getString(if (saved) R.string.player_removed_from else R.string.player_saved_to, name)
-                },
-                {
-                    _controls.update { c -> c.copy(saved = saved) }
-                    _notices.value = res.getString(R.string.action_failed, it.message ?: it.javaClass.simpleName)
-                },
-            )
+        val now = SavedVideos.toggle(id, current = saved) { error ->
+            if (videoId == id) _controls.update { c -> c.copy(saved = SavedVideos.isSaved(id)) }
+            _notices.value = res.getString(R.string.action_failed, error.message ?: error.javaClass.simpleName)
         }
+        _controls.update { it.copy(saved = now) }
+        val name = SavedVideos.target.value.title ?: res.getString(R.string.watch_later)
+        _notices.value = res.getString(if (now) R.string.player_saved_to else R.string.player_removed_from, name)
     }
 
     fun noticeShown() {

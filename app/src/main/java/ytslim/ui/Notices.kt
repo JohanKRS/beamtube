@@ -4,9 +4,7 @@ import android.content.res.Resources
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import ytslim.R
-import ytslim.data.AppScope
 import ytslim.data.Channel
 import ytslim.data.SavedVideos
 import ytslim.data.Video
@@ -28,17 +26,16 @@ object Notices {
     }
 }
 
-/** Toque longo na miniatura (OK longo na TV): põe ou tira o vídeo da playlist do botão Save. */
+/**
+ * Toque longo na miniatura (OK longo na TV): põe ou tira o vídeo da playlist do botão Save. O
+ * marcador e o aviso mudam na hora; a conta é atualizada logo depois (ver [SavedVideos.toggle]).
+ */
 fun toggleSaved(res: Resources, video: Video) {
-    AppScope.launch {
-        runCatching { SavedVideos.toggle(video.id) }.fold(
-            { saved ->
-                val name = SavedVideos.target.value.title ?: res.getString(R.string.watch_later)
-                Notices.show(res.getString(if (saved) R.string.player_saved_to else R.string.player_removed_from, name))
-            },
-            { Notices.show(res.getString(R.string.action_failed, it.message ?: it.javaClass.simpleName)) },
-        )
+    val saved = SavedVideos.toggle(video.id) { error ->
+        Notices.show(res.getString(R.string.action_failed, error.message ?: error.javaClass.simpleName))
     }
+    val name = SavedVideos.target.value.title ?: res.getString(R.string.watch_later)
+    Notices.show(res.getString(if (saved) R.string.player_saved_to else R.string.player_removed_from, name))
 }
 
 /** O canal de um vídeo, para abrir a página dele. null quando o YouTube não manda o ID. */

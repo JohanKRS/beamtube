@@ -59,6 +59,9 @@ class PlayerActivity : ComponentActivity() {
     private var saveHistory = true
     private var external = false
 
+    /** O título do card que abriu o vídeo (links de outros apps não têm). */
+    private var cardTitle: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val target = resolveTarget(intent)
@@ -79,7 +82,8 @@ class PlayerActivity : ComponentActivity() {
         }
 
         controller = PlaybackController(this, AppScope)
-        setContentView(buildLayout(intent.getStringExtra(EXTRA_TITLE)))
+        cardTitle = intent.getStringExtra(EXTRA_TITLE)?.takeIf { it.isNotBlank() }
+        setContentView(buildLayout(cardTitle))
         playerView.player = controller.player
         bindButtons()
 
@@ -129,7 +133,7 @@ class PlayerActivity : ComponentActivity() {
             PlaybackController.State.Loading -> messageView.visibility = View.GONE
             is PlaybackController.State.Playing -> {
                 messageView.visibility = View.GONE
-                titleView.text = state.info.title
+                showTitle()
                 val noHistory = if (!saveHistory) getString(R.string.player_no_history) else null
                 detailView.text = listOfNotNull(state.info.author, state.selection, noHistory).joinToString(" · ")
             }
@@ -140,7 +144,18 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * O título do vídeo: o do stream; se ele vier sem (o cliente de TV do YouTube não manda), o do
+     * card que abriu o vídeo; e, nos links de outros apps, o da página do vídeo.
+     */
+    private fun showTitle() {
+        val info = (controller.state.value as? PlaybackController.State.Playing)?.info
+        val title = info?.title ?: cardTitle ?: controller.controls.value.page?.title ?: return
+        if (titleView.text?.toString() != title) titleView.text = title
+    }
+
     private fun renderControls(controls: PlaybackController.Controls) {
+        showTitle()
         val page = controls.page
         actions.visibility = if (page != null) View.VISIBLE else View.GONE
         if (page != null) {

@@ -21,6 +21,10 @@ data class ContentFilters(
 
     /** Os nomes, normalizados: na busca o YouTube nem sempre manda o ID do canal do vídeo. */
     val blockedNames: Set<String> by lazy { blocked.mapNotNullTo(HashSet()) { TopicRules.normalize(it.name).ifEmpty { null } } }
+
+    /** As palavras-chave já normalizadas (" futebol "), feitas uma vez só e não a cada vídeo. */
+    internal val excludedNeedles: List<String> by lazy { TopicRules.needles(excluded) }
+    internal val preferredNeedles: List<String> by lazy { TopicRules.needles(preferred) }
 }
 
 /**
@@ -87,14 +91,17 @@ object TopicRules {
     }
 
     fun matches(text: String, topic: Topic): Boolean {
-        val haystack = " ${normalize(text)} "
-        return topic.keywords.any { keyword ->
-            val needle = normalize(keyword)
-            needle.isNotEmpty() && haystack.contains(" $needle ")
-        }
+        val haystack = haystack(text)
+        return needles(listOf(topic)).any { haystack.contains(it) }
     }
 
-    private fun Video.searchText() = title + " " + channelName.orEmpty()
+    /** Cada palavra-chave normalizada e entre espaços, para casar só palavras inteiras. */
+    internal fun needles(topics: List<Topic>): List<String> =
+        topics.flatMap { it.keywords }.mapNotNull { k -> normalize(k).takeIf { it.isNotEmpty() }?.let { " $it " } }.distinct()
+
+    private fun haystack(text: String) = " ${normalize(text)} "
+
+    private fun Video.haystack() = haystack(title + " " + channelName.orEmpty())
 
     /**
      * O vídeo é de um canal bloqueado? Pelo ID ou, quando ele não vem, pelo nome do canal
@@ -107,11 +114,15 @@ object TopicRules {
         return name.isNotEmpty() && name in filters.blockedNames
     }
 
-    fun isExcluded(video: Video, filters: ContentFilters): Boolean =
-        isBlocked(video, filters) || filters.excluded.any { matches(video.searchText(), it) }
+    fun isExcluded(video: Video, filters: ContentFilters): Boolean = isExcluded(video, video.haystack(), filters)
 
-    fun isPreferred(video: Video, filters: ContentFilters): Boolean =
-        filters.preferred.any { matches(video.searchText(), it) }
+    fun isPreferred(video: Video, filters: ContentFilters): Boolean = isPreferred(video.haystack(), filters)
+
+    private fun isExcluded(video: Video, haystack: String, filters: ContentFilters): Boolean =
+        isBlocked(video, filters) || filters.excludedNeedles.any { haystack.contains(it) }
+
+    private fun isPreferred(haystack: String, filters: ContentFilters): Boolean =
+        filters.preferredNeedles.any { haystack.contains(it) }
 
     /**
      * As Recomendações: sem Shorts, sem lives, sem canais bloqueados e sem tópicos excluídos.
@@ -121,8 +132,15 @@ object TopicRules {
     fun recommend(pages: List<List<Video>>, filters: ContentFilters): List<Video> {
         val seen = HashSet<String>()
         return pages.flatMap { page ->
-            val kept = page.filter { !it.isShorts && !it.isLive && !it.isUpcoming && !isExcluded(it, filters) && seen.add(it.id) }
-            val (preferred, others) = kept.partition { isPreferred(it, filters) }
+            val preferred = ArrayList<Video>()
+            val others = ArrayList<Video>()
+            for (video in page) {
+                if (video.isShorts || video.isLive || video.isUpcoming) continue
+                // O título normalizado uma vez por vídeo serve para os dois testes.
+                val haystack = video.haystack()
+                if (isExcluded(video, haystack, filters) || !seen.add(video.id)) continue
+                if (isPreferred(haystack, filters)) preferred += video else others += video
+            }
             preferred + others
         }
     }
