@@ -251,6 +251,12 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
         }
     }
 
+    /** Tira [video] da lista na tela (a conta muda logo depois). */
+    protected fun hide(video: Video) {
+        val current = (_state.value as? UiState.Ready)?.data ?: return
+        _state.value = UiState.Ready(current.copy(videos = current.videos.filterNot { it.id == video.id && it.playlistIndex == video.playlistIndex }))
+    }
+
     /** Mostra os vídeos já carregados numa nova ordem (depois de reordenar a playlist). */
     protected fun showOrder(reordered: List<Video>) {
         val current = (_state.value as? UiState.Ready)?.data ?: return
@@ -332,14 +338,43 @@ class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ L
     val reorder: StateFlow<Reorder> = _reorder.asStateFlow()
     private var originalOrder: List<Video> = emptyList()
 
+    private val _removable = MutableStateFlow(false)
+    /** Playlist do próprio usuário (inclui Watch later): dá para tirar vídeos dela. */
+    val removable: StateFlow<Boolean> = _removable.asStateFlow()
+
     init {
         viewModelScope.launch {
             val own = PlaylistSubscriptions.ownPlaylistIds()
-            if (own != null && playlist.playlistId in own) _reorder.value = Reorder.Available()
+            if (own != null && playlist.playlistId in own) {
+                _reorder.value = Reorder.Available()
+                _removable.value = true
+            }
             _subscription.value = when (val status = PlaylistSubscriptions.status(playlist.playlistId)) {
                 PlaylistSubscriptions.Status.NotApplicable -> Subscription.Hidden
                 is PlaylistSubscriptions.Status.Foreign -> Subscription.Shown(status.subscribed)
             }
+        }
+    }
+
+    /**
+     * Tira [video] da playlist: some da tela na hora e a conta muda logo depois. Na playlist do
+     * botão Save, passa pelo [SavedVideos] (para o marcador dos cards acompanhar). Se a conta não
+     * mudar, [onError] avisa e a lista volta a ser a da conta.
+     */
+    fun remove(video: Video, onError: (String) -> Unit) {
+        val id = playlist.playlistId ?: return
+        if (!_removable.value || _reorder.value is Reorder.Editing) return
+        hide(video)
+        val failed = { error: Throwable ->
+            onError(error.toMessage())
+            refresh()
+        }
+        if (id == SavedVideos.target.value.playlistId) {
+            SavedVideos.toggle(video.id, current = true) { failed(it) }
+            return
+        }
+        viewModelScope.launch {
+            runCatching { PlaylistEditor.setSaved(video.id, id, saved = false) }.onFailure { failed(it) }
         }
     }
 

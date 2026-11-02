@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import ytslim.MainActivity
 import ytslim.R
+import ytslim.isTv
 import ytslim.data.AppScope
 import ytslim.data.ExternalLinks
 import ytslim.data.PlayQueue
@@ -48,6 +49,7 @@ import ytslim.data.VideoLinks
 /**
  * Tela do player, que é também a "página do vídeo": like/dislike e inscrição ficam nos
  * controles. Usa Views porque o PlayerView do Media3 já cuida do D-pad da TV e do toque.
+ * O desenho é o da opção A (player_controls): pílula de ações em cima, ilha de vidro embaixo.
  *
  * O botão da lua abre o painel de dormir: escurecer o vídeo, quantos vídeos da playlist ainda
  * tocam e o que fazer quando eles acabarem (desligar a TV, pelo [ScreenOffService]).
@@ -86,6 +88,9 @@ class PlayerActivity : ComponentActivity() {
 
     /** "When done: Turn off", guardado nas configurações. */
     private var turnOffWhenDone = false
+
+    /** Desligar no fim é só da TV (no celular e no tablet a opção não existe). */
+    private val canTurnOff by lazy { isTv() && ScreenOffService.supported }
 
     /** O fim atual já foi tratado (a tela só desliga uma vez por fim). */
     private var endHandled = false
@@ -137,7 +142,7 @@ class PlayerActivity : ComponentActivity() {
 
         val startMs = savedInstanceState?.getLong(KEY_POSITION) ?: target.startMs
         lifecycleScope.launch {
-            turnOffWhenDone = SettingsRepository.current().turnOffWhenDone
+            turnOffWhenDone = canTurnOff && SettingsRepository.current().turnOffWhenDone
             renderSleep()
             if (!target.external) return@launch start(videoId, startMs, saveHistory = true, title)
             // Link de outro app: o padrão é não ir para o histórico (configurável).
@@ -183,17 +188,11 @@ class PlayerActivity : ComponentActivity() {
 
     private fun render(state: PlaybackController.State) {
         when (state) {
-            PlaybackController.State.Loading -> {
+            PlaybackController.State.Loading, is PlaybackController.State.Playing -> {
                 // Também o próximo vídeo da sequência: título novo, sem os detalhes do anterior.
                 messageView.visibility = View.GONE
                 showTitle()
-                detailView.text = null
-            }
-            is PlaybackController.State.Playing -> {
-                messageView.visibility = View.GONE
-                showTitle()
-                val noHistory = if (!saveHistory) getString(R.string.player_no_history) else null
-                detailView.text = listOfNotNull(state.info.author, state.selection, noHistory).joinToString(" · ")
+                showDetail()
             }
             is PlaybackController.State.Failed -> {
                 messageView.text = state.message
@@ -212,8 +211,25 @@ class PlayerActivity : ComponentActivity() {
         if (titleView.text?.toString().orEmpty() != title.orEmpty()) titleView.text = title
     }
 
+    /**
+     * A linha embaixo do título: o canal (um botão, quando a página do vídeo chega) e o aviso de
+     * "fora do histórico". Sem a página, o nome do canal vem do stream, como texto.
+     */
+    private fun showDetail() {
+        val state = controller.state.value
+        val page = controller.controls.value.page
+        val channel = page?.channelName?.takeIf { page.channelId != null && it.isNotBlank() }
+        channelButton.visibility = if (channel != null) View.VISIBLE else View.GONE
+        channelButton.text = channel
+        val author = if (channel == null) (state as? PlaybackController.State.Playing)?.info?.author else null
+        val noHistory = if (!saveHistory) getString(R.string.player_no_history) else null
+        val rest = listOfNotNull(author, noHistory).joinToString(" · ")
+        detailView.text = if (channel != null && rest.isNotEmpty()) "· $rest" else rest
+    }
+
     private fun renderControls(controls: PlaybackController.Controls) {
         showTitle()
+        showDetail()
         val page = controls.page
         actions.visibility = if (page != null) View.VISIBLE else View.GONE
         if (page != null) {
@@ -221,9 +237,8 @@ class PlayerActivity : ComponentActivity() {
             dislikeButton.setActive(page.rating == Rating.DISLIKED)
             subscribeButton.visibility = if (page.channelId != null) View.VISIBLE else View.GONE
             subscribeButton.setText(if (page.subscribed) R.string.player_subscribed else R.string.player_subscribe)
-            subscribeButton.setTextColor(color(if (page.subscribed) R.color.player_text_secondary else R.color.player_icon))
-            channelButton.visibility = if (page.channelId != null && !page.channelName.isNullOrBlank()) View.VISIBLE else View.GONE
-            channelButton.text = page.channelName
+            // Inscrito: só o contorno (player_subscribe_bg).
+            subscribeButton.isActivated = page.subscribed
         }
         saveButton.visibility = if (controls.saved != null) View.VISIBLE else View.GONE
         saveButton.setImageResource(if (controls.saved == true) R.drawable.ic_bookmark else R.drawable.ic_bookmark_border)
@@ -273,8 +288,7 @@ class PlayerActivity : ComponentActivity() {
         qualityButton.setTextColor(color(if (quality.manual != null) R.color.player_accent else R.color.player_icon))
         if (quality.heights != qualityHeights) {
             qualityHeights = quality.heights
-            // A primeira view da linha é o nome dela; as opções vêm depois.
-            while (qualityRow.childCount > 1) qualityRow.removeViewAt(1)
+            qualityRow.removeAllViews()
             qualityRow.addView(chip(getString(R.string.player_quality_auto), AUTO_QUALITY) { chooseQuality(null) })
             quality.heights.forEach { height ->
                 qualityRow.addView(chip(getString(R.string.player_quality_height, height), height) { chooseQuality(height) })
@@ -311,30 +325,42 @@ class PlayerActivity : ComponentActivity() {
         TextView(this, null, 0, R.style.PlayerChip).apply {
             this.text = text
             tag = value
-            layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, dp(40)).apply { marginEnd = dp(8) }
+            // Peso 1: num trilho alargado por [sameWidth], as opções crescem por igual.
+            layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, dp(34), 1f)
             setOnClickListener { onClick() }
         }
 
     private fun renderSleep() {
         if (!::sleepPanel.isInitialized) return
         brightnessRow.select(brightness)
-        queueRow.visibility = if (PlayQueue.active.value) View.VISIBLE else View.GONE
+        // Cada linha está num grupo com o nome dela em cima: é o grupo que aparece ou some.
+        (queueRow.parent as View).visibility = if (PlayQueue.active.value) View.VISIBLE else View.GONE
         queueRow.select(PlayQueue.left.value)
-        // Sem a ação de dormir do sistema (antes do Android 9), não há o que escolher.
-        endRow.visibility = if (ScreenOffService.supported) View.VISIBLE else View.GONE
+        // Só na TV, e só com a ação de dormir do sistema (Android 9 em diante).
+        (endRow.parent as View).visibility = if (canTurnOff) View.VISIBLE else View.GONE
         endRow.select(turnOffWhenDone)
         val limited = PlayQueue.active.value && PlayQueue.left.value != PlayQueue.ALL
         sleepButton.setActive(brightness < 100 || turnOffWhenDone || limited)
+        sameWidth(brightnessRow, queueRow, endRow)
     }
 
-    /** Marca a opção de [value] na linha (a primeira view, sem tag, é o nome da linha). */
+    /** Os trilhos visíveis do painel ficam da largura do maior, como no desenho. */
+    private fun sameWidth(vararg rows: LinearLayout) {
+        val shown = rows.filter { (it.parent as View).visibility == View.VISIBLE }
+        val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        shown.forEach {
+            it.minimumWidth = 0
+            it.measure(unspecified, unspecified)
+        }
+        val width = shown.maxOfOrNull { it.measuredWidth } ?: return
+        shown.forEach { it.minimumWidth = width }
+    }
+
+    /** Marca a opção de [value] na linha (as cores vêm de player_segment_bg e player_segment_text). */
     private fun LinearLayout.select(value: Any) {
         for (i in 0 until childCount) {
-            val option = getChildAt(i) as? TextView ?: continue
-            val tag = option.tag ?: continue
-            val on = tag == value
-            option.isActivated = on
-            option.setTextColor(color(if (on) R.color.player_accent else R.color.player_icon))
+            val option = getChildAt(i)
+            option.isActivated = option.tag == value
         }
     }
 
@@ -383,7 +409,7 @@ class PlayerActivity : ComponentActivity() {
         turnOffWhenDone = on
         AppScope.launch { SettingsRepository.setTurnOffWhenDone(on) }
         renderSleep()
-        if (on && ScreenOffService.supported && !ScreenOffService.enabled) {
+        if (on && !ScreenOffService.enabled) {
             // Uma vez só: o Android pede que o serviço seja ligado à mão.
             Toast.makeText(this, R.string.player_turn_off_setup, Toast.LENGTH_LONG).show()
             try {
@@ -408,7 +434,7 @@ class PlayerActivity : ComponentActivity() {
         }
         if (endHandled) return
         endHandled = true
-        if (!turnOffWhenDone || !ScreenOffService.supported) return
+        if (!turnOffWhenDone || !canTurnOff) return
         if (!ScreenOffService.enabled) {
             Toast.makeText(this, R.string.player_turn_off_not_allowed, Toast.LENGTH_LONG).show()
             return

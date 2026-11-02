@@ -42,6 +42,11 @@ object AuthRepository {
 
     fun accountName(): String? = Engine.signIn.selectedAccount?.name
 
+    /** A conta com login: o nome e a foto (o avatar da barra de cima no celular). */
+    data class Account(val name: String?, val photo: String?)
+
+    fun account(): Account? = Engine.signIn.selectedAccount?.let { Account(it.name, it.avatarImageUrl) }
+
     /**
      * Pede um código ao YouTube e espera o usuário confirmar.
      * O fluxo emite [SignInEvent.Code] e depois [SignInEvent.Done].

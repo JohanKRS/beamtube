@@ -25,6 +25,16 @@ object LibraryRepository {
     /** Histórico da conta (o que foi assistido), do mais recente para o mais antigo. */
     suspend fun history(): VideoPage = Engine.content.historyObserve.firstOrNull().toPage()
 
+    /**
+     * Tira [video] do histórico da conta. No Histórico, o menu de cada cartão traz o pedido
+     * "Remove from watch history" do YouTube; o motor manda esse pedido como manda o "Not
+     * interested" (o mesmo endpoint de feedback).
+     */
+    suspend fun removeFromHistory(video: Video) {
+        val token = checkNotNull(video.feedbackToken) { "YouTube didn't send a way to remove this video" }
+        io { Engine.mediaItems.markAsNotInterested(token) }
+    }
+
     /** Recomendações da conta (o "Início" do YouTube), ainda sem os nossos filtros. */
     suspend fun recommended(): VideoPage = Engine.content.recommendedObserve.firstOrNull().toPage()
 

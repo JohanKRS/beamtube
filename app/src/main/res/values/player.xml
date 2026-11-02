@@ -1,62 +1,117 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Controles do player: poucos botões, com foco bem visível para o D-pad da TV. -->
+<!--
+  Controles do player (opção A do desenho de 2026-11-02, escolhida pelo Johan): o título e as
+  ações numa pílula de vidro em cima; embaixo, uma ilha de vidro com tocar, tempo, barra e os
+  botões do vídeo. Poucos botões, com foco bem visível para o D-pad da TV.
+-->
 <resources>
     <color name="player_accent">@color/launcher_night_glow</color>
-    <color name="player_icon">#E6FFFFFF</color>
-    <color name="player_text_secondary">#CCFFFFFF</color>
+    <color name="player_icon">#F3EFE4</color>
+    <color name="player_text_secondary">#C9C6BD</color>
+    <color name="player_on_light">#18191B</color>
 
+    <!-- Margens da tela e o título. Na TV (values-television) ficam maiores, longe da borda. -->
+    <dimen name="player_edge">32dp</dimen>
+    <dimen name="player_edge_top">20dp</dimen>
+    <dimen name="player_edge_bottom">18dp</dimen>
+    <dimen name="player_title_size">17sp</dimen>
+
+    <!-- Botão de ícone (like, legenda, lua…). -->
     <style name="PlayerButton">
-        <item name="android:layout_width">48dp</item>
-        <item name="android:layout_height">48dp</item>
-        <item name="android:layout_marginEnd">12dp</item>
-        <item name="android:padding">12dp</item>
+        <item name="android:layout_width">40dp</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:layout_marginStart">2dp</item>
+        <item name="android:padding">10dp</item>
         <item name="android:background">@drawable/player_button_bg</item>
         <item name="android:scaleType">fitCenter</item>
         <item name="android:focusable">true</item>
         <item name="android:clickable">true</item>
     </style>
 
+    <!-- Botão de ícone dentro da pílula de cima. -->
+    <style name="PlayerPillButton" parent="PlayerButton">
+        <item name="android:layout_width">36dp</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:layout_marginStart">0dp</item>
+        <item name="android:padding">8dp</item>
+    </style>
+
     <style name="PlayerTextButton">
         <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">48dp</item>
-        <item name="android:layout_marginEnd">12dp</item>
-        <item name="android:paddingStart">16dp</item>
-        <item name="android:paddingEnd">18dp</item>
-        <item name="android:gravity">center</item>
-        <item name="android:background">@drawable/player_button_bg</item>
-        <item name="android:textColor">@color/player_icon</item>
-        <item name="android:textSize">15sp</item>
-        <item name="android:drawablePadding">8dp</item>
-        <item name="android:focusable">true</item>
-        <item name="android:clickable">true</item>
-    </style>
-
-    <!-- Painel de dormir: uma linha por escolha, com o nome à esquerda e as opções. -->
-    <style name="PlayerPanelRow">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">4dp</item>
-        <item name="android:layout_marginBottom">4dp</item>
-        <item name="android:gravity">center_vertical</item>
-        <item name="android:orientation">horizontal</item>
-    </style>
-
-    <style name="PlayerPanelLabel">
-        <item name="android:layout_width">112dp</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/player_text_secondary</item>
-        <item name="android:textSize">14sp</item>
-    </style>
-
-    <!-- Uma opção do painel (criada no código: os layout_* ficam lá). -->
-    <style name="PlayerChip">
-        <item name="android:minWidth">48dp</item>
-        <item name="android:paddingStart">14dp</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:layout_marginStart">2dp</item>
+        <item name="android:paddingStart">12dp</item>
         <item name="android:paddingEnd">14dp</item>
         <item name="android:gravity">center</item>
         <item name="android:background">@drawable/player_button_bg</item>
         <item name="android:textColor">@color/player_icon</item>
-        <item name="android:textSize">15sp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">@font/figtree_semibold</item>
+        <item name="android:drawablePadding">6dp</item>
+        <item name="android:focusable">true</item>
+        <item name="android:clickable">true</item>
+    </style>
+
+    <!-- Painel (resolução, dormir): um cartão à direita, logo acima da ilha. -->
+    <style name="PlayerPanel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_gravity">end</item>
+        <item name="android:layout_marginBottom">10dp</item>
+        <item name="android:background">@drawable/player_panel_bg</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingTop">14dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:paddingBottom">16dp</item>
+    </style>
+
+    <style name="PlayerPanelTitle">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:textColor">@color/player_icon</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">@font/figtree_semibold</item>
+    </style>
+
+    <!-- Uma linha do painel: o nome em cima, as opções num trilho embaixo. -->
+    <style name="PlayerPanelGroup">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">12dp</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="PlayerPanelLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">6dp</item>
+        <item name="android:textColor">#A7A8AD</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:fontFamily">@font/figtree_medium</item>
+    </style>
+
+    <!-- Os trilhos de um painel ficam da mesma largura (sameWidth, no PlayerActivity). -->
+    <style name="PlayerSegments">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:padding">3dp</item>
+        <item name="android:background">@drawable/player_segments_bg</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+    </style>
+
+    <!-- Uma opção do painel (criada no código: os layout_* ficam lá). -->
+    <style name="PlayerChip">
+        <item name="android:minWidth">52dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:background">@drawable/player_segment_bg</item>
+        <item name="android:textColor">@color/player_segment_text</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">@font/figtree_semibold</item>
         <item name="android:fontFeatureSettings">tnum</item>
         <item name="android:focusable">true</item>
         <item name="android:clickable">true</item>
@@ -65,10 +120,11 @@
     <style name="PlayerTime">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:paddingStart">4dp</item>
-        <item name="android:paddingEnd">4dp</item>
-        <item name="android:textColor">@color/player_text_secondary</item>
-        <item name="android:textSize">14sp</item>
+        <item name="android:paddingStart">6dp</item>
+        <item name="android:paddingEnd">6dp</item>
+        <item name="android:textColor">@color/player_icon</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">@font/figtree_medium</item>
         <item name="android:fontFeatureSettings">tnum</item>
     </style>
 </resources>
