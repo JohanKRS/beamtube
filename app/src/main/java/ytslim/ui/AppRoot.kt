@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AuthRepository
 import ytslim.data.Channel
+import ytslim.data.Engine
 import ytslim.data.PlayQueue
 import ytslim.data.Playlist
 import ytslim.data.SavedVideos
@@ -85,6 +86,9 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                         vms[RecommendedViewModel::class]
                         vms[PlaylistsViewModel::class]
                         vms[HistoryViewModel::class]
+                        // Adianta o que o primeiro vídeo precisa (o player do YouTube e a decifragem),
+                        // que numa TV fraca leva segundos. O SmartTube faz o mesmo ao abrir.
+                        Engine.service.refreshCacheIfNeeded()
                     }
                     // Os ViewModels das abas são os do início (os mesmos que viewModel() devolve abaixo).
                     val reload: (HomeTab) -> Unit = { which ->
