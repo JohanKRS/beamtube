@@ -18,6 +18,7 @@ import ytslim.data.AppScope
 import ytslim.data.AppIcons
 import ytslim.data.AuthRepository
 import ytslim.data.AuthRepository.SignInEvent
+import ytslim.data.ExploreRepository
 import ytslim.data.ExternalLinks
 import ytslim.data.FeedMerge
 import ytslim.data.FeedRepository
@@ -151,6 +152,8 @@ class FeedViewModel : ViewModel(), Refreshable {
         extrasJob = viewModelScope.launch {
             val channels = FeedRepository.subscribedChannelIds().orEmpty()
             extras.value = runCatching { PlaylistSubscriptions.newVideos(channels) }.getOrDefault(emptyList())
+            // Com as inscrições lidas, a Explore lê em segundo plano o que os canais destacam.
+            ExploreRepository.prepare()
         }
     }
 

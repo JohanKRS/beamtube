@@ -77,7 +77,6 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -161,8 +160,6 @@ import dev.chrisbanes.haze.rememberHazeState
 import ytslim.R
 import ytslim.data.AppIcon
 import ytslim.data.AuthRepository
-import ytslim.data.Category
-import ytslim.data.CategoryRules
 import ytslim.data.Channel
 import ytslim.data.ChannelPhotos
 import ytslim.data.Playlist
@@ -173,10 +170,8 @@ import ytslim.data.Topic
 import ytslim.data.TopicRules
 import ytslim.data.Video
 import ytslim.ui.AppIconPreview
-import ytslim.ui.CategoryViewModel
 import ytslim.ui.ChannelViewModel
 import ytslim.ui.ExploreViewModel
-import ytslim.ui.categoryFilterChoices
 import ytslim.ui.DoorGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
@@ -639,141 +634,19 @@ object MobileUi : Screens {
     }
 
     @Composable
-    override fun Explore(vm: ExploreViewModel, onOpen: (Category) -> Unit) {
-        val categories by vm.categories.collectAsStateWithLifecycle()
-        val error by vm.error.collectAsStateWithLifecycle()
-        val res = LocalContext.current.resources
-        val list = categories
-        if (list == null && error == null) {
-            Box(Modifier.fillMaxSize().padding(LocalBars.current), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    CircularProgressIndicator()
-                    Text(stringResource(R.string.explore_finding), color = Look.Sub, textAlign = TextAlign.Center)
-                }
-            }
-            return
-        }
-        val state = if (list != null) UiState.Ready(list) else UiState.Error(error.orEmpty())
-        Loadable(state, onRetry = vm::retry, refresh = vm) { themes ->
-            LazyVerticalGrid(
-                // Duas colunas no celular em pé; mais no tablet e deitado.
-                columns = GridCells.Adaptive(minSize = 156.dp),
-                contentPadding = barsPlus(top = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                if (themes.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Text(stringResource(R.string.explore_empty), textAlign = TextAlign.Center, color = Look.Sub, modifier = Modifier.fillMaxWidth().padding(32.dp))
-                    }
-                }
-                items(themes, key = { it.id }) { category ->
-                    CategoryTile(
-                        category,
-                        onOpen = { onOpen(category) },
-                        onHide = {
-                            vm.hide(category.id)
-                            Notices.show(res.getString(R.string.explore_hidden, category.name))
-                        },
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Hint(stringResource(R.string.explore_hint), Modifier.padding(horizontal = 2.dp, vertical = 6.dp))
-                }
-            }
-        }
-    }
-
-    /** Um tema: o mosaico das miniaturas e o nome. Segurar oferece esconder o tema. */
-    @OptIn(ExperimentalFoundationApi::class)
-    @Composable
-    private fun CategoryTile(category: Category, onOpen: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier) {
-        var menu by remember { mutableStateOf(false) }
-        Box(modifier) {
-            Column(
-                Modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = { menu = true }),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CategoryMosaic(category, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)))
-                Text(category.name, style = RowTitle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp))
-            }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.explore_hide)) },
-                    leadingIcon = { Icon(Icons.Outlined.VisibilityOff, contentDescription = null) },
-                    onClick = {
-                        menu = false
-                        onHide()
-                    },
-                )
-            }
-        }
-    }
-
-    /** Quatro miniaturas da última busca da categoria; sem elas, a cor e a letra do nome. */
-    @Composable
-    private fun CategoryMosaic(category: Category, modifier: Modifier) {
-        val thumbs = category.thumbnails
-        Box(modifier.background(Look.Surface)) {
-            when {
-                thumbs.size >= CategoryRules.MAX_THUMBNAILS -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    thumbs.chunked(2).forEach { row ->
-                        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            row.forEach { url ->
-                                AsyncImage(
-                                    model = url,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.weight(1f).fillMaxHeight().background(Look.SurfaceHigh),
-                                )
-                            }
-                        }
-                    }
-                }
-                thumbs.isNotEmpty() -> AsyncImage(
-                    model = thumbs.first(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                else -> Box(Modifier.fillMaxSize().background(Look.monogramTone(category.name).copy(alpha = 0.55f)), Alignment.Center) {
-                    Text(monogramOf(category.name), style = RowTitle.copy(fontSize = 24.sp))
-                }
-            }
-        }
-    }
-
-    @Composable
-    override fun CategoryPage(
-        title: String,
-        vm: CategoryViewModel,
-        onPlay: (Video) -> Unit,
-        onOpenChannel: (Channel) -> Unit,
-        onBack: () -> Unit,
-    ) {
-        val category by vm.category.collectAsStateWithLifecycle()
-        val gone by vm.gone.collectAsStateWithLifecycle()
+    override fun Explore(vm: ExploreViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
-        val filters by vm.filters.collectAsStateWithLifecycle()
-        DetailFrame(title = category?.name ?: title, navigation = { BackButton(onBack) }) {
-            if (gone) {
-                Box(Modifier.fillMaxSize().padding(LocalBars.current).padding(24.dp), Alignment.Center) {
-                    Text(stringResource(R.string.category_gone), color = Look.Sub, textAlign = TextAlign.Center)
-                }
-            } else {
-                Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
-                    VideoGrid(
-                        content,
-                        emptyText = stringResource(R.string.category_empty),
-                        onNearEnd = vm::loadMore,
-                        onPlay = onPlay,
-                        onOpenChannel = onOpenChannel,
-                        // Os filtros rolam junto com a lista, no topo dela.
-                        header = { FilterRow(categoryFilterChoices(filters), onChange = vm::setFilters, padding = PaddingValues(0.dp)) },
-                    )
-                }
-            }
+        Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
+            VideoGrid(
+                content,
+                emptyText = stringResource(R.string.explore_empty),
+                onNearEnd = vm::loadMore,
+                onPlay = onPlay,
+                onOpenChannel = onOpenChannel,
+                header = {
+                    Text(stringResource(R.string.explore_hint), style = MaterialTheme.typography.bodySmall, color = Look.Sub)
+                },
+            )
         }
     }
 
