@@ -2,10 +2,8 @@ package ytslim.player
 
 import ytslim.R
 import android.content.Context
-import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.util.Log
-import android.view.Display
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -112,22 +110,22 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         addAnalyticsListener(DroppedFramesListener())
     }
 
-    /** Até onde [QualityRules] passa por cima dos limites declarados: 1080p, ou a tela se for menor. */
-    private val maxForcedHeight: Int = run {
-        val mode = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
-            ?.getDisplay(Display.DEFAULT_DISPLAY)?.mode
-        val screen = mode?.let { minOf(it.physicalWidth, it.physicalHeight) }?.takeIf { it > 0 }
-        minOf(QualityRules.MAX_FORCED_HEIGHT, screen ?: QualityRules.MAX_FORCED_HEIGHT)
-    }
-
-    /** A qualidade deste vídeo já foi conferida ([raiseQuality]). */
+    /** A qualidade deste vídeo já foi escolhida ([pickQuality]). */
     private var qualityChecked = false
 
-    /** Está tocando uma faixa acima do limite que o decodificador declara. */
-    private var qualityForced = false
+    /** A altura que o app escolheu para este vídeo (null = a escolha é do Media3). */
+    private var playingHeight: Int? = null
 
-    /** Quantas vezes o aparelho perdeu muitos quadros com a faixa forçada. */
+    /** O teto deste vídeo: cai quando ele para várias vezes para carregar (a rede não dá conta). */
+    private var videoCeiling = QualityRules.MAX_HEIGHT
+
+    /** Quantas vezes o aparelho perdeu muitos quadros, e quantas o vídeo parou para carregar. */
     private var stutters = 0
+    private var rebuffers = 0
+
+    /** O próximo "carregando" foi o usuário (ou o app) que causou: pular na barra, trocar de faixa. */
+    private var expectBuffering = false
+    private var lastPlaybackState = Player.STATE_IDLE
 
     private var current: PlaybackInfo? = null
     private var saveHistory = true
@@ -231,8 +229,10 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
     private suspend fun play(result: PlaybackResult.Ready, startPositionMs: Long) {
         current = result.info
         qualityChecked = false
-        qualityForced = false
+        playingHeight = null
+        videoCeiling = QualityRules.MAX_HEIGHT
         stutters = 0
+        rebuffers = 0
         val caption = if (result.info.isLive) null else SubtitleRules.pick(
             captions = result.info.captions,
             deviceLanguage = Locale.getDefault().language,
@@ -374,6 +374,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
 
     private inner class PlayerListener : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
+            watchRebuffering(playbackState)
             when (playbackState) {
                 Player.STATE_ENDED -> {
                     saveProgress()
@@ -387,19 +388,25 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
             }
         }
 
+        override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                expectBuffering = true
+            }
+        }
+
         override fun onTracksChanged(tracks: Tracks) {
             enforceOriginalAudio(tracks)
-            raiseQuality(tracks)
+            pickQuality(tracks)
             val info = current ?: return
             _state.value = State.Playing(info, describeSelection(tracks))
         }
 
         override fun onPlayerError(error: PlaybackException) {
             val id = videoId ?: return
-            Log.w(TAG, "player error ${error.errorCodeName} (quality forced: $qualityForced)", error)
-            if (qualityForced && error.errorCode in DECODER_ERRORS) {
-                // O aparelho não deu conta da faixa acima do limite declarado: volta a confiar nele.
-                trustDecoderLimits()
+            Log.w(TAG, "player error ${error.errorCodeName} (playing ${playingHeight}p)", error)
+            if (playingHeight != null && error.errorCode in DECODER_ERRORS) {
+                // O decodificador não deu conta desta resolução: desce um degrau e continua do mesmo ponto.
+                stepDown(sessionWide = true, reason = error.errorCodeName)
                 player.prepare()
                 return
             }
@@ -414,20 +421,35 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    /** Com a faixa forçada, o aparelho perdeu muitos quadros duas vezes: volta à escolha do Media3. */
+    /** O aparelho perdeu muitos quadros duas vezes: o decodificador não dá conta, desce um degrau. */
     private inner class DroppedFramesListener : AnalyticsListener {
         override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
-            Log.i(TAG, "dropped $droppedFrames frames in $elapsedMs ms (quality forced: $qualityForced)")
-            if (!qualityForced || droppedFrames < STUTTER_FRAMES || elapsedMs > STUTTER_WINDOW_MS) return
-            if (++stutters >= MAX_STUTTERS) trustDecoderLimits()
+            Log.i(TAG, "dropped $droppedFrames frames in $elapsedMs ms (playing ${playingHeight}p)")
+            if (playingHeight == null || droppedFrames < STUTTER_FRAMES || elapsedMs > STUTTER_WINDOW_MS) return
+            if (++stutters >= MAX_STUTTERS) stepDown(sessionWide = true, reason = "dropped frames")
+        }
+    }
+
+    /** O vídeo parou para carregar várias vezes sem o usuário pular: a rede não dá conta, desce um degrau. */
+    private fun watchRebuffering(state: Int) {
+        val previous = lastPlaybackState
+        lastPlaybackState = state
+        when (state) {
+            Player.STATE_READY -> expectBuffering = false
+            Player.STATE_BUFFERING -> {
+                if (previous != Player.STATE_READY || expectBuffering || !player.playWhenReady) return
+                Log.i(TAG, "rebuffering (playing ${playingHeight}p)")
+                if (playingHeight != null && ++rebuffers >= MAX_REBUFFERS) stepDown(sessionWide = false, reason = "rebuffering")
+            }
         }
     }
 
     /**
-     * Se o Media3 ficou com uma faixa menor do que o aparelho decodifica (decodificadores que
-     * declaram limites baixos demais), troca pela maior que [QualityRules] aceita. Uma vez por vídeo.
+     * A maior faixa que [QualityRules] aceita, até o teto: 4K primeiro, mesmo que o decodificador
+     * declare menos (muitas TVs declaram menos do que decodificam). Uma vez por vídeo, e de novo
+     * quando o teto cai.
      */
-    private fun raiseQuality(tracks: Tracks) {
+    private fun pickQuality(tracks: Tracks) {
         if (qualityChecked) return
         val video = ArrayList<VideoTrack>()
         val described = ArrayList<String>()
@@ -445,6 +467,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
                     handled = support == C.FORMAT_HANDLED,
                     exceeds = support == C.FORMAT_EXCEEDS_CAPABILITIES,
                     hardware = hasHardwareDecoder(format.sampleMimeType),
+                    hdr = isHdr(format),
                     selected = group.isTrackSelected(i),
                 )
                 video += track
@@ -454,24 +477,49 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         }
         if (video.none { it.selected }) return
         qualityChecked = true
-        Log.i(TAG, "video tracks (max forced ${maxForcedHeight}p): ${described.joinToString(" | ")}")
-        if (decoderLimitsTrusted) return
-        val target = QualityRules.upgrade(video, maxForcedHeight) ?: return
-        Log.i(TAG, "raising quality to ${described[video.indexOf(target)]}")
-        qualityForced = true
-        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-            .setOverrideForType(TrackSelectionOverride(tracks.groups[target.group].mediaTrackGroup, target.index))
-            .build()
+        val ceiling = minOf(sessionCeiling, videoCeiling)
+        Log.i(TAG, "video tracks (ceiling ${ceiling}p): ${described.joinToString(" | ")}")
+        val target = QualityRules.best(video, ceiling)
+        playingHeight = target?.height
+        val parameters = player.trackSelectionParameters.buildUpon()
+        if (target == null) {
+            // Nenhuma faixa com decodificador de hardware até o teto: fica a escolha do Media3.
+            parameters.clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+        } else {
+            Log.i(TAG, "playing ${described[video.indexOf(target)]}")
+            if (target.selected) return
+            parameters.setOverrideForType(TrackSelectionOverride(tracks.groups[target.group].mediaTrackGroup, target.index))
+        }
+        expectBuffering = true
+        player.trackSelectionParameters = parameters.build()
     }
 
-    /** Desiste de passar por cima dos limites do decodificador até o app fechar. */
-    private fun trustDecoderLimits() {
-        Log.w(TAG, "forced quality failed; trusting the decoder limits from now on")
-        decoderLimitsTrusted = true
-        qualityForced = false
+    /**
+     * A resolução atual não deu conta: o teto cai para o degrau de baixo e a faixa é escolhida de
+     * novo. [sessionWide]: o decodificador falhou, e o teto vale até o app fechar; senão (rede),
+     * só para este vídeo.
+     */
+    private fun stepDown(sessionWide: Boolean, reason: String) {
+        val height = playingHeight ?: return
+        val lower = QualityRules.lowerCeiling(height)
+        if (sessionWide) sessionCeiling = minOf(sessionCeiling, lower) else videoCeiling = minOf(videoCeiling, lower)
+        Log.w(TAG, "${height}p failed ($reason): ceiling now ${minOf(sessionCeiling, videoCeiling)}p")
+        stutters = 0
+        rebuffers = 0
+        qualityChecked = false
+        // Sem a faixa que falhou; se as faixas ainda não estiverem à mão, a escolha vem no próximo onTracksChanged.
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
             .build()
+        pickQuality(player.currentTracks)
+    }
+
+    /** HDR (10 bits) só toca se o decodificador aceitar de verdade: forçar daria erro ou cores erradas. */
+    private fun isHdr(format: Format): Boolean {
+        val transfer = format.colorInfo?.colorTransfer
+        if (transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG) return true
+        val codecs = format.codecs ?: return false
+        return codecs.startsWith("vp09.02") || HDR_AV1.containsMatchIn(codecs)
     }
 
     private fun hasHardwareDecoder(mimeType: String?): Boolean {
@@ -520,8 +568,14 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
         const val STUTTER_WINDOW_MS = 10_000L
         const val MAX_STUTTERS = 2
 
-        /** O aparelho já falhou com uma faixa forçada: vale o limite declarado até o app fechar. */
-        var decoderLimitsTrusted = false
+        /** AV1 de 10 bits ("av01.0.12M.10"): os vídeos HDR do YouTube. */
+        val HDR_AV1 = Regex("^av01\\.\\d\\.\\d{2}[MH]\\.10")
+
+        /** Paradas para carregar, no mesmo vídeo, antes de descer um degrau. */
+        const val MAX_REBUFFERS = 3
+
+        /** O teto até o app fechar: começa em 4K e cai quando o decodificador do aparelho não dá conta. */
+        var sessionCeiling = QualityRules.MAX_HEIGHT
 
         /** Codec -> o decodificador principal é de hardware? */
         val hardwareDecoders = HashMap<String, Boolean>()
