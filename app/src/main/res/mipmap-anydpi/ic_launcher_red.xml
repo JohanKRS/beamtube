@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gerado por tools/make_icons.py; não editar à mão. -->
+<!-- Android 6 e 7 (sem ícone adaptativo): o mesmo desenho num quadrado arredondado. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:endColor="@color/launcher_red_bottom"
+                android:startColor="@color/launcher_red_top" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+    <item android:drawable="@drawable/ic_launcher_red_foreground" />
+</layer-list>

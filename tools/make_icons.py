@@ -8,7 +8,7 @@ Para cada cor de PALETTE saem:
   - mipmap-anydpi/ic_launcher_<cor>.xml (Android 6 e 7, sem ícone adaptativo);
   - drawable-xhdpi/tv_banner_<cor>.png (banner da TV, 320x180dp em xhdpi = 640x360px).
 
-O desenho é sempre a porta original; só as cores mudam. Origem: versões 01 a 06 em
+O desenho é sempre a porta original; só as cores mudam. Origem: versões 01 a 07 em
 /mnt/project-files/nome-e-icone/versoes/. Cada cor tem um activity-alias no AndroidManifest.xml
 e uma entrada em ytslim.data.AppIcon.
 
@@ -32,6 +32,7 @@ PALETTE = {
     "plum": ("#2B1638", "#4A2350", False, "#FFE0CC", "#FF9E7A"),  # 04 ameixa
     "mustard": ("#B7791F", "#8A5A12", False, "#FFF6DF", "#FFF6DF"),  # 05 mostarda
     "vivid": ("#FF6A5C", "#7B3FE4", True, "#FFFFFF", "#FFE6F0"),  # 06 vivo
+    "red": ("#E53935", "#E53935", False, "#FFFFFF", "#FFFFFF"),  # 07 vermelho (pedido em 2026-11-02)
 }
 
 # A porta, na grade de 108: (forma, coordenadas, opacidade, cor) — igual aos SVGs.

@@ -122,7 +122,6 @@ internal fun MediaItem.toSearchItem(): SearchItem? {
     }
     videoId?.let { return toVideo()?.let(SearchItem::VideoItem) }
     if (channel == null) return null
-    // A foto do canal às vezes vem sem o "https:" ("//yt3.ggpht.com/…").
-    val photo = cardImageUrl?.let { if (it.startsWith("//")) "https:$it" else it }
+    val photo = ChannelPhotos.normalize(cardImageUrl)
     return SearchItem.ChannelItem(Channel(channel, title.orEmpty(), secondTitle?.toString(), photo))
 }

@@ -28,6 +28,7 @@ enum class AppIcon(
     PLUM("ytslim.LauncherPlum", R.string.icon_plum, R.drawable.ic_launcher_plum_foreground, R.color.launcher_plum_top, R.color.launcher_plum_bottom),
     MUSTARD("ytslim.LauncherMustard", R.string.icon_mustard, R.drawable.ic_launcher_mustard_foreground, R.color.launcher_mustard_top, R.color.launcher_mustard_bottom),
     VIVID("ytslim.LauncherVivid", R.string.icon_vivid, R.drawable.ic_launcher_vivid_foreground, R.color.launcher_vivid_top, R.color.launcher_vivid_bottom, diagonal = true),
+    RED("ytslim.LauncherRed", R.string.icon_red, R.drawable.ic_launcher_red_foreground, R.color.launcher_red_top, R.color.launcher_red_bottom),
     ;
 
     companion object {

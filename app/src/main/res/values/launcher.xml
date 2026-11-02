@@ -25,4 +25,8 @@
     <color name="launcher_vivid_bottom">#FF7B3FE4</color>
     <color name="launcher_vivid_light">#FFFFFFFF</color>
     <color name="launcher_vivid_glow">#FFFFE6F0</color>
+    <color name="launcher_red_top">#FFE53935</color>
+    <color name="launcher_red_bottom">#FFE53935</color>
+    <color name="launcher_red_light">#FFFFFFFF</color>
+    <color name="launcher_red_glow">#FFFFFFFF</color>
 </resources>

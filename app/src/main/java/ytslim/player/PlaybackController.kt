@@ -44,6 +44,7 @@ import ytslim.data.PlaybackRepository
 import ytslim.data.PlaybackResult
 import ytslim.data.PlaylistEditor
 import ytslim.data.Rating
+import ytslim.data.SavedVideos
 import ytslim.data.SettingsRepository
 import ytslim.data.SkipRules
 import ytslim.data.Stream
@@ -269,7 +270,10 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
             val target = SettingsRepository.current().saveTarget
             val name = target.title ?: res.getString(R.string.watch_later)
             runCatching { PlaylistEditor.setSaved(id, target.playlistId, !saved) }.fold(
-                { _notices.value = res.getString(if (saved) R.string.player_removed_from else R.string.player_saved_to, name) },
+                {
+                    SavedVideos.mark(id, !saved)
+                    _notices.value = res.getString(if (saved) R.string.player_removed_from else R.string.player_saved_to, name)
+                },
                 {
                     _controls.update { c -> c.copy(saved = saved) }
                     _notices.value = res.getString(R.string.action_failed, it.message ?: it.javaClass.simpleName)

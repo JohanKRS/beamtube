@@ -18,13 +18,20 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - O login fica salvo entre atualizações. Até a 0.2.1 o app às vezes pedia o código de novo depois de atualizar (ver as notas técnicas).
 - **Fora do app:** envio de vídeos (upload), Shorts, comentários, chat ao vivo e notificações.
 - **Nome e ícone:** **Doorglow**. Ícone: a porta entreaberta (fresta de luz) em fundo azul-noite. `applicationId` = `app.doorglow`. Nome e ID ficam no `gradle.properties`.
-  - **Cor do ícone à escolha** (decidido em 2026-11-01): o desenho é sempre a porta original, e nas Configurações ("App icon") dá para escolher uma de seis cores: azul-noite (padrão), preto, verde-azulado, ameixa, mostarda e gradiente vivo. São as versões 01 a 06 de `/mnt/project-files/nome-e-icone/versoes/`.
+  - **Cor do ícone à escolha** (decidido em 2026-11-01): o desenho é sempre a porta original, e nas Configurações ("App icon") dá para escolher uma de sete cores: azul-noite (padrão), preto, verde-azulado, ameixa, mostarda, gradiente vivo e vermelho. São as versões 01 a 07 de `/mnt/project-files/nome-e-icone/versoes/`. O vermelho (luz branca em #E53935, no tom do YouTube) entrou em 2026-11-02, a pedido do Johan.
   - Ícones, banners da TV e cores saem de `tools/make_icons.py` (não editar os XMLs gerados à mão). A tabela de cores fica no script.
 - **Interface em inglês.** (A conversa com o Claude continua em português.)
 - **Interações com a conta:** só **like/dislike** e **inscrever/cancelar inscrição**. O botão de inscrição fica na página do vídeo e vale para o canal do vídeo.
 - **Inscrição em playlists**, guardada nas playlists salvas da conta (o YouTube não tem isso; ver a seção própria).
 - **Links externos** (WhatsApp, navegador, "Compartilhar"): abrem no Doorglow e tocam **sem ir para o histórico** (ver a seção própria).
 - **Atualizações pelo Obtainium**, a partir das releases do GitHub (ver a seção própria).
+- **Aparência (etapa 6, aprovada pelo Johan em 2026-11-02, a partir do canvas de mockups):**
+  - Fundo grafite (#18191B), não preto nem azul; textos creme; fonte **Figtree**. A luz âmbar da porta aparece só no que importa: a aba ativa (uma "fresta" de luz), a barra de progresso, o foco na TV e o marcador de salvo.
+  - **Barras de vidro de ponta a ponta** no celular e no tablet: a barra de cima e a de baixo passam por trás da barra de status, da barra de gestos e das laterais, e o conteúdo rola por baixo delas. O desfoque só existe no Android 12 ou mais novo; nos mais antigos a barra fica quase opaca.
+  - **O recorte da câmera é ignorado:** o conteúdo passa por baixo dele, e só as barras do sistema afastam os botões.
+  - Barra de cima compacta (o nome da aba e a lupa). A barra de baixo tem **só ícones**, sem nomes.
+  - **Deitado** (largura maior que a altura e pelo menos 600 dp), a barra de baixo vira uma coluna de ícones à esquerda, que inclui a Busca. O tablet em pé usa o mesmo layout do celular, com 3 colunas.
+  - Na TV não tem desfoque: o menu e os avisos usam um cinza quase opaco. O foco aumenta o card em 6%, com borda creme e brilho âmbar.
 
 ## Telas
 
@@ -35,10 +42,13 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 | Busca | "Melhorada": filtros de duração, data, tipo e ordenação, e sugestões enquanto se digita. Resultados misturam vídeos, canais e playlists. Lives só aparecem aqui. |
 | Playlists | Inclui **Assistir mais tarde** (o real, que o motor acessa). Reordenar vídeos, inclusive pela TV. |
 | Histórico | Lista do que foi assistido. |
-| Canal | Página básica do canal: vídeos e playlists (duas abas) e o botão de bloquear. Abre pela busca ou pelo nome do canal no player. |
+| Canal | Página básica do canal: vídeos e playlists (duas abas) e o botão de bloquear. Abre pela busca, pelo nome do canal no player, pelo avatar e nome do canal nos cards (celular e tablet) e pelo menu do OK longo (TV). |
 | Configurações | Mínimas: **mostrar lives nas Inscrições**, playlist do botão Save, tópicos excluídos e preferidos, canais bloqueados, links externos, playlists inscritas, **cor do ícone** e conta. |
 
-- **Abas:** no celular, a barra de baixo tem Subscriptions, Recommended, Playlists, History e Settings, e a Busca abre pela lupa da barra de cima (seis abas não cabem). Na TV, as seis abas ficam na fileira de cima, com Search em terceiro.
+- **Abas:** no celular, a barra de baixo tem os ícones de Subscriptions, Recommended, Playlists, History e Settings, e a Busca abre pela lupa da barra de cima (seis abas não cabem). Deitado, a coluna da esquerda tem as seis, com a Busca em terceiro. Na TV, as seis abas ficam na fileira de cima, com Search em terceiro; "voltar" no conteúdo leva às abas, e de novo sai do app.
+- As páginas de playlist e de canal não têm a barra de abas: só a barra de cima, com "voltar".
+- **Atualizar as listas** (pedido do Johan, 2026-11-02): no celular e no tablet, **puxar para baixo** no topo da lista recarrega Subscriptions, Recommended, Playlists, History, a página da playlist e a do canal. A lista continua na tela até a nova chegar. Na TV, **segurar OK na aba** Subscriptions, Recommended, Playlists ou History recarrega a lista (quando o OK é solto). Nada recarrega sozinho: as abas carregam quando o app abre e depois só quando o usuário pede.
+- **Cards de vídeo:** a miniatura com a duração e o progresso; embaixo, o título, o avatar e o nome do canal (abrem o canal) e o resto da linha (visualizações e data). Canal sem foto (em que o usuário não é inscrito) mostra a inicial num círculo colorido.
 
 ## Filtragem
 
@@ -65,6 +75,9 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 ## Playlists
 
 - **Salvar com um toque**: o botão de marcador na barra de cima do player põe o vídeo direto no "Assistir mais tarde" (ou na playlist escolhida em Settings > Save button) e tira de lá no segundo toque. O ícone cheio mostra que o vídeo já está na playlist.
+- **Salvar pelas listas** (etapa 6): no celular e no tablet, segurar o dedo numa miniatura põe o vídeo na playlist do botão Save, ou tira se já estiver, com um aviso embaixo ("Saved to…"/"Removed from…"). Na TV, segurar o OK abre um menu com duas opções: "Save to…"/"Remove from…" e "Go to channel".
+  - Um marcador discreto (âmbar) na miniatura mostra os vídeos que já estão nessa playlist. Ele não aparece dentro da própria playlist.
+  - O app guarda a lista dos vídeos da playlist do Save (até 10 páginas), lida ao abrir e ao trocar a playlist em Settings. Na hora de salvar ou tirar, ele confere na conta se o vídeo está lá, então o marcador pode estar desatualizado numa playlist enorme, mas o toque faz sempre a coisa certa.
 - **Reordenar vídeos dentro das playlists do usuário**, principalmente o Assistir mais tarde. As mudanças vão para a conta, então aparecem em todos os aparelhos. O botão "Reorder" só aparece nas playlists do próprio usuário.
   - O app carrega a playlist inteira antes de abrir o modo (até umas 5000 vídeos), para que "mover para o fim" seja o fim de verdade. Nada vai para a conta até tocar "Save order".
   - No celular: setas para subir e descer cada vídeo. Na TV: o modo "mover", em que OK pega o vídeo, cima e baixo levam ele pela lista e OK solta. "Voltar" solta o vídeo pego, e de novo cancela.
@@ -76,6 +89,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doorglow monta esse feed, usando as **playlists salvas da conta** como a lista de inscrições (decisão do Johan, 2026-11-01). Assim a lista é a mesma no celular, no tablet e na TV.
 
 - Botão "Inscrever" na página da playlist: salva a playlist na biblioteca da conta (`MediaItemService.savePlaylistObserve`). "Cancelar inscrição" tira da biblioteca (`removePlaylistObserve`).
+  - Inscrito, o botão fica contornado em âmbar, com "Subscribed ✓", e o texto ao lado diz que tocar de novo cancela (etapa 6).
 - Contam como inscritas as playlists **de outros canais** salvas na conta, inclusive as que já estavam salvas antes do Doorglow. As playlists do próprio usuário (Assistir mais tarde e as que ele criou) ficam de fora do feed.
 - Lista para gerenciar nas Configurações, com "Unsubscribe". Para se inscrever: salvar a playlist no YouTube, ou abrir um link `youtube.com/playlist?list=` no Doorglow (abre a página da playlist com o botão).
 - **O que é "novo" numa playlist:** os vídeos de playlist não trazem data. Por isso o app anota, neste aparelho, quando cada vídeo apareceu na playlist (`PlaylistLedger`). O que já estava lá na primeira leitura não entra no feed; o que entrar depois aparece com a data em que foi visto. Por isso, logo depois de se inscrever, a playlist ainda não mostra nada nas Inscrições.
@@ -117,12 +131,26 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
+   - *Polimento visual implementado em 2026-11-02 (versão 0.4.0), aguardando o teste no aparelho* (ver "Como testar a etapa 6"). Junto, a pedido do Johan: salvar pelas listas (toque longo, e o menu do OK longo na TV), o marcador de salvo, o canal pelos cards, o estado de inscrito mais claro na playlist, puxar para atualizar (OK longo na aba, na TV) e o ícone vermelho. As Configurações só ganharam o visual novo.
+   - Falta a rotina de atualização do motor.
 
 Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", porque o motor acessa o real. Fica como ideia opcional para limpar o site.
 
 ## Perguntas em aberto
 
-Nenhuma no momento. Próxima etapa: polimento visual (6), junto com o Johan.
+Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a etapa 6
+
+1. Atualizar pelo Obtainium para a 0.4.0.
+2. Visual: fundo grafite, fonte nova, a fresta âmbar embaixo do ícone da aba ativa. As barras de vidro vão até as bordas da tela (atrás da barra de status e da de gestos), e o conteúdo rola por baixo delas. No Android 12+ o que passa por baixo fica desfocado.
+3. Tablet: em pé, 3 colunas e a barra de baixo. Deitado, a coluna de ícones à esquerda (com a lupa) e 4 colunas. O recorte da câmera não deve empurrar nada.
+4. Segurar o dedo numa miniatura: aparece o aviso "Saved to Watch later" e o marcador na miniatura. Segurar de novo tira (confira no app do YouTube).
+5. Tocar no avatar ou no nome do canal embaixo de um card abre a página do canal.
+6. Página de uma playlist de outro canal: inscrito, o botão mostra "Subscribed ✓"; tocar de novo cancela.
+7. TV: o foco aumenta o card, com borda creme e brilho. Segurar o OK num vídeo e soltar abre o menu com "Save to Watch later" (ou "Remove from…") e "Go to channel". "Voltar" fecha o menu.
+8. Atualizar: no celular, puxar a lista para baixo (aparece o círculo âmbar logo abaixo da barra de cima). Na TV, segurar OK na aba Recommended e soltar: a lista recarrega.
+9. Ícone: em Settings > App icon, a sétima opção, "Red".
 
 ## Como testar as etapas 3 a 5
 
@@ -202,4 +230,12 @@ Nenhuma no momento. Próxima etapa: polimento visual (6), junto com o Johan.
 - **Cor do ícone:** cada cor é um `activity-alias` da `MainActivity` no manifest, com o próprio ícone e o banner da TV, e só um fica ligado (`data/AppIcons.kt`, com `PackageManager.setComponentEnabledSetting` e `DONT_KILL_APP`). O alias ligado é a própria escolha: o app não guarda a cor em outro lugar.
   - **Nunca renomear nem tirar um alias:** quem estivesse com ele ligado ficaria sem o app no launcher.
   - Até a 0.2.0 a entrada do launcher era a própria `MainActivity`; a partir da 0.2.1 é o alias. Por isso alguns launchers tiram o atalho da tela inicial nessa atualização, e também a cada troca de cor.
+- **Visual (etapa 6):**
+  - Os tokens de cor e a fonte ficam em `ui/Look.kt`; a fresta de luz e a porta, em `ui/Glyphs.kt`.
+  - **Vidro:** Haze 1.7.2 (`dev.chrisbanes.haze`). As versões 1.7.3 e 2.x já pedem Compose 1.12 (e com ele AGP 9). O desfoque só funciona no Android 12+ (API 31); antes disso o Haze usa a cor de reserva, e o app escolhe uma quase opaca (`Look.GlassFallback`). Na TV o app não usa o Haze.
+  - **Ponta a ponta:** `enableEdgeToEdge` com as barras do sistema transparentes, `isNavigationBarContrastEnforced = false` e o recorte da câmera em `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` (Android 11+) ou `SHORT_EDGES` (9 e 10). O app só usa os insets `statusBars` e `navigationBars`, nunca o do recorte. O espaço coberto pelas barras de vidro passa para as listas por um `CompositionLocal` (`LocalBars`), para elas rolarem por baixo.
+  - **Fonte:** Figtree em TTF estáticos (regular, medium, semibold, bold) em `res/font/`, com a licença OFL em `licenses/Figtree-OFL.txt`.
+  - **Puxar para atualizar:** o `Modifier.pullToRefresh` do Material 3 em volta da lista, dentro do `Loadable`; os ViewModels das listas implementam `Refreshable` (recarregar sem tirar a lista da tela, e sem "carregar mais" ao mesmo tempo).
+  - **OK longo na TV:** o `Surface` do tv-material chama o `onLongClick` no primeiro repeat do ACTION_DOWN e engole o ACTION_UP seguinte. Se o menu abrisse ali, o soltar do OK cairia no primeiro item do menu. Por isso o card só marca o toque longo e abre o menu quando o OK é solto.
+  - Fotos dos canais nos cards: vêm da lista de inscrições (`ChannelPhotos`), porque os vídeos dos feeds não trazem a foto do canal.
 - **Compilar:** `./gradlew :app:assembleAppRelease` gera `app/build/outputs/apk/app/release/app-app-release.apk`, assinado com a chave de debug (uso pessoal). Os submódulos precisam estar baixados: `git submodule update --init`.
