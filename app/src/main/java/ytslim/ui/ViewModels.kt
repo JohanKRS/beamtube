@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ytslim.data.AppIcon
+import ytslim.data.AppScope
 import ytslim.data.AppIcons
 import ytslim.data.AuthRepository
 import ytslim.data.AuthRepository.SignInEvent
@@ -27,6 +28,7 @@ import ytslim.data.Playlist
 import ytslim.data.PlaylistEditor
 import ytslim.data.PlaylistSubscriptions
 import ytslim.data.SaveTarget
+import ytslim.data.SavedVideos
 import ytslim.data.Settings
 import ytslim.data.SettingsRepository
 import ytslim.data.Timed
@@ -39,6 +41,15 @@ sealed interface UiState<out T> {
     data object Loading : UiState<Nothing>
     data class Ready<T>(val data: T) : UiState<T>
     data class Error(val message: String) : UiState<Nothing>
+}
+
+/**
+ * Uma lista que dá para recarregar sem tirar da tela o que já está nela: puxar para atualizar, no
+ * celular e no tablet. Se a lista ainda não carregou, [refresh] é o mesmo que carregar de novo.
+ */
+interface Refreshable {
+    val refreshing: StateFlow<Boolean>
+    fun refresh()
 }
 
 internal fun Throwable.toMessage(): String = message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
@@ -82,7 +93,7 @@ data class VideoListContent(val videos: List<Video>, val hasMore: Boolean, val l
  * Feed de Inscrições: o feed dos canais mais os vídeos novos das playlists inscritas,
  * filtrado pelas regras (sem Shorts; lives só com o toggle).
  */
-class FeedViewModel : ViewModel() {
+class FeedViewModel : ViewModel(), Refreshable {
     private sealed interface Raw {
         data object Loading : Raw
         data class Error(val message: String) : Raw
@@ -110,21 +121,29 @@ class FeedViewModel : ViewModel() {
 
     private var loadJob: Job? = null
     private var extrasJob: Job? = null
+    private val _refreshing = MutableStateFlow(false)
+    override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
     init {
         reload()
     }
 
-    fun reload() {
+    fun reload() = load(quiet = false)
+
+    override fun refresh() = load(quiet = raw.value is Raw.Loaded)
+
+    private fun load(quiet: Boolean) {
         loadJob?.cancel()
         extrasJob?.cancel()
         autoPages = 0
-        raw.value = Raw.Loading
+        _refreshing.value = quiet
+        if (!quiet) raw.value = Raw.Loading
         loadJob = viewModelScope.launch {
             raw.value = runCatching { FeedRepository.subscriptions() }.fold(
                 { page -> Raw.Loaded(FeedMerge.estimate(page.videos, System.currentTimeMillis()), page, loadingMore = false) },
                 { Raw.Error(it.toMessage()) },
             )
+            _refreshing.value = false
             fillScreen()
         }
         // As playlists inscritas chegam depois, sem segurar o feed dos canais.
@@ -136,7 +155,7 @@ class FeedViewModel : ViewModel() {
 
     fun loadMore() {
         val loaded = raw.value as? Raw.Loaded ?: return
-        if (!loaded.lastPage.hasMore || loaded.loadingMore) return
+        if (!loaded.lastPage.hasMore || loaded.loadingMore || _refreshing.value) return
         raw.value = loaded.copy(loadingMore = true)
         loadJob = viewModelScope.launch {
             val next = runCatching { LibraryRepository.more(loaded.lastPage) }.getOrNull()
@@ -166,38 +185,57 @@ class FeedViewModel : ViewModel() {
     }
 }
 
-class PlaylistsViewModel : ViewModel() {
+class PlaylistsViewModel : ViewModel(), Refreshable {
     private val _state = MutableStateFlow<UiState<List<Playlist>>>(UiState.Loading)
     val state: StateFlow<UiState<List<Playlist>>> = _state.asStateFlow()
+    private val _refreshing = MutableStateFlow(false)
+    override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
+    private var job: Job? = null
 
     init {
         reload()
     }
 
-    fun reload() {
-        _state.value = UiState.Loading
-        viewModelScope.launch {
+    fun reload() = load(quiet = false)
+
+    override fun refresh() = load(quiet = _state.value is UiState.Ready)
+
+    private fun load(quiet: Boolean) {
+        job?.cancel()
+        _refreshing.value = quiet
+        if (!quiet) _state.value = UiState.Loading
+        job = viewModelScope.launch {
             _state.value = runCatching { LibraryRepository.playlists() }
                 .fold({ UiState.Ready(it) }, { UiState.Error(it.toMessage()) })
+            _refreshing.value = false
         }
     }
 }
 
 /** Lista paginada de vídeos (os de uma playlist). */
-open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : ViewModel() {
+open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : ViewModel(), Refreshable {
     private val _state = MutableStateFlow<UiState<VideoListContent>>(UiState.Loading)
     val state: StateFlow<UiState<VideoListContent>> = _state.asStateFlow()
+    private val _refreshing = MutableStateFlow(false)
+    override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
     private var lastPage: VideoPage? = null
+    private var loadJob: Job? = null
     private var moreJob: Job? = null
 
     init {
         reload()
     }
 
-    fun reload() {
+    fun reload() = load(quiet = false)
+
+    override fun refresh() = load(quiet = _state.value is UiState.Ready)
+
+    private fun load(quiet: Boolean) {
+        loadJob?.cancel()
         moreJob?.cancel()
-        _state.value = UiState.Loading
-        viewModelScope.launch {
+        _refreshing.value = quiet
+        if (!quiet) _state.value = UiState.Loading
+        loadJob = viewModelScope.launch {
             _state.value = runCatching { firstPage() }.fold(
                 { page ->
                     lastPage = page
@@ -205,6 +243,7 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
                 },
                 { UiState.Error(it.toMessage()) },
             )
+            _refreshing.value = false
         }
     }
 
@@ -237,7 +276,7 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
     fun loadMore() {
         val current = (_state.value as? UiState.Ready)?.data ?: return
         val page = lastPage ?: return
-        if (!page.hasMore || moreJob?.isActive == true) return
+        if (!page.hasMore || moreJob?.isActive == true || _refreshing.value) return
         _state.value = UiState.Ready(current.copy(loadingMore = true))
         moreJob = viewModelScope.launch {
             val next = runCatching { LibraryRepository.more(page) }.getOrNull()
@@ -256,6 +295,8 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
  * usuário (inclui Assistir mais tarde), o modo de reordenar.
  */
 class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ LibraryRepository.playlistVideos(playlist) }) {
+    val playlistId: String? get() = playlist.playlistId
+
     sealed interface Subscription {
         data object Hidden : Subscription
         data class Shown(val subscribed: Boolean, val busy: Boolean = false, val error: String? = null) : Subscription
@@ -414,7 +455,11 @@ class SettingsViewModel : ViewModel() {
     }
 
     fun setSaveTarget(playlist: OwnPlaylist) {
-        viewModelScope.launch { SettingsRepository.setSaveTarget(SaveTarget(playlist.id, playlist.title)) }
+        // Fora do viewModelScope: o marcador dos cards precisa da nova playlist mesmo se a tela fechar.
+        AppScope.launch {
+            SettingsRepository.setSaveTarget(SaveTarget(playlist.id, playlist.title))
+            SavedVideos.refresh()
+        }
     }
 
     enum class TopicList { EXCLUDED, PREFERRED }

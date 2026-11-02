@@ -1,0 +1,58 @@
+package ytslim.ui
+
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import ytslim.R
+
+/**
+ * A aparência do Doorglow (etapa 6, aprovada pelo Johan em 2026-11-02): um cinza bem escuro, que
+ * não é preto, e a luz âmbar da porta só no que importa (aba ativa, progresso, foco, salvo).
+ */
+object Look {
+    val Ground = Color(0xFF18191B)
+    val Surface = Color(0xFF232427)
+    val SurfaceHigh = Color(0xFF2C2D31)
+    val Text = Color(0xFFF3EFE4)
+    val Sub = Color(0xFFA7A8AD)
+    val Glow = Color(0xFFFFC861)
+    val GlowSoft = Color(0xFFFFE3A3)
+    val OnGlow = Color(0xFF18191B)
+    val Hairline = Color(0x12F3EFE4)
+    val Outline = Color(0x29F3EFE4)
+    val Error = Color(0xFFF2A49A)
+
+    /** Vidro das barras: o fundo a 62%, com o desfoque do que passa por baixo. */
+    val Glass = Color(0x9E18191B)
+
+    /** Sem desfoque (Android 11 ou mais antigo), a barra fica quase opaca para o texto continuar legível. */
+    val GlassFallback = Color(0xF018191B)
+
+    /** Avisos e menus flutuantes. */
+    val Pill = Color(0xF22E2F33)
+
+    /** Fundo do selo de duração e do marcador do Watch later em cima da miniatura. */
+    val Badge = Color(0xC70A0A0C)
+    val BadgeSoft = Color(0x8C0A0A0C)
+    val Live = Color(0xE6C8372D)
+
+    val Figtree = FontFamily(
+        Font(R.font.figtree_regular, FontWeight.Normal),
+        Font(R.font.figtree_medium, FontWeight.Medium),
+        Font(R.font.figtree_semibold, FontWeight.SemiBold),
+        Font(R.font.figtree_bold, FontWeight.Bold),
+    )
+
+    /** Cores dos avatares sem foto (canais em que o usuário não está inscrito). */
+    private val monogramTones = listOf(
+        Color(0xFF8C6A45), Color(0xFF6F5A85), Color(0xFF3F7A73),
+        Color(0xFF5E7A4C), Color(0xFF4D5D8A), Color(0xFF8A5560),
+    )
+
+    fun monogramTone(name: String): Color = monogramTones[Math.floorMod(name.hashCode(), monogramTones.size)]
+}
+
+/** A letra do avatar de um canal sem foto: a primeira letra ou número do nome. */
+fun monogramOf(name: String?): String =
+    name.orEmpty().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "•"

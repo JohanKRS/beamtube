@@ -5,9 +5,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,9 +26,28 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val tv = isTv()
-        if (!tv) enableEdgeToEdge()
+        if (!tv) drawEdgeToEdge()
         if (savedInstanceState == null) links.value = linkOf(intent)
         setContent { AppRoot(isTv = tv, links = links) }
+    }
+
+    /**
+     * O app desenha a tela inteira: o vidro das barras passa por trás da barra de status, da barra de
+     * gestos e das laterais. O recorte da câmera é ignorado (no tablet do Johan ele fica na lateral,
+     * em retrato): o conteúdo vai por baixo dele, e só as barras do sistema afastam os botões.
+     */
+    private fun drawEdgeToEdge() {
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced = false
+        val cutoutMode = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P -> WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            else -> null
+        }
+        if (cutoutMode != null) window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = cutoutMode }
     }
 
     override fun onNewIntent(intent: Intent) {

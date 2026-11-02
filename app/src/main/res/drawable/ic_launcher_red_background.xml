@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gerado por tools/make_icons.py; não editar à mão. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:endColor="@color/launcher_red_bottom"
+        android:startColor="@color/launcher_red_top" />
+</shape>

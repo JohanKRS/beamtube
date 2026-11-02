@@ -138,6 +138,9 @@ dependencies {
     // QR code do login na TV.
     implementation(libs.zxing.core)
 
+    // Vidro fosco nas barras do celular e do tablet (no Android 12 ou mais novo; antes, cor sólida).
+    implementation(libs.haze)
+
     implementation(libs.coil.compose)
     implementation(libs.coil.network.ktor)
     implementation(libs.ktor.client.android)

@@ -34,7 +34,7 @@ import ytslim.data.VideoPage
  * Recomendações da conta, com os filtros do Doorglow: sem Shorts, sem lives, sem canais bloqueados
  * e sem tópicos excluídos; tópicos preferidos sobem (ver [TopicRules.recommend]).
  */
-class RecommendedViewModel : ViewModel() {
+class RecommendedViewModel : ViewModel(), Refreshable {
     private sealed interface Raw {
         data object Loading : Raw
         data class Error(val message: String) : Raw
@@ -57,25 +57,33 @@ class RecommendedViewModel : ViewModel() {
 
     private var job: Job? = null
     private var autoPages = 0
+    private val _refreshing = MutableStateFlow(false)
+    override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
     init {
         reload()
     }
 
-    fun reload() {
+    fun reload() = load(quiet = false)
+
+    override fun refresh() = load(quiet = raw.value is Raw.Loaded)
+
+    private fun load(quiet: Boolean) {
         job?.cancel()
         autoPages = 0
-        raw.value = Raw.Loading
+        _refreshing.value = quiet
+        if (!quiet) raw.value = Raw.Loading
         job = viewModelScope.launch {
             raw.value = runCatching { LibraryRepository.recommended() }
                 .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false) }, { Raw.Error(it.toMessage()) })
+            _refreshing.value = false
             fillScreen()
         }
     }
 
     fun loadMore() {
         val loaded = raw.value as? Raw.Loaded ?: return
-        if (!loaded.lastPage.hasMore || loaded.loadingMore) return
+        if (!loaded.lastPage.hasMore || loaded.loadingMore || _refreshing.value) return
         raw.value = loaded.copy(loadingMore = true)
         job = viewModelScope.launch {
             val next = runCatching { LibraryRepository.more(loaded.lastPage) }.getOrNull()
@@ -185,13 +193,15 @@ class SearchViewModel : ViewModel() {
 }
 
 /** Página do canal: vídeos (paginados), playlists e o bloqueio do canal. */
-class ChannelViewModel(private val channelId: String, private val name: String) : ViewModel() {
+class ChannelViewModel(private val channelId: String, private val name: String) : ViewModel(), Refreshable {
     data class Content(val videos: VideoListContent, val playlists: List<Playlist>)
 
     private val _state = MutableStateFlow<UiState<Content>>(UiState.Loading)
     val state: StateFlow<UiState<Content>> = _state.asStateFlow()
     private var lastPage: VideoPage? = null
     private var job: Job? = null
+    private val _refreshing = MutableStateFlow(false)
+    override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
     val blocked: StateFlow<Boolean> = SettingsRepository.settings
         .map { s -> s.filters.blocked.any { it.id == channelId } }
@@ -201,9 +211,14 @@ class ChannelViewModel(private val channelId: String, private val name: String) 
         reload()
     }
 
-    fun reload() {
+    fun reload() = load(quiet = false)
+
+    override fun refresh() = load(quiet = _state.value is UiState.Ready)
+
+    private fun load(quiet: Boolean) {
         job?.cancel()
-        _state.value = UiState.Loading
+        _refreshing.value = quiet
+        if (!quiet) _state.value = UiState.Loading
         job = viewModelScope.launch {
             _state.value = runCatching { ChannelRepository.channel(channelId) }.fold(
                 { page ->
@@ -213,13 +228,14 @@ class ChannelViewModel(private val channelId: String, private val name: String) 
                 },
                 { UiState.Error(it.toMessage()) },
             )
+            _refreshing.value = false
         }
     }
 
     fun loadMore() {
         val current = (_state.value as? UiState.Ready)?.data ?: return
         val page = lastPage ?: return
-        if (!page.hasMore || current.videos.loadingMore) return
+        if (!page.hasMore || current.videos.loadingMore || _refreshing.value) return
         _state.value = UiState.Ready(current.copy(videos = current.videos.copy(loadingMore = true)))
         job = viewModelScope.launch {
             val next = runCatching { LibraryRepository.more(page) }.getOrNull()

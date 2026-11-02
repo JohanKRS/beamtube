@@ -1,6 +1,13 @@
 package ytslim.ui.tv
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +19,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,6 +40,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -57,28 +68,45 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.tv.material3.Border
 import androidx.tv.material3.Button
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.Glow
+import androidx.tv.material3.Icon
 import androidx.tv.material3.ListItem
+import androidx.tv.material3.ListItemDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.RadioButton
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Tab
+import androidx.tv.material3.TabDefaults
 import androidx.tv.material3.TabRow
 import androidx.tv.material3.Text
+import androidx.tv.material3.Typography
 import androidx.tv.material3.darkColorScheme
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -87,15 +115,20 @@ import ytslim.data.AppIcon
 import ytslim.data.AuthRepository
 import ytslim.data.Channel
 import ytslim.data.Playlist
+import ytslim.data.SavedVideos
 import ytslim.data.SearchItem
 import ytslim.data.Topic
 import ytslim.data.TopicRules
 import ytslim.data.Video
 import ytslim.ui.AppIconPreview
 import ytslim.ui.ChannelViewModel
+import ytslim.ui.DoorGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
+import ytslim.ui.LightSlit
+import ytslim.ui.Look
+import ytslim.ui.Notice
 import ytslim.ui.PlaylistViewModel
 import ytslim.ui.PlaylistViewModel.Reorder
 import ytslim.ui.PlaylistsViewModel
@@ -108,10 +141,12 @@ import ytslim.ui.SettingsViewModel.TopicList
 import ytslim.ui.SignInViewModel
 import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
+import ytslim.ui.channelOf
 import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
 import ytslim.ui.searchFilterChoices
 import ytslim.ui.subtitleOf
+import ytslim.ui.toggleSaved
 
 /**
  * Na abertura do app o foco vai para o primeiro vídeo das Inscrições. Depois disso, as abas não
@@ -119,15 +154,97 @@ import ytslim.ui.subtitleOf
  */
 private val LocalInitialFocus = compositionLocalOf<MutableState<Boolean>> { mutableStateOf(false) }
 
+/**
+ * As cores do Doorglow na TV. O foco é a luz da porta: botões e linhas focados ficam creme-âmbar com
+ * texto escuro, e os cards ganham um contorno e um brilho quentes.
+ */
+private val Colors = darkColorScheme(
+    primary = Look.Glow,
+    onPrimary = Look.OnGlow,
+    primaryContainer = Look.SurfaceHigh,
+    onPrimaryContainer = Look.Text,
+    inversePrimary = Look.Glow,
+    secondary = Look.GlowSoft,
+    onSecondary = Look.OnGlow,
+    secondaryContainer = Look.SurfaceHigh,
+    onSecondaryContainer = Look.Text,
+    tertiary = Look.GlowSoft,
+    onTertiary = Look.OnGlow,
+    background = Look.Ground,
+    onBackground = Look.Text,
+    surface = Look.Ground,
+    onSurface = Look.Text,
+    surfaceVariant = Look.Surface,
+    onSurfaceVariant = Look.Sub,
+    surfaceTint = Look.Ground,
+    inverseSurface = Look.GlowSoft,
+    inverseOnSurface = Look.OnGlow,
+    error = Look.Error,
+    onError = Look.OnGlow,
+    border = Look.GlowSoft,
+    borderVariant = Look.Outline,
+    scrim = Color.Black,
+)
+
+private val Type: Typography = Typography().let { t ->
+    fun TextStyle.figtree(weight: FontWeight? = null) = copy(fontFamily = Look.Figtree, fontWeight = weight ?: fontWeight)
+    Typography(
+        displayLarge = t.displayLarge.figtree(),
+        displayMedium = t.displayMedium.figtree(),
+        displaySmall = t.displaySmall.figtree(),
+        headlineLarge = t.headlineLarge.figtree(FontWeight.SemiBold),
+        headlineMedium = t.headlineMedium.figtree(FontWeight.SemiBold),
+        headlineSmall = t.headlineSmall.figtree(FontWeight.SemiBold),
+        titleLarge = t.titleLarge.figtree(FontWeight.SemiBold),
+        titleMedium = t.titleMedium.figtree(FontWeight.SemiBold),
+        titleSmall = t.titleSmall.figtree(FontWeight.SemiBold),
+        bodyLarge = t.bodyLarge.figtree(),
+        bodyMedium = t.bodyMedium.figtree(),
+        bodySmall = t.bodySmall.figtree(),
+        labelLarge = t.labelLarge.figtree(FontWeight.SemiBold),
+        labelMedium = t.labelMedium.figtree(FontWeight.SemiBold),
+        labelSmall = t.labelSmall.figtree(FontWeight.SemiBold),
+    )
+}
+
+/** Sem vidro na TV: as caixas de TV costumam ter pouca GPU, e o desfoque não compensa. */
+private val Floating = Color(0xF528292D)
+
+private val CardShape = RoundedCornerShape(14.dp)
+
 /** Interface da Android TV: D-pad, foco visível e cards maiores (Compose for TV). */
 object TvUi : Screens {
-    private val screenPadding = PaddingValues(horizontal = 48.dp, vertical = 27.dp)
-    private val liveRed = Color(0xCCCC0000)
+    private val OkKeys = setOf(android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER)
+    private val GridGapX = 20.dp
+    private val GridGapY = 28.dp
+    private val screenPadding = PaddingValues(horizontal = 48.dp, vertical = 26.dp)
 
     @Composable
     override fun Theme(content: @Composable () -> Unit) {
-        MaterialTheme(colorScheme = darkColorScheme()) {
+        MaterialTheme(colorScheme = Colors, typography = Type) {
             Surface(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(0.dp)) { content() }
+        }
+    }
+
+    @Composable
+    override fun NoticePill(notice: Notice?) {
+        var shown by remember { mutableStateOf(notice) }
+        if (notice != null) shown = notice
+        Box(Modifier.fillMaxSize().padding(bottom = 28.dp), contentAlignment = Alignment.BottomCenter) {
+            AnimatedVisibility(
+                visible = notice != null,
+                enter = fadeIn() + slideInVertically { it / 2 },
+                exit = fadeOut() + slideOutVertically { it / 2 },
+            ) {
+                Text(
+                    shown?.text.orEmpty(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Look.Text,
+                    modifier = Modifier.background(Floating, RoundedCornerShape(28.dp))
+                        .border(1.dp, Look.Hairline, RoundedCornerShape(28.dp))
+                        .padding(horizontal = 28.dp, vertical = 14.dp),
+                )
+            }
         }
     }
 
@@ -189,24 +306,51 @@ object TvUi : Screens {
     )
 
     @Composable
-    override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
+    override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, onReload: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
         val initialFocus = rememberSaveable { mutableStateOf(true) }
         var tabsFocused by remember { mutableStateOf(false) }
+        // Segurar OK numa aba recarrega a lista dela, quando o OK é solto. O Tab segue recebendo as
+        // teclas (o clique dele só escolhe a aba, que já está escolhida).
+        var heldTab by remember { mutableStateOf<HomeTab?>(null) }
         val selectedTab = remember { FocusRequester() }
         // Voltar, de dentro do conteúdo, sobe para as abas; nas abas, sai do app.
         BackHandler(enabled = !tabsFocused) { runCatching { selectedTab.requestFocus() } }
 
         Column(Modifier.fillMaxSize().padding(screenPadding)) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            DoorGlyph(Modifier.size(width = 15.dp, height = 22.dp))
+            Spacer(Modifier.width(24.dp))
+            val selectedIndex = tabs.indexOfFirst { it.first == tab }
             TabRow(
-                selectedTabIndex = tabs.indexOfFirst { it.first == tab },
+                selectedTabIndex = selectedIndex,
                 modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus },
+                separator = { Spacer(Modifier.width(4.dp)) },
+                indicator = { positions, _ -> positions.getOrNull(selectedIndex)?.let { SlitIndicator(it) } },
             ) {
                 tabs.forEach { (item, label) ->
                     Tab(
                         selected = item == tab,
                         onFocus = { onTab(item) },
                         onClick = { onTab(item) },
-                        modifier = if (item == tab) Modifier.focusRequester(selectedTab) else Modifier,
+                        colors = TabDefaults.underlinedIndicatorTabColors(
+                            contentColor = Look.Sub,
+                            inactiveContentColor = Look.Sub,
+                            selectedContentColor = Look.Text,
+                            focusedContentColor = Look.GlowSoft,
+                            focusedSelectedContentColor = Look.GlowSoft,
+                        ),
+                        modifier = (if (item == tab) Modifier.focusRequester(selectedTab) else Modifier)
+                            .onPreviewKeyEvent { event ->
+                                if (event.nativeKeyEvent.keyCode in OkKeys) {
+                                    if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount > 0) {
+                                        heldTab = item
+                                    } else if (event.type == KeyEventType.KeyUp) {
+                                        if (heldTab == item) onReload(item)
+                                        heldTab = null
+                                    }
+                                }
+                                false
+                            },
                     ) {
                         Text(
                             stringResource(label),
@@ -216,6 +360,7 @@ object TvUi : Screens {
                     }
                 }
             }
+          }
             Spacer(Modifier.height(24.dp))
             CompositionLocalProvider(LocalInitialFocus provides initialFocus) {
                 Box(Modifier.fillMaxSize()) { content(tab) }
@@ -223,8 +368,18 @@ object TvUi : Screens {
         }
     }
 
+    /** A fresta de luz embaixo da aba escolhida, que anda junto quando a aba muda. */
     @Composable
-    override fun Feed(vm: FeedViewModel, onPlay: (Video) -> Unit) {
+    private fun SlitIndicator(position: androidx.compose.ui.unit.DpRect) {
+        val width = 14.dp
+        val left by animateDpAsState(position.left + (position.right - position.left - width) / 2, label = "slit")
+        LightSlit(
+            Modifier.fillMaxWidth().wrapContentSize(Alignment.BottomStart).offset(x = left).size(width, 3.dp),
+        )
+    }
+
+    @Composable
+    override fun Feed(vm: FeedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
         val initialFocus = LocalInitialFocus.current
         Loadable(state, onRetry = vm::reload) { content ->
@@ -233,6 +388,7 @@ object TvUi : Screens {
                 emptyText = stringResource(R.string.feed_empty),
                 onNearEnd = vm::loadMore,
                 onPlay = onPlay,
+                onOpenChannel = onOpenChannel,
                 takeFocus = initialFocus.value,
                 onFocusTaken = { initialFocus.value = false },
             )
@@ -240,18 +396,18 @@ object TvUi : Screens {
     }
 
     @Composable
-    override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit) {
+    override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
         Loadable(state, onRetry = vm::reload) { content ->
-            VideoGrid(content, stringResource(R.string.recommended_empty), vm::loadMore, onPlay, takeFocus = false, onFocusTaken = {})
+            VideoGrid(content, stringResource(R.string.recommended_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
         }
     }
 
     @Composable
-    override fun History(vm: HistoryViewModel, onPlay: (Video) -> Unit) {
+    override fun History(vm: HistoryViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
         Loadable(state, onRetry = vm::reload) { content ->
-            VideoGrid(content, stringResource(R.string.history_empty), vm::loadMore, onPlay, takeFocus = false, onFocusTaken = {})
+            VideoGrid(content, stringResource(R.string.history_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
         }
     }
 
@@ -322,10 +478,11 @@ object TvUi : Screens {
         onOpenChannel: (Channel) -> Unit,
         onOpenPlaylist: (Playlist) -> Unit,
     ) {
+        val saved by SavedVideos.ids.collectAsStateWithLifecycle()
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(GridGapX),
+            verticalArrangement = Arrangement.spacedBy(GridGapY),
             contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
         ) {
             if (data.items.isEmpty() && !data.hasMore) {
@@ -336,7 +493,7 @@ object TvUi : Screens {
             itemsIndexed(data.items, key = { _, item -> item.key }) { index, item ->
                 if (index >= data.items.size - 8) LaunchedEffect(Unit) { onNearEnd() }
                 when (item) {
-                    is SearchItem.VideoItem -> VideoCard(item.video) { onPlay(item.video) }
+                    is SearchItem.VideoItem -> VideoCard(item.video, saved = item.video.id in saved, onOpenChannel = onOpenChannel) { onPlay(item.video) }
                     is SearchItem.ChannelItem -> ChannelCard(item.channel) { onOpenChannel(item.channel) }
                     is SearchItem.PlaylistItem -> MediaCard(
                         title = item.playlist.title,
@@ -360,8 +517,8 @@ object TvUi : Screens {
     private fun PlaylistGrid(playlists: List<Playlist>, onOpen: (Playlist) -> Unit) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(GridGapX),
+            verticalArrangement = Arrangement.spacedBy(GridGapY),
             contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
         ) {
             itemsIndexed(playlists, key = { _, p -> p.browseId }) { _, playlist ->
@@ -619,7 +776,13 @@ object TvUi : Screens {
     }
 
     @Composable
-    override fun PlaylistPage(title: String, vm: PlaylistViewModel, onPlay: (Video) -> Unit, onBack: () -> Unit) {
+    override fun PlaylistPage(
+        title: String,
+        vm: PlaylistViewModel,
+        onPlay: (Video) -> Unit,
+        onOpenChannel: (Channel) -> Unit,
+        onBack: () -> Unit,
+    ) {
         val state by vm.state.collectAsStateWithLifecycle()
         val subscription by vm.subscription.collectAsStateWithLifecycle()
         val reorder by vm.reorder.collectAsStateWithLifecycle()
@@ -644,8 +807,16 @@ object TvUi : Screens {
                     Spacer(Modifier.width(24.dp))
                     val label = stringResource(if (shown.subscribed) R.string.playlist_subscribed else R.string.playlist_subscribe)
                     val toggle = { vm.toggleSubscription(shownTitle) }
-                    if (shown.subscribed) OutlinedButton(onClick = toggle, enabled = !shown.busy) { Text(label) }
-                    else Button(onClick = toggle, enabled = !shown.busy) { Text(label) }
+                    // Inscrito: ✓ e "Subscribed"; apertar de novo cancela a inscrição.
+                    if (shown.subscribed) {
+                        OutlinedButton(onClick = toggle, enabled = !shown.busy) {
+                            Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(label)
+                        }
+                    } else {
+                        Button(onClick = toggle, enabled = !shown.busy) { Text(label) }
+                    }
                 }
                 when (val r = reorder) {
                     Reorder.Unavailable -> Unit
@@ -671,7 +842,7 @@ object TvUi : Screens {
                 (reorder as? Reorder.Available)?.loadFailed == true -> stringResource(R.string.reorder_load_failed) to true
                 else -> (subscription as? PlaylistViewModel.Subscription.Shown)?.let { shown ->
                     shown.error?.let { stringResource(R.string.action_failed, it) to true }
-                        ?: (stringResource(R.string.playlist_subscribe_hint) to false)
+                        ?: (stringResource(if (shown.subscribed) R.string.playlist_subscribed_hint_tv else R.string.playlist_subscribe_hint) to false)
                 }
             }
             note?.let { (text, isError) ->
@@ -686,14 +857,18 @@ object TvUi : Screens {
             if (editing != null) {
                 ReorderList(editing, held = held, onHold = { held = it }, onMove = vm::move)
             } else {
+                val saveTarget by SavedVideos.target.collectAsStateWithLifecycle()
                 Loadable(state, onRetry = vm::reload) { content ->
                     VideoGrid(
                         content = content,
                         emptyText = stringResource(R.string.list_empty),
                         onNearEnd = vm::loadMore,
                         onPlay = onPlay,
+                        onOpenChannel = onOpenChannel,
                         takeFocus = true,
                         onFocusTaken = {},
+                        // Na própria playlist do botão Save, o marcador estaria em todos os vídeos.
+                        showSaved = vm.playlistId != saveTarget.playlistId,
                     )
                 }
             }
@@ -827,6 +1002,7 @@ object TvUi : Screens {
                             emptyText = stringResource(R.string.list_empty),
                             onNearEnd = vm::loadMore,
                             onPlay = onPlay,
+                            onOpenChannel = null,
                             takeFocus = true,
                             onFocusTaken = {},
                         )
@@ -842,14 +1018,17 @@ object TvUi : Screens {
         emptyText: String,
         onNearEnd: () -> Unit,
         onPlay: (Video) -> Unit,
+        onOpenChannel: ((Channel) -> Unit)?,
         takeFocus: Boolean,
         onFocusTaken: () -> Unit,
+        showSaved: Boolean = true,
     ) {
         val firstFocus = remember { FocusRequester() }
+        val saved by SavedVideos.ids.collectAsStateWithLifecycle()
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(GridGapX),
+            verticalArrangement = Arrangement.spacedBy(GridGapY),
             contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
         ) {
             if (content.videos.isEmpty() && !content.hasMore) {
@@ -859,7 +1038,12 @@ object TvUi : Screens {
             }
             itemsIndexed(content.videos, key = { _, v -> v.id + v.playlistIndex }) { index, video ->
                 if (index >= content.videos.size - 8) LaunchedEffect(Unit) { onNearEnd() }
-                VideoCard(video, modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier) { onPlay(video) }
+                VideoCard(
+                    video,
+                    saved = showSaved && video.id in saved,
+                    onOpenChannel = onOpenChannel,
+                    modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                ) { onPlay(video) }
             }
         }
         LaunchedEffect(content.videos.isNotEmpty()) {
@@ -870,17 +1054,223 @@ object TvUi : Screens {
         }
     }
 
+    /**
+     * Card de vídeo. OK abre o vídeo; segurar o OK abre um menu pequeno ao lado do card, com
+     * "Save to Watch later" (ou "Remove from…", se já estiver lá) e "Go to channel".
+     */
     @Composable
-    private fun VideoCard(video: Video, modifier: Modifier = Modifier, onClick: () -> Unit) {
-        MediaCard(
-            title = video.title,
-            subtitle = subtitleOf(video),
-            imageUrl = video.thumbnailUrl,
-            badge = if (video.isLive) stringResource(R.string.search_live) else video.durationMs.takeIf { it > 0 }?.let(::formatDuration),
-            badgeColor = if (video.isLive) liveRed else Color(0xCC000000),
+    private fun VideoCard(
+        video: Video,
+        saved: Boolean,
+        onOpenChannel: ((Channel) -> Unit)?,
+        modifier: Modifier = Modifier,
+        onClick: () -> Unit,
+    ) {
+        var menu by remember { mutableStateOf(false) }
+        // O menu abre quando o OK é solto: se abrisse ainda com o botão apertado, o "soltar" iria
+        // para o menu (e escolheria a primeira opção) e o card ficaria esperando um soltar que não vem.
+        var held by remember { mutableStateOf(false) }
+        val res = LocalContext.current.resources
+        val channel = channelOf(video)?.takeIf { onOpenChannel != null }
+        Column(modifier) {
+            Box(
+                Modifier.onPreviewKeyEvent { event ->
+                    if (held && event.type == KeyEventType.KeyUp && event.nativeKeyEvent.keyCode in OkKeys) {
+                        held = false
+                        menu = true
+                    }
+                    false
+                },
+            ) {
+                GlowCard(onClick = onClick, onLongClick = { held = true }) {
+                    Box(Modifier.fillMaxSize()) {
+                        AsyncImage(
+                            model = video.thumbnailUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().background(Look.Surface),
+                        )
+                        val badge = if (video.isLive) stringResource(R.string.search_live) else video.durationMs.takeIf { it > 0 }?.let(::formatDuration)
+                        if (badge != null) Badge(badge, if (video.isLive) Look.Live else Look.Badge, Modifier.align(Alignment.BottomEnd))
+                        if (video.percentWatched > 0) {
+                            Box(
+                                Modifier.align(Alignment.BottomStart).fillMaxWidth(video.percentWatched.coerceIn(0, 100) / 100f)
+                                    .height(3.dp).background(Look.Glow),
+                            )
+                        }
+                        if (saved) {
+                            Box(
+                                Modifier.align(Alignment.TopEnd).padding(7.dp).size(20.dp).background(Look.BadgeSoft, CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_bookmark),
+                                    contentDescription = stringResource(R.string.video_saved),
+                                    tint = Look.Glow,
+                                    modifier = Modifier.size(11.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+                if (menu) {
+                    VideoMenu(
+                        saved = saved,
+                        channelName = channel?.title,
+                        onDismiss = { menu = false },
+                        onSave = { toggleSaved(res, video) },
+                        onChannel = channel?.let { c -> { onOpenChannel?.invoke(c) } },
+                    )
+                }
+            }
+            CardText(video.title, subtitleOf(video))
+        }
+    }
+
+    /** O menu do OK longo: abre ao lado do card (à direita, ou à esquerda na última coluna). */
+    @Composable
+    private fun VideoMenu(saved: Boolean, channelName: String?, onDismiss: () -> Unit, onSave: () -> Unit, onChannel: (() -> Unit)?) {
+        val gap = with(LocalDensity.current) { 18.dp.roundToPx() }
+        val target by SavedVideos.target.collectAsStateWithLifecycle()
+        val playlist = target.title ?: stringResource(R.string.watch_later)
+        val first = remember { FocusRequester() }
+        Popup(
+            popupPositionProvider = remember(gap) { BesideAnchor(gap) },
+            onDismissRequest = onDismiss,
+            properties = PopupProperties(focusable = true),
+        ) {
+            Column(
+                Modifier.width(320.dp)
+                    .background(Floating, RoundedCornerShape(22.dp))
+                    .border(1.dp, Look.Hairline, RoundedCornerShape(22.dp))
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                MenuItem(
+                    text = stringResource(if (saved) R.string.video_menu_remove else R.string.video_menu_save, playlist),
+                    supporting = null,
+                    leading = {
+                        Icon(
+                            painterResource(if (saved) R.drawable.ic_bookmark else R.drawable.ic_bookmark_border),
+                            contentDescription = null,
+                            tint = Look.Glow,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    },
+                    modifier = Modifier.focusRequester(first),
+                ) {
+                    onDismiss()
+                    onSave()
+                }
+                if (onChannel != null) {
+                    MenuItem(
+                        text = stringResource(R.string.video_menu_channel),
+                        supporting = channelName,
+                        leading = {
+                            Box(
+                                Modifier.size(24.dp).background(Look.monogramTone(channelName.orEmpty()), CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(ytslim.ui.monogramOf(channelName), style = MaterialTheme.typography.labelMedium, color = Look.Text)
+                            }
+                        },
+                    ) {
+                        onDismiss()
+                        onChannel()
+                    }
+                }
+            }
+            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+        }
+    }
+
+    @Composable
+    private fun MenuItem(
+        text: String,
+        supporting: String?,
+        leading: @Composable () -> Unit,
+        modifier: Modifier = Modifier,
+        onClick: () -> Unit,
+    ) {
+        val shape = RoundedCornerShape(14.dp)
+        ListItem(
+            selected = false,
             onClick = onClick,
+            headlineContent = { Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            supportingContent = supporting?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Look.Sub) } },
+            leadingContent = { leading() },
+            shape = ListItemDefaults.shape(shape),
+            colors = ListItemDefaults.colors(
+                containerColor = Color.Transparent,
+                contentColor = Look.Text,
+                focusedContainerColor = Look.GlowSoft.copy(alpha = 0.14f),
+                focusedContentColor = Look.Text,
+                pressedContainerColor = Look.GlowSoft.copy(alpha = 0.22f),
+                pressedContentColor = Look.Text,
+            ),
+            border = ListItemDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Look.GlowSoft), shape = shape)),
+            scale = ListItemDefaults.scale(focusedScale = 1f),
             modifier = modifier,
         )
+    }
+
+    /** Põe o menu ao lado do card: à direita se couber, senão à esquerda. */
+    private class BesideAnchor(private val gap: Int) : PopupPositionProvider {
+        override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+            val right = anchorBounds.right + gap
+            val x = if (right + popupContentSize.width <= windowSize.width) right
+            else (anchorBounds.left - gap - popupContentSize.width).coerceAtLeast(0)
+            val y = (anchorBounds.top + gap).coerceAtMost(windowSize.height - popupContentSize.height).coerceAtLeast(0)
+            return IntOffset(x, y)
+        }
+    }
+
+    /** Card com o foco da TV: cresce 6%, ganha um contorno creme e um brilho âmbar. */
+    @Composable
+    private fun GlowCard(onClick: () -> Unit, onLongClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
+        Card(
+            onClick = onClick,
+            onLongClick = onLongClick,
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+            shape = CardDefaults.shape(CardShape),
+            colors = CardDefaults.colors(containerColor = Look.Surface),
+            scale = CardDefaults.scale(focusedScale = 1.06f),
+            border = CardDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Look.GlowSoft), shape = CardShape)),
+            glow = CardDefaults.glow(focusedGlow = Glow(elevationColor = Look.Glow.copy(alpha = 0.45f), elevation = 18.dp)),
+        ) { content() }
+    }
+
+    @Composable
+    private fun Badge(text: String, color: Color, modifier: Modifier) {
+        Text(
+            text,
+            color = Look.Text,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = modifier.padding(8.dp)
+                .background(color, RoundedCornerShape(6.dp))
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
+
+    @Composable
+    private fun CardText(title: String, subtitle: String?) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 12.dp, start = 2.dp, end = 2.dp),
+        )
+        if (subtitle != null) {
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = Look.Sub,
+                modifier = Modifier.padding(top = 2.dp, start = 2.dp, end = 2.dp),
+            )
+        }
     }
 
     @Composable
@@ -891,45 +1281,20 @@ object TvUi : Screens {
         badge: String?,
         onClick: () -> Unit,
         modifier: Modifier = Modifier,
-        badgeColor: Color = Color(0xCC000000),
     ) {
         Column(modifier) {
-            Card(onClick = onClick, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+            GlowCard(onClick = onClick) {
                 Box(Modifier.fillMaxSize()) {
                     AsyncImage(
                         model = imageUrl,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                        modifier = Modifier.fillMaxSize().background(Look.Surface),
                     )
-                    if (badge != null) {
-                        Text(
-                            badge,
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
-                                .background(badgeColor, RoundedCornerShape(4.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
+                    if (badge != null) Badge(badge, Look.Badge, Modifier.align(Alignment.BottomEnd))
                 }
             }
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 10.dp),
-            )
-            if (subtitle != null) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            CardText(title, subtitle)
         }
     }
 
@@ -1011,9 +1376,9 @@ object TvUi : Screens {
     private fun SectionTitle(text: String) {
         Text(
             text,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 4.dp),
+            style = MaterialTheme.typography.titleSmall,
+            color = Look.Sub,
+            modifier = Modifier.padding(start = 16.dp, top = 24.dp, bottom = 4.dp),
         )
     }
 
