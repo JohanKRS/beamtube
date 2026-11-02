@@ -24,6 +24,7 @@ import ytslim.data.FeedRepository
 import ytslim.data.FeedRules
 import ytslim.data.LibraryRepository
 import ytslim.data.OwnPlaylist
+import ytslim.data.PlayQueue
 import ytslim.data.Playlist
 import ytslim.data.PlaylistEditor
 import ytslim.data.PlaylistSubscriptions
@@ -222,6 +223,9 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
     private var loadJob: Job? = null
     private var moreJob: Job? = null
 
+    /** A última página carregada, para continuar a lista além do que está na tela. */
+    protected val loadedPage: VideoPage? get() = lastPage
+
     init {
         reload()
     }
@@ -296,6 +300,12 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
  */
 class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ LibraryRepository.playlistVideos(playlist) }) {
     val playlistId: String? get() = playlist.playlistId
+
+    /** Abrir [video] daqui começa a sequência: os vídeos seguintes da playlist tocam depois dele. */
+    fun queueFrom(video: Video) {
+        val videos = (state.value as? UiState.Ready)?.data?.videos
+        if (videos == null) PlayQueue.clear() else PlayQueue.start(videos, video.id, loadedPage)
+    }
 
     sealed interface Subscription {
         data object Hidden : Subscription

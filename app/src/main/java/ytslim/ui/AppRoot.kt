@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AuthRepository
 import ytslim.data.Channel
+import ytslim.data.PlayQueue
 import ytslim.data.Playlist
 import ytslim.data.SavedVideos
 import ytslim.data.Video
@@ -47,7 +48,12 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
     val nav = rememberNavController()
     var signed by remember { mutableStateOf(AuthRepository.isSigned()) }
     val start: Any = remember { if (signed) HomeRoute else SignInRoute }
-    val play: (Video) -> Unit = { video -> context.startActivity(PlayerActivity.intent(context, video.id, video.title)) }
+    val openPlayer: (Video) -> Unit = { video -> context.startActivity(PlayerActivity.intent(context, video.id, video.title)) }
+    // Só a página de uma playlist toca em sequência; o resto abre um vídeo sozinho.
+    val play: (Video) -> Unit = { video ->
+        PlayQueue.clear()
+        openPlayer(video)
+    }
     val openPlaylist: (Playlist) -> Unit = { nav.navigate(PlaylistRoute.from(it)) }
     val openChannel: (Channel) -> Unit = { nav.navigate(ChannelRoute(it.id, it.title)) }
     val signedOut: () -> Unit = {
@@ -116,7 +122,11 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                 composable<PlaylistRoute> { entry ->
                     val route = entry.toRoute<PlaylistRoute>()
                     val vm = viewModel { PlaylistViewModel(route.toPlaylist()) }
-                    ui.PlaylistPage(title = route.title, vm = vm, onPlay = play, onOpenChannel = openChannel, onBack = { nav.popBackStack() })
+                    val playInOrder: (Video) -> Unit = { video ->
+                        vm.queueFrom(video)
+                        openPlayer(video)
+                    }
+                    ui.PlaylistPage(title = route.title, vm = vm, onPlay = playInOrder, onOpenChannel = openChannel, onBack = { nav.popBackStack() })
                 }
                 composable<ChannelRoute> { entry ->
                     val route = entry.toRoute<ChannelRoute>()

@@ -31,6 +31,37 @@
         <item name="android:clickable">true</item>
     </style>
 
+    <!-- Painel de dormir: uma linha por escolha, com o nome à esquerda e as opções. -->
+    <style name="PlayerPanelRow">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:layout_marginBottom">4dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+    </style>
+
+    <style name="PlayerPanelLabel">
+        <item name="android:layout_width">112dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/player_text_secondary</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <!-- Uma opção do painel (criada no código: os layout_* ficam lá). -->
+    <style name="PlayerChip">
+        <item name="android:minWidth">48dp</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:background">@drawable/player_button_bg</item>
+        <item name="android:textColor">@color/player_icon</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+        <item name="android:focusable">true</item>
+        <item name="android:clickable">true</item>
+    </style>
+
     <style name="PlayerTime">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>

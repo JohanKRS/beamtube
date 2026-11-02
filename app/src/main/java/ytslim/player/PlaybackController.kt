@@ -29,6 +29,7 @@ import androidx.media3.extractor.text.DefaultSubtitleParserFactory
 import androidx.media3.extractor.text.SubtitleExtractor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,6 +43,7 @@ import ytslim.data.HeatmapRepository
 import ytslim.data.PlaybackInfo
 import ytslim.data.PlaybackRepository
 import ytslim.data.PlaybackResult
+import ytslim.data.PlayQueue
 import ytslim.data.PlaylistEditor
 import ytslim.data.Rating
 import ytslim.data.SavedVideos
@@ -56,7 +58,8 @@ import java.util.Locale
 /**
  * Dono do ExoPlayer. Busca os streams pelo motor e aplica as regras do player:
  * qualidade sempre na máxima, áudio sempre o original, legenda com um toque e
- * "pular partes menos interessantes".
+ * "pular partes menos interessantes". Quando o vídeo acaba, toca o próximo da
+ * sequência da playlist ([PlayQueue]), se houver.
  */
 @OptIn(UnstableApi::class)
 class PlaybackController(context: Context, private val scope: CoroutineScope) {
@@ -84,6 +87,10 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
     private val _controls = MutableStateFlow(Controls())
     val controls: StateFlow<Controls> = _controls.asStateFlow()
 
+    private val _ended = MutableStateFlow(false)
+    /** O vídeo acabou e a sequência não tem próximo: a tela pode apagar (e a TV desligar, se escolhido). */
+    val ended: StateFlow<Boolean> = _ended.asStateFlow()
+
     /** Mensagens curtas para o usuário (ex.: uma ação que falhou). */
     private val _notices = MutableStateFlow<String?>(null)
     val notices: StateFlow<String?> = _notices.asStateFlow()
@@ -100,25 +107,68 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
     }
 
     private var current: PlaybackInfo? = null
-    private var videoId: String? = null
     private var saveHistory = true
     private var errorRetries = 0
     private var loadJob: Job? = null
     private var extrasJob: Job? = null
+    private var nextJob: Job? = null
     private var heatmap: List<HeatSegment> = emptyList()
+
+    /** O vídeo aberto agora. */
+    var videoId: String? = null
+        private set
+
+    /** O título que veio com o vídeo (do card ou da sequência): o stream do cliente de TV não traz. */
+    var titleHint: String? = null
+        private set
+
+    /** O vídeo atual foi aberto pela sequência (e não pelo usuário)? */
+    private var fromQueue = false
 
     /**
      * @param saveHistory false para links externos: toca com a conta (Premium), mas não manda
      * o progresso para o histórico do YouTube.
+     * @param title o título conhecido antes de carregar (o do card).
      */
-    fun open(videoId: String, startPositionMs: Long = 0, saveHistory: Boolean = true) {
+    fun open(videoId: String, startPositionMs: Long = 0, saveHistory: Boolean = true, title: String? = null) {
+        nextJob?.cancel()
+        start(videoId, startPositionMs, saveHistory, title, fromQueue = false)
+    }
+
+    private fun start(videoId: String, startPositionMs: Long, saveHistory: Boolean, title: String?, fromQueue: Boolean) {
         this.videoId = videoId
         this.saveHistory = saveHistory
+        this.titleHint = title?.takeIf { it.isNotBlank() }
+        this.fromQueue = fromQueue
+        _ended.value = false
         errorRetries = 0
         heatmap = emptyList()
         _controls.value = Controls()
         load(videoId, startPositionMs)
         loadExtras(videoId)
+    }
+
+    /**
+     * Passa para o próximo vídeo da sequência; sem próximo, marca [ended].
+     * @param counts false quando o atual não tocou: o próximo toma o lugar dele no limite.
+     */
+    private fun playNext(counts: Boolean, delayMs: Long = 0) {
+        nextJob?.cancel()
+        nextJob = scope.launch {
+            if (delayMs > 0) delay(delayMs)
+            val next = PlayQueue.next(counts)
+            if (next == null) {
+                _ended.value = true
+                return@launch
+            }
+            start(next.id, 0, saveHistory, next.title, fromQueue = true)
+        }
+    }
+
+    /** Mostra o erro. Um vídeo da sequência que não toca (apagado, privado) é pulado. */
+    private fun fail(message: String) {
+        _state.value = State.Failed(message)
+        if (fromQueue) playNext(counts = false, delayMs = FAILED_PAUSE_MS)
     }
 
     private fun load(videoId: String, startPositionMs: Long) {
@@ -128,8 +178,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
             val result = runCatching { PlaybackRepository.load(videoId) }
                 .getOrElse { PlaybackResult.Unplayable(it.message) }
             when (result) {
-                is PlaybackResult.Unplayable ->
-                    _state.value = State.Failed(result.reason ?: res.getString(R.string.player_unplayable))
+                is PlaybackResult.Unplayable -> fail(result.reason ?: res.getString(R.string.player_unplayable))
                 is PlaybackResult.Ready -> play(result, startPositionMs)
             }
         }
@@ -293,10 +342,25 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
     fun release() {
         loadJob?.cancel()
         extrasJob?.cancel()
+        nextJob?.cancel()
         player.release()
     }
 
     private inner class PlayerListener : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            when (playbackState) {
+                Player.STATE_ENDED -> {
+                    saveProgress()
+                    playNext(counts = true)
+                }
+                // Tocar de novo depois do fim (ou voltar na barra) mantém a tela acesa outra vez.
+                Player.STATE_BUFFERING, Player.STATE_READY -> {
+                    nextJob?.cancel()
+                    _ended.value = false
+                }
+            }
+        }
+
         override fun onTracksChanged(tracks: Tracks) {
             enforceOriginalAudio(tracks)
             val info = current ?: return
@@ -311,7 +375,7 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
                 PlaybackRepository.switchClient()
                 load(id, player.currentPosition.coerceAtLeast(0))
             } else {
-                _state.value = State.Failed(res.getString(R.string.player_error, error.errorCodeName))
+                fail(res.getString(R.string.player_error, error.errorCodeName))
             }
         }
     }
@@ -344,6 +408,9 @@ class PlaybackController(context: Context, private val scope: CoroutineScope) {
 
     private companion object {
         const val MAX_ERROR_RETRIES = 3
+
+        /** Quanto o erro de um vídeo da sequência fica na tela antes de ir para o próximo. */
+        const val FAILED_PAUSE_MS = 3_000L
     }
 }
 

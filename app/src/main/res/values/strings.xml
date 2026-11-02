@@ -162,6 +162,20 @@
     <string name="player_no_highlight">Nothing more to skip to.</string>
     <string name="player_captions">Turn on captions</string>
     <string name="player_captions_off">Turn off captions</string>
+    <string name="player_sleep">Sleep mode</string>
+    <string name="player_brightness">Brightness</string>
+    <string name="player_brightness_level">%1$d%%</string>
+    <string name="player_then_play">Then play</string>
+    <string name="player_then_play_none">None</string>
+    <string name="player_then_play_all">All</string>
+    <string name="player_when_done">When done</string>
+    <string name="player_stay_on">Stay on</string>
+    <string name="player_turn_off">Turn off</string>
+    <string name="player_turn_off_setup">Turn on Doorglow in Accessibility so it can turn off the TV when the videos end.</string>
+    <string name="player_turn_off_not_allowed">Doorglow can\'t turn off the TV: turn it on in Accessibility settings.</string>
+    <string name="player_turning_off">Turning off in 10 seconds. Press any button to cancel.</string>
+    <string name="player_turn_off_canceled">Staying on.</string>
+    <string name="screen_off_service_description">Lets Doorglow turn off the TV (or the screen) when the videos you chose in sleep mode end. It doesn\'t read anything on the screen.</string>
     <string name="action_failed">Couldn\'t do that: %1$s</string>
 
     <string name="ext_ask_title">Open this video</string>

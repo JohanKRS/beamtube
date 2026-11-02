@@ -76,8 +76,17 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - **Ligar e desligar a legenda** com um toque. O botão liga uma legenda escolhida sozinha (`SubtitleRules`): feita por pessoa no idioma do aparelho, depois feita por pessoa no idioma original, depois qualquer uma feita por pessoa, e por último a automática no idioma original. A escolha (ligada/desligada) vale para os próximos vídeos. Se o download da legenda falhar, o vídeo toca sem ela.
   - Além disso: tocar/pausar e a barra de tempo. Na barra de cima ficam like, dislike e "Subscribe" (vale para o canal do vídeo); só aparecem com login.
 - **Qualidade sempre na máxima.** Uma mudança manual vale só para o vídeo atual; o próximo vídeo volta para a máxima.
+- **Modo dormir** (0.4.1, pedido do Johan, que usa playlists para dormir, principalmente na TV): o botão da lua, na barra de baixo, abre um painel acima da barra de tempo com três linhas:
+  - **Brightness: 100% / 50% / 25% / 10% / 0%** escurece o vídeo e a legenda, sem mexer no brilho da TV (uma camada preta por cima do vídeo e por baixo dos controles). Escurecido, os controles não acendem sozinhos na troca de vídeo nem no fim. Volta a 100% a cada player aberto, para não pegar a tela escura de dia.
+  - **Then play: None / 1 / 2 / 3 / 4 / 5 / All**: quantos vídeos da playlist ainda tocam depois do atual (ver "Tocar em sequência"). Só aparece quando o vídeo veio da página de uma playlist. O número desce a cada vídeo. Começa em All a cada vez. Por decisão do Johan, essa escolha fica **só no player**, não na lista.
+  - **When done: Stay on / Turn off**: o que fazer quando os vídeos acabam. A escolha **fica guardada** (pedido do Johan) e vale para todo vídeo ou sequência que terminar. Com "Turn off", o app avisa e espera 10 s (qualquer botão ou toque cancela) e põe o aparelho para dormir. Pelo HDMI-CEC, a TV desliga junto.
+  - O Android não deixa um app comum pôr o aparelho para dormir. Por isso o app tem um serviço de Acessibilidade (`ScreenOffService`) que só faz isso (não recebe eventos nem lê a tela) e que o usuário liga uma vez, em Configurações > Acessibilidade. Ao escolher "Turn off" sem o serviço ligado, o app abre essa tela. Precisa do Android 9 ou mais novo; antes disso, a linha não aparece.
+  - Com "Stay on", ou sem o serviço, o player só para de manter a tela acesa quando os vídeos acabam, e quem apaga é o timer do aparelho.
+  - Com o painel aberto, os controles não somem sozinhos; "voltar" ou a lua fecham o painel.
 
 ## Playlists
+
+- **Tocar em sequência** (0.4.1): um vídeo aberto pela página de uma playlist (Watch later ou qualquer outra) é seguido pelos próximos da lista, carregando mais páginas se precisar (`PlayQueue`). Vídeos abertos de outras listas (feed, busca, histórico, canal) ou por link tocam sozinhos. O limite de quantos seguem fica no painel de dormir do player. Um vídeo da sequência que não toca (apagado, privado) mostra o erro por 3 s e é pulado sem gastar o limite; agendados ficam de fora.
 
 - **Salvar com um toque**: o botão de marcador na barra de cima do player põe o vídeo direto no "Assistir mais tarde" (ou na playlist escolhida em Settings > Save button) e tira de lá no segundo toque. O ícone cheio mostra que o vídeo já está na playlist.
 - **Salvar pelas listas** (etapa 6): no celular e no tablet, segurar o dedo numa miniatura põe o vídeo na playlist do botão Save, ou tira se já estiver, com um aviso embaixo ("Saved to…"/"Removed from…"). Na TV, segurar o OK abre um menu com duas opções: "Save to…"/"Remove from…" e "Go to channel".
@@ -137,7 +146,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
-   - *Versão 0.4.1 (2026-11-02), ajustes pedidos pelo Johan depois da 0.4.0, aguardando o teste no aparelho* (ver "Como testar a 0.4.1"): filtros nas Recomendações, duração de 30/45/60 min ou mais, "Before <ano>", salvar com resposta na hora, título no player, bloquear discreto e desempenho.
+   - *Versão 0.4.1 (2026-11-02), ajustes pedidos pelo Johan depois da 0.4.0, aguardando o teste no aparelho* (ver "Como testar a 0.4.1"): filtros nas Recomendações, duração de 30/45/60 min ou mais, "Before <ano>", salvar com resposta na hora, título no player, bloquear discreto, desempenho, playlists em sequência e o modo dormir no player (escurecer, quantos vídeos seguem e desligar a TV no fim).
    - *Polimento visual implementado em 2026-11-02 (versão 0.4.0), aguardando o teste no aparelho* (ver "Como testar a etapa 6"). Junto, a pedido do Johan: salvar pelas listas (toque longo, e o menu do OK longo na TV), o marcador de salvo, o canal pelos cards, o estado de inscrito mais claro na playlist, puxar para atualizar (OK longo na aba, na TV) e o ícone vermelho. As Configurações só ganharam o visual novo.
    - Falta a rotina de atualização do motor.
 
@@ -156,6 +165,9 @@ Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) 
 5. Player: abrir vídeos de várias listas e por um link do WhatsApp: o título aparece sempre.
 6. Canal: o bloquear é o ícone ⊘ pequeno na barra de cima (na TV, ao lado do nome; o texto aparece com o foco). Tocar mostra um aviso.
 7. Desempenho: trocar de aba e voltar mantém a posição da lista; Recommended e History já estão carregadas na primeira visita; as miniaturas aparecem mais rápido ao rolar.
+8. Sequência: abrir um vídeo pelo Watch later e pular para perto do fim. O próximo da lista começa sozinho, com o título certo. Um vídeo aberto pelo feed não continua.
+9. Modo dormir (TV): a lua na barra de baixo abre o painel. "Brightness: 10%" deixa o vídeo bem escuro e os controles normais. "Then play: 1" toca só mais um vídeo e o número desce para None.
+10. Desligar: escolher "When done: Turn off". Na primeira vez, o app abre Configurações > Acessibilidade: ligar o Doorglow. (Se o botão estiver cinza, pode ser o "acesso restrito" do Android 13 ou mais novo para apps instalados por fora da loja: Informações do app > ⋮ > "Permitir configurações restritas".) Depois, com "Then play: None", ir para o fim do vídeo: aparece o aviso, e em 10 s a TV desliga. Repetir apertando um botão durante o aviso: a TV fica ligada. Fechar e abrir o player: "Turn off" continua escolhido.
 
 ## Como testar a etapa 6
 
@@ -259,4 +271,5 @@ Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) 
   - Os tópicos (excluídos e preferidos) eram normalizados de novo para cada vídeo, na thread da tela: com umas 150 recomendações, isso travava a rolagem a cada página. Agora as palavras-chave são normalizadas uma vez (`ContentFilters.excludedNeedles`), e as listas das Recomendações e da busca são montadas fora da thread da tela (`flowOn(Dispatchers.Default)`).
   - Miniaturas: o Coil já tinha cache na memória e no disco. O app agora adianta o download das miniaturas de cada página que chega para o cache de disco (`Thumbnails.prefetch`), decodificando pequeno.
   - Abas: um `SaveableStateHolder` guarda o estado de cada aba (a posição da lista), e os ViewModels de Recommended, Playlists e History são criados quando o feed das Inscrições chega.
+- **Sequência e modo dormir (0.4.1):** a sequência é um objeto do app (`PlayQueue`), montado pela página da playlist ao abrir o vídeo e limpo por qualquer outro jeito de abrir. O mesmo player troca de vídeo no fim (`PlaybackController`, no `STATE_ENDED`). Escurecer usa o `overlayFrameLayout` do `PlayerView`, que fica entre o vídeo (com a legenda) e os controles. Desligar usa `AccessibilityService.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)`, que chama o `PowerManager.goToSleep` do sistema; na TV isso é o mesmo que o botão de desligar do controle.
 - **Compilar:** `./gradlew :app:assembleAppRelease` gera `app/build/outputs/apk/app/release/app-app-release.apk`, assinado com a chave de debug (uso pessoal). Os submódulos precisam estar baixados: `git submodule update --init`.

@@ -26,6 +26,8 @@ data class Settings(
     val filters: ContentFilters = ContentFilters(),
     /** Para onde vai o botão "Save" do player. */
     val saveTarget: SaveTarget = SaveTarget(),
+    /** Painel de dormir do player: desligar a TV (ou apagar a tela) quando os vídeos acabarem. */
+    val turnOffWhenDone: Boolean = false,
 )
 
 /** A playlist do botão "Save": "Assistir mais tarde" por padrão. */
@@ -47,6 +49,7 @@ object SettingsRepository {
     private val BLOCKED_CHANNELS = stringPreferencesKey("blocked_channels")
     private val SAVE_TARGET_ID = stringPreferencesKey("save_target_id")
     private val SAVE_TARGET_TITLE = stringPreferencesKey("save_target_title")
+    private val TURN_OFF_WHEN_DONE = booleanPreferencesKey("turn_off_when_done")
 
     private val json = Json { ignoreUnknownKeys = true }
     private val topics = ListSerializer(Topic.serializer())
@@ -72,6 +75,7 @@ object SettingsRepository {
                     blocked = p[BLOCKED_CHANNELS]?.let { decode(it, channels) }.orEmpty(),
                 ),
                 saveTarget = p[SAVE_TARGET_ID]?.let { SaveTarget(it, p[SAVE_TARGET_TITLE]) } ?: SaveTarget(),
+                turnOffWhenDone = p[TURN_OFF_WHEN_DONE] ?: false,
             )
         }
 
@@ -85,6 +89,8 @@ object SettingsRepository {
     suspend fun setExternalLinks(value: ExternalLinks) = store.edit { it[EXTERNAL_LINKS] = value.name }
 
     suspend fun setCaptionsOn(value: Boolean) = store.edit { it[CAPTIONS_ON] = value }
+
+    suspend fun setTurnOffWhenDone(value: Boolean) = store.edit { it[TURN_OFF_WHEN_DONE] = value }
 
     suspend fun setExcludedTopics(value: List<Topic>) = store.edit { it[EXCLUDED_TOPICS] = json.encodeToString(topics, value) }
 
