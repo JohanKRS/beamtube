@@ -2,6 +2,7 @@ package ytslim.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -44,7 +46,7 @@ class ExploreViewModel : ViewModel(), Refreshable {
                 VideoListContent(raw.videos.filterNot { TopicRules.isBlocked(it, settings.filters) }, raw.hasMore, raw.loadingMore),
             )
         }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
 
     private val _refreshing = MutableStateFlow(false)
     override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()

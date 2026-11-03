@@ -1359,7 +1359,7 @@ object MobileUi : Screens {
     ) {
         val grid = rememberLazyGridState()
         NearEnd(grid, content.videos.size, onNearEnd)
-        PrefetchThumbnails(content.videos)
+        PrefetchThumbnails(content.videos, grid)
         val cards = rememberCardState()
         val motion = rememberListMotion(content.videos)
         LazyVerticalGrid(
@@ -1419,7 +1419,7 @@ object MobileUi : Screens {
         // Playlists e Histórico (pedido do Johan, 2026-11-03): as páginas vêm bem antes do fim, para
         // rolar sem esperar.
         NearEnd(grid, content.videos.size, onNearEnd, ahead = ROWS_AHEAD, ready = !content.cached)
-        PrefetchThumbnails(content.videos)
+        PrefetchThumbnails(content.videos, grid)
         val cards = rememberCardState(showSaved)
         val keys = remember(content.videos) { content.videos.map { it.rowKey } }
         val drag = if (onMove != null) rememberDragReorderState(grid, keys, onMove, onDrop) else null

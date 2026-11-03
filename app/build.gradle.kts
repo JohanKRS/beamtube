@@ -142,8 +142,11 @@ dependencies {
     implementation(libs.haze)
 
     implementation(libs.coil.compose)
-    implementation(libs.coil.network.ktor)
-    implementation(libs.ktor.client.android)
+    // Miniaturas pelo OkHttp 3 do motor, em HTTP/2 (ui/ImageHttp.kt).
+    implementation(libs.coil.network.core)
+
+    // Diz no log se o Android já compilou o app com o perfil (src/main/baseline-prof.txt).
+    implementation(libs.androidx.profileinstaller)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.rx2)
