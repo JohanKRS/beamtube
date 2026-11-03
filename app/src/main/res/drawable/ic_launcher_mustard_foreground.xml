@@ -5,23 +5,19 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- luz no chão -->
     <path
-        android:fillAlpha="0.14"
-        android:fillColor="@color/launcher_mustard_light"
-        android:pathData="M50,78L58,78L76,92L32,92Z" />
-    <!-- brilho externo -->
+        android:fillColor="#1FFFF6DF"
+        android:pathData="M51,74L57,74L71,84L37,84Z" />
     <path
-        android:fillAlpha="0.07"
-        android:fillColor="@color/launcher_mustard_glow"
-        android:pathData="M53,25h2a11,11 0,0 1,11 11v36a11,11 0,0 1,-11 11h-2a11,11 0,0 1,-11 -11v-36a11,11 0,0 1,11 -11z" />
-    <!-- brilho interno -->
+        android:fillColor="#12FFF6DF"
+        android:pathData="M53.64,26.35h0.72a10.8,10.8 0,0 1,10.8 10.8v26.19a10.8,10.8 0,0 1,-10.8 10.8h-0.72a10.8,10.8 0,0 1,-10.8 -10.8v-26.19a10.8,10.8 0,0 1,10.8 -10.8z" />
     <path
-        android:fillAlpha="0.13"
-        android:fillColor="@color/launcher_mustard_glow"
-        android:pathData="M53,28h2a7,7 0,0 1,7 7v38a7,7 0,0 1,-7 7h-2a7,7 0,0 1,-7 -7v-38a7,7 0,0 1,7 -7z" />
-    <!-- a fresta -->
+        android:fillColor="#1FFFF6DF"
+        android:pathData="M53.28,28.78h1.44a6.48,6.48 0,0 1,6.48 6.48v31.86a6.48,6.48 0,0 1,-6.48 6.48h-1.44a6.48,6.48 0,0 1,-6.48 -6.48v-31.86a6.48,6.48 0,0 1,6.48 -6.48z" />
     <path
-        android:fillColor="@color/launcher_mustard_light"
-        android:pathData="M52,30h4a2,2 0,0 1,2 2v44a2,2 0,0 1,-2 2h-4a2,2 0,0 1,-2 -2v-44a2,2 0,0 1,2 -2z" />
+        android:fillColor="#FFFFF6DF"
+        android:pathData="M52,30h4a1,1 0,0 1,1 1v42a1,1 0,0 1,-1 1h-4a1,1 0,0 1,-1 -1v-42a1,1 0,0 1,1 -1z" />
+    <path
+        android:fillColor="#E6FFFBF2"
+        android:pathData="M54,33h2.88658e-15a0.6,0.6 0,0 1,0.6 0.6v36.8a0.6,0.6 0,0 1,-0.6 0.6h-2.88658e-15a0.6,0.6 0,0 1,-0.6 -0.6v-36.8a0.6,0.6 0,0 1,0.6 -0.6z" />
 </vector>

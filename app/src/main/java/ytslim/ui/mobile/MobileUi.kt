@@ -43,6 +43,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridItemScope
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -106,6 +107,7 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -177,6 +179,7 @@ import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
 import ytslim.ui.LightSlit
+import ytslim.ui.ListMotion
 import ytslim.ui.Look
 import ytslim.ui.Notice
 import ytslim.ui.Notices
@@ -829,7 +832,7 @@ object MobileUi : Screens {
         val cards = rememberCardState()
         LazyVerticalGrid(
             state = grid,
-            columns = VideoColumns,
+            columns = videoColumns(),
             contentPadding = barsPlus(top = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
@@ -1405,9 +1408,10 @@ object MobileUi : Screens {
         NearEnd(grid, content.videos.size, onNearEnd)
         PrefetchThumbnails(content.videos)
         val cards = rememberCardState()
+        val motion = rememberListMotion(content.videos)
         LazyVerticalGrid(
             state = grid,
-            columns = VideoColumns,
+            columns = videoColumns(),
             contentPadding = barsPlus(top = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(26.dp),
@@ -1419,7 +1423,7 @@ object MobileUi : Screens {
                 }
             }
             items(content.videos, key = { it.id + it.playlistIndex }) { video ->
-                VideoCard(video, cards, onPlay, onOpenChannel, Modifier.animateItem())
+                VideoCard(video, cards, onPlay, onOpenChannel, listMotion(motion))
             }
             listEnd(content, onNearEnd)
         }
@@ -1459,6 +1463,7 @@ object MobileUi : Screens {
         NearEnd(grid, content.videos.size, onNearEnd)
         PrefetchThumbnails(content.videos)
         val cards = rememberCardState(showSaved)
+        val motion = rememberListMotion(content.videos)
         LazyVerticalGrid(
             state = grid,
             columns = GridCells.Adaptive(minSize = 520.dp),
@@ -1478,7 +1483,7 @@ object MobileUi : Screens {
                     label = removeLabel,
                     corner = 10.dp,
                     onRemove = { onRemove?.invoke(video) },
-                    modifier = Modifier.animateItem(),
+                    modifier = listMotion(motion),
                 ) {
                     VideoRow(video, cards, onPlay, onOpenChannel)
                 }
@@ -1757,16 +1762,41 @@ object MobileUi : Screens {
     }
 }
 
+/** Se os cartões podem deslizar nesta troca da lista ([ListMotion]): só quando vídeos saem ou chegam no fim. */
+@Composable
+private fun rememberListMotion(videos: List<Video>): Boolean {
+    val keys = remember(videos) { videos.map { it.id + it.playlistIndex } }
+    val shown = remember { arrayOf(keys) }
+    val motion = ListMotion.animates(shown[0], keys)
+    SideEffect { shown[0] = keys }
+    return motion
+}
+
 /**
- * As colunas das grades de vídeo: uma no celular em pé; três no tablet em pé (pedido do Johan) e
- * no celular deitado; quatro ou mais no tablet deitado.
+ * O cartão desliza para o lugar novo, ou só aparece nele. Sem animação, o modificador continua
+ * no cartão (com as animações nulas): assim a grade segue sabendo onde cada um estava, e a próxima
+ * saída de um vídeo anima direito.
  */
-private object VideoColumns : GridCells {
+private fun LazyGridItemScope.listMotion(motion: Boolean): Modifier =
+    if (motion) Modifier.animateItem() else Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null)
+
+@Composable
+private fun videoColumns(): GridCells {
+    val config = LocalConfiguration.current
+    return VideoColumns(portrait = config.screenHeightDp > config.screenWidthDp)
+}
+
+/**
+ * As colunas das grades de vídeo: uma no celular em pé; três no tablet em pé (pedido do Johan,
+ * também no de 14,6", que em pé passa de 960 dp) e no celular deitado; quatro ou mais no tablet
+ * deitado.
+ */
+private data class VideoColumns(val portrait: Boolean) : GridCells {
     override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
         val width = availableSize.toDp()
         val count = when {
             width < 560.dp -> 1
-            width < 960.dp -> 3
+            portrait || width < 960.dp -> 3
             else -> maxOf(4, (availableSize + spacing) / (240.dp.roundToPx() + spacing))
         }
         val cells = availableSize - spacing * (count - 1)

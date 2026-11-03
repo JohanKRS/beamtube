@@ -20,6 +20,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - **Nome e ícone:** **Doorglow**. Ícone: a porta entreaberta (fresta de luz) em fundo azul-noite. `applicationId` = `app.doorglow`. Nome e ID ficam no `gradle.properties`.
   - **Cor do ícone à escolha** (decidido em 2026-11-01): o desenho é sempre a porta original, e nas Configurações ("App icon") dá para escolher uma de sete cores: azul-noite (padrão), preto, verde-azulado, ameixa, mostarda, gradiente vivo e vermelho. São as versões 01 a 07 de `/mnt/project-files/nome-e-icone/versoes/`. O vermelho (luz branca em #E53935, no tom do YouTube) entrou em 2026-11-02, a pedido do Johan.
   - Ícones, banners da TV e cores saem de `tools/make_icons.py` (não editar os XMLs gerados à mão). A tabela de cores fica no script.
+  - **Desenho refinado na 0.5.4** (pedido do Johan, 2026-11-03: "mesmo conceito, executado melhor"): a fresta quase reta, como a de uma porta, com um miolo mais claro; o brilho em volta em degradê (no lugar das camadas chapadas); e a luz no chão sumindo aos poucos, dentro da área que os launchers mostram (antes ela passava da borda e aparecia cortada). O **banner da TV virou vetor**, com o nome desenhado pelas curvas da Figtree (a fonte do app): fica nítido em qualquer tamanho (o PNG de 640x360 aparecia borrado). O desenho da porta no app (`DoorGlyph`, nas abas e no login) segue o ícone.
 - **Interface em inglês.** (A conversa com o Claude continua em português.)
 - **Interações com a conta:** só **like/dislike** e **inscrever/cancelar inscrição**. O botão de inscrição fica na página do vídeo e vale para o canal do vídeo.
 - **Inscrição em playlists**, guardada nas playlists salvas da conta (o YouTube não tem isso; ver a seção própria).
@@ -30,7 +31,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - **Barras de vidro de ponta a ponta** no celular e no tablet: a barra de cima e a de baixo passam por trás da barra de status, da barra de gestos e das laterais, e o conteúdo rola por baixo delas. O desfoque só existe no Android 12 ou mais novo; nos mais antigos a barra fica quase opaca.
   - **O recorte da câmera é ignorado:** o conteúdo passa por baixo dele, e só as barras do sistema afastam os botões.
   - Barra de cima compacta (o nome da aba e a lupa). A barra de baixo tem **só ícones**, sem nomes.
-  - **Deitado** (largura maior que a altura e pelo menos 600 dp), a barra de baixo vira uma coluna de ícones à esquerda, que inclui a Busca. O tablet em pé usa o mesmo layout do celular, com 3 colunas (até a 0.5.0 ele mostrava 2; a grade agora conta pela largura: 1 coluna abaixo de 560 dp, 3 abaixo de 960 dp e, acima disso, quantas couberem com 240 dp, no mínimo 4).
+  - **Deitado** (largura maior que a altura e pelo menos 600 dp), a barra de baixo vira uma coluna de ícones à esquerda, que inclui a Busca. O tablet em pé usa o mesmo layout do celular, com 3 colunas (até a 0.5.0 ele mostrava 2). A grade conta pela largura e pela posição: 1 coluna abaixo de 560 dp; **em pé, sempre 3** (0.5.4: o tablet de 14,6" do Johan passa de 960 dp em pé e mostrava 4); deitado, 3 abaixo de 960 dp e, acima disso, quantas couberem com 240 dp, no mínimo 4.
   - Na TV não tem desfoque: o menu e os avisos usam um cinza quase opaco. O foco aumenta o card em 6%, com borda creme e brilho âmbar.
 
 ## Telas
@@ -51,6 +52,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - As páginas de playlist e de canal não têm a barra de abas: só a barra de cima, com "voltar".
 - **Trocar de aba** não perde a posição da lista, e Recommended, Playlists e History carregam logo depois das Inscrições, ao abrir o app, para já estarem prontas (0.4.1).
 - **Atualizar as listas** (pedido do Johan, 2026-11-02): no celular e no tablet, **puxar para baixo** no topo da lista recarrega Subscriptions, Recommended, Playlists, History, a página da playlist e a do canal. A lista continua na tela até a nova chegar. Na TV, **segurar OK na aba** Subscriptions, Recommended, Playlists ou History recarrega a lista (quando o OK é solto). Nada recarrega sozinho: as abas carregam quando o app abre e depois só quando o usuário pede.
+  - **Sem cartões voando** (0.5.4, pedido do Johan): numa lista nova (puxar para atualizar, ou as Inscrições guardadas trocadas pelas novas), os cartões só aparecem no lugar. Eles deslizam só quando vídeos saem da lista (tirar do Histórico ou da playlist, bloquear um canal) ou chegam no fim (`ListMotion`).
 - **Inscrições guardadas no aparelho** (0.5.3, pedido do Johan, 2026-11-02): o app abre **na hora** com a primeira página das Inscrições (e os vídeos das playlists inscritas) da última vez, e atualiza por trás, com o indicador de atualizar no topo. O feed guardado vale por até 3 dias; sem rede, ele fica na tela. Sair da conta apaga (`FeedCache`, arquivo `feed.json`).
 - **Cards de vídeo:** a miniatura com a duração e o progresso; embaixo, o título, o avatar e o nome do canal (abrem o canal) e o resto da linha (visualizações e data). Canal sem foto (em que o usuário não é inscrito) mostra a inicial num círculo colorido.
 - **Sem o @ do canal** (0.4.2, pedido do Johan): o YouTube manda o @ junto com o nome nos cartões da TV ("Veritasium • @veritasium") e na linha dos canais da busca; o app tira o @ das listas, do player e da busca (`Handles`).
@@ -191,7 +193,8 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
-   - *Versão 0.5.3 (2026-11-02), correções depois de o Johan testar a 0.5.2, aguardando o teste no aparelho* (ver "Como testar a 0.5.3"): a Explore vazia (a lista de canais inscritos vinha sem ids; achado pelos logs do celular, via ADB pelo PC) e as Inscrições guardadas no aparelho para o app abrir na hora.
+   - *Versão 0.5.4 (2026-11-03), ajustes depois de o Johan testar a 0.5.3, aguardando o teste no aparelho* (ver "Como testar a 0.5.4"): 3 colunas no tablet de 14,6" em pé, a atualização das listas sem os cartões voando e o ícone e o banner da TV refinados.
+   - *Versão 0.5.3 (2026-11-02), correções depois de o Johan testar a 0.5.2; o Johan aprovou a Explore em 2026-11-03* (ver "Como testar a 0.5.3"): a Explore vazia (a lista de canais inscritos vinha sem ids; achado pelos logs do celular, via ADB pelo PC) e as Inscrições guardadas no aparelho para o app abrir na hora.
    - *Versão 0.5.2 (2026-11-02), a Explore pelos canais que os canais inscritos destacam, pedida pelo Johan depois de testar a 0.5.1.* No aparelho, a aba veio vazia (corrigido na 0.5.3). A leitura dos destaques e dos vídeos foi conferida contra o YouTube.
    - *Versão 0.5.1 (2026-11-02), ajustes pedidos pelo Johan depois de testar a 0.5.0; o Johan testou e aprovou tudo menos a Explore* (ver "Como testar a 0.5.1"): legendas centralizadas com contorno, toques no vídeo, Skip ahead pelos vales do gráfico com marcas na barra, girar a tela, 1080p no celular e no tablet, 3 colunas no tablet em pé, Histórico em linhas e a Explore automática.
    - *Versão 0.5.0 (2026-11-02), a aba Explore pedida pelo Johan* (ver "Como testar a 0.5.0"). A busca das categorias foi conferida contra o YouTube, sem login.
@@ -205,6 +208,12 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 0.5.4
+
+1. Tablet de 14,6" em pé: 3 vídeos por linha em Subscriptions, Recommended, Explore e na busca. Deitado, continua com mais colunas.
+2. Recommended (e as outras abas): puxar para atualizar. A lista nova aparece no lugar, sem os cartões voando. Tirar um vídeo do Histórico ainda faz os de baixo subirem deslizando.
+3. TV: o banner na lista de apps, com o nome nítido e a luz no chão sumindo aos poucos, sem corte. No celular, o ícone novo (a mesma porta) na tela inicial e em Settings > App icon, nas sete cores.
 
 ## Como testar a 0.5.3
 
