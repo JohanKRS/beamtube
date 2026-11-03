@@ -65,8 +65,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.DragHandle
-import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Explore
@@ -127,12 +125,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
@@ -1339,8 +1339,8 @@ object MobileUi : Screens {
                     } else {
                         null
                     },
-                    // Nas suas playlists, cada vídeo tem uma alça (arrastar muda a ordem na hora) e uma seta para o topo.
-                    // A lista guardada no aparelho pode estar velha: a alça e a seta aparecem com a da conta.
+                    // Nas suas playlists, segurar o vídeo e arrastar muda a ordem na hora, e deslizar para a direita leva ao topo.
+                    // A lista guardada no aparelho pode estar velha: os dois valem só com a da conta.
                     onMove = if (editable && !content.cached) vm::move else null,
                     onDrop = { vm.drop { Notices.show(res.getString(R.string.reorder_failed, it)) } },
                     onMoveToTop = { video ->
@@ -1579,6 +1579,8 @@ object MobileUi : Screens {
         val cards = rememberCardState(showSaved)
         val keys = remember(content.videos) { content.videos.map { it.rowKey } }
         val drag = if (onMove != null) rememberDragReorderState(grid, keys, onMove, onDrop) else null
+        val moveCards = remember(cards) { CardState(cards.saved, cards.photos, cards.showSaved, onLongPress = null) }
+        val haptics = LocalHapticFeedback.current
         // Enquanto um vídeo é arrastado, os outros deslizam para abrir espaço.
         val motion = rememberListMotion(content.videos) || drag?.draggingKey != null
         LazyVerticalGrid(
@@ -1602,12 +1604,21 @@ object MobileUi : Screens {
                     label = removeLabel,
                     corner = 10.dp,
                     onRemove = { onRemove?.invoke(video) },
+                    // Nas suas playlists, deslizar para a direita leva ao topo (o primeiro já está lá).
+                    onSwipeRight = if (drag != null && key != keys.firstOrNull()) {
+                        { onMoveToTop(video) }
+                    } else {
+                        null
+                    },
+                    rightLabel = stringResource(R.string.move_to_top),
                     modifier = if (lifted) {
                         Modifier
                             .zIndex(1f)
                             .graphicsLayer {
                                 translationX = drag.offset.x
                                 translationY = drag.offset.y
+                                scaleX = LIFT_SCALE
+                                scaleY = LIFT_SCALE
                             }
                             .shadow(12.dp, RoundedCornerShape(10.dp))
                     } else {
@@ -1616,42 +1627,12 @@ object MobileUi : Screens {
                 ) {
                     VideoRow(
                         video,
-                        cards,
+                        // Segurar pega o vídeo para arrastar, em vez de salvar no Watch later.
+                        if (drag != null) moveCards else cards,
                         onPlay,
                         onOpenChannel,
-                        handle = drag?.let { state ->
-                            {
-                                // Discretos, um em cima do outro: a seta leva ao topo; a alça arrasta.
-                                Column(Modifier.width(40.dp)) {
-                                    if (key != keys.firstOrNull()) {
-                                        Box(
-                                            Modifier.size(width = 40.dp, height = 42.dp).clip(RoundedCornerShape(8.dp))
-                                                .clickable { onMoveToTop(video) },
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.VerticalAlignTop,
-                                                contentDescription = stringResource(R.string.move_to_top),
-                                                tint = Look.Sub,
-                                                modifier = Modifier.size(20.dp),
-                                            )
-                                        }
-                                    } else {
-                                        Spacer(Modifier.height(42.dp))
-                                    }
-                                    Box(
-                                        Modifier.size(width = 40.dp, height = 42.dp).dragReorderHandle(state, key),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.DragHandle,
-                                            contentDescription = stringResource(R.string.reorder_drag),
-                                            tint = if (lifted) Look.Glow else Look.Sub,
-                                        )
-                                    }
-                                }
-                            }
-                        },
+                        reorder = drag?.let { Modifier.dragReorderOnLongPress(it, key) { haptics.performHapticFeedback(HapticFeedbackType.LongPress) } }
+                            ?: Modifier,
                     )
                 }
             }
@@ -1693,7 +1674,7 @@ object MobileUi : Screens {
         cards: CardState,
         onPlay: (Video) -> Unit,
         onOpenChannel: (Channel) -> Unit,
-        handle: (@Composable RowScope.() -> Unit)? = null,
+        reorder: Modifier = Modifier,
     ) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Look.Ground).combinedClickable(
@@ -1701,7 +1682,7 @@ object MobileUi : Screens {
                 onLongClickLabel = cards.onLongPress?.let { stringResource(R.string.video_toggle_save) },
                 onLongClick = cards.onLongPress?.let { press -> { press(video) } },
                 onClick = { onPlay(video) },
-            ),
+            ).then(reorder),
             verticalAlignment = Alignment.Top,
         ) {
             VideoThumb(video, saved = cards.showSaved && video.id in cards.saved, corner = 10.dp, modifier = Modifier.width(152.dp), compact = true)
@@ -1709,7 +1690,6 @@ object MobileUi : Screens {
                 Text(video.title, style = RowTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 MetaRow(video, cards.photos[video.channelId], onOpenChannel, stacked = true)
             }
-            handle?.invoke(this)
         }
     }
 
@@ -2011,3 +1991,6 @@ private val Video.rowKey: String get() = id + playlistIndex
 
 /** Nas listas em linhas, quantos vídeos à frente a próxima página já é pedida. */
 private const val ROWS_AHEAD = 50
+
+/** O vídeo pego para mudar a ordem cresce um pouco, para ficar claro que saiu do lugar. */
+private const val LIFT_SCALE = 1.03f

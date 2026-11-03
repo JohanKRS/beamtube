@@ -21,6 +21,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasAnyChild
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performTouchInput
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
@@ -107,7 +112,7 @@ class ScreenShots {
         file?.takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path)?.asImage() } ?: Bitmap.createBitmap(16, 9, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF2C2D31.toInt()) }.asImage()
     }
 
-    private fun shot(name: String, content: @Composable () -> Unit) {
+    private fun shot(name: String, action: () -> Unit = {}, content: @Composable () -> Unit) {
         // Fotos dos canais "inscritos" (as dos cards): todas menos uma, para aparecer também a inicial.
         ChannelPhotos.putAll(videos.mapNotNull { it.channelId }.distinct().drop(1).associateWith { "avatar:$it" })
         compose.setContent {
@@ -115,6 +120,8 @@ class ScreenShots {
                 content()
             }
         }
+        compose.waitForIdle()
+        action()
         compose.waitForIdle()
         // O captureToImage espera um quadro do sistema que o Robolectric não manda: desenha a tela direto.
         val view = compose.activity.window.decorView
@@ -201,6 +208,40 @@ class ScreenShots {
                 MobileUi.VideoRows(
                     feed(videos.drop(8)), {}, {}, {}, showSaved = false, header = null, onRemove = {},
                     onMove = { _, _ -> }, onDrop = {}, onMoveToTop = {},
+                )
+            }
+        }
+    }
+
+    /** Deslizando o segundo vídeo para a direita (leva ao topo), com o dedo ainda na tela. */
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneWatchLaterToTop() = watchLaterShot("phone-watch-later-to-top") {
+        compose.onAllNodes(hasClickAction() and hasAnyChild(hasText(videos[9].title)), useUnmergedTree = true).onFirst().performTouchInput {
+            down(centerLeft + androidx.compose.ui.geometry.Offset(40f, 0f))
+            repeat(10) { moveBy(androidx.compose.ui.geometry.Offset(width * 0.03f, 0f)) }
+        }
+    }
+
+    /** Segurando o terceiro vídeo e arrastando para baixo, com o dedo ainda na tela. */
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneWatchLaterLifted() = watchLaterShot("phone-watch-later-lifted") {
+        compose.onAllNodes(hasClickAction() and hasAnyChild(hasText(videos[10].title)), useUnmergedTree = true).onFirst().performTouchInput {
+            down(centerLeft + androidx.compose.ui.geometry.Offset(60f, 0f))
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+            repeat(6) { moveBy(androidx.compose.ui.geometry.Offset(0f, height * 0.06f)) }
+        }
+    }
+
+    private fun watchLaterShot(name: String, action: () -> Unit) = shot(name, action) {
+        val list = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(videos.drop(8)) }
+        MobileUi.Theme {
+            MobileUi.DetailFrame("Watch later", navigation = { MobileUi.BackButton {} }) {
+                MobileUi.VideoRows(
+                    feed(list.value), {}, {}, {}, showSaved = false, header = null, onRemove = {},
+                    onMove = { from, to -> list.value = list.value.toMutableList().apply { add(to, removeAt(from)) } },
+                    onDrop = {}, onMoveToTop = {},
                 )
             }
         }

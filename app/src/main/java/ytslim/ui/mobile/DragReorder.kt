@@ -1,6 +1,6 @@
 package ytslim.ui.mobile
 
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.grid.LazyGridItemInfo
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -21,9 +21,10 @@ import kotlinx.coroutines.channels.Channel
 
 /**
  * Arrastar para mudar a ordem numa [androidx.compose.foundation.lazy.grid.LazyVerticalGrid] (as
- * playlists do usuário no celular e no tablet). Arrastar pela alça pega o vídeo; ele segue o
- * dedo, os outros abrem espaço, e perto da borda a lista rola sozinha. Ao soltar, [onDrop] manda
- * a posição nova para a conta (pedido do Johan, 2026-11-03: sem um modo de reordenar antes).
+ * playlists do usuário no celular e no tablet). Segurar o vídeo pega ele (sem alça nem ícone na
+ * linha: pedido do Johan, 2026-11-03); ele segue o dedo, os outros abrem espaço, e perto da borda
+ * a lista rola sozinha. Ao soltar, [onDrop] manda a posição nova para a conta (sem um modo de
+ * reordenar antes).
  *
  * Os itens que se movem têm como chave a mesma de [keys], na ordem da lista; os outros itens (o
  * fim da lista) ficam parados.
@@ -125,11 +126,18 @@ fun rememberDragReorderState(
     return state
 }
 
-/** Na alça de um vídeo: arrastar pega ele na hora. */
-fun Modifier.dragReorderHandle(state: DragReorderState, key: Any): Modifier =
+/**
+ * Na linha de um vídeo: segurar pega ele ([onLift] avisa, para a vibração), e arrastar move. Fica
+ * depois do clique da linha na cadeia de modificadores, para soltar sem arrastar não abrir o vídeo.
+ * Rolar a lista ou deslizar para o lado antes do tempo do toque longo cancela a pegada.
+ */
+fun Modifier.dragReorderOnLongPress(state: DragReorderState, key: Any, onLift: () -> Unit): Modifier =
     pointerInput(state, key) {
-        detectDragGestures(
-            onDragStart = { state.start(key) },
+        detectDragGesturesAfterLongPress(
+            onDragStart = {
+                onLift()
+                state.start(key)
+            },
             onDrag = { change, amount ->
                 change.consume()
                 state.drag(amount)

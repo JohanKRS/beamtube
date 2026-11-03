@@ -89,7 +89,6 @@
     <string name="playlist_subscribed_hint_touch">Tap again to unsubscribe. New videos in this playlist show up in Subscriptions.</string>
     <string name="playlist_subscribed_hint_tv">Press again to unsubscribe. New videos in this playlist show up in Subscriptions.</string>
     <string name="reorder">Reorder</string>
-    <string name="reorder_drag">Drag to move</string>
     <string name="reorder_hint_tv">Press OK on a video to pick it up, move it with up and down, and press OK again to drop it. Each move goes to your account right away.</string>
     <string name="reorder_failed">Couldn\'t move it: %1$s</string>
     <string name="reorder_done">Done</string>
