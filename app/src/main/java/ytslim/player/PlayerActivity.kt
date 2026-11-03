@@ -8,7 +8,10 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
@@ -24,6 +27,7 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -38,6 +42,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
@@ -45,6 +50,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
+import androidx.media3.ui.TimeBar
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import coil3.size.Size as CoilSize
+import coil3.toBitmap
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -53,11 +63,15 @@ import ytslim.MainActivity
 import ytslim.R
 import ytslim.isTv
 import ytslim.data.AppScope
+import ytslim.data.Chapter
+import ytslim.data.Chapters
 import ytslim.data.ExternalLinks
 import ytslim.data.PlayQueue
 import ytslim.data.Rating
 import ytslim.data.SettingsRepository
+import ytslim.data.Storyboard
 import ytslim.data.VideoLinks
+import ytslim.ui.Look
 
 /**
  * Tela do player, que é também a "página do vídeo": like/dislike e inscrição ficam nos
@@ -84,7 +98,6 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var subscribeButton: TextView
     private lateinit var saveButton: ImageButton
     private lateinit var channelButton: TextView
-    private lateinit var skipButton: TextView
     private lateinit var captionsButton: ImageButton
     private lateinit var sleepButton: ImageButton
     private lateinit var rotateButton: ImageButton
@@ -99,9 +112,19 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var queueRow: LinearLayout
     private lateinit var endRow: LinearLayout
     private lateinit var dimView: View
+    private lateinit var timeBar: ChapterTimeBar
+    private lateinit var chapterView: TextView
+    private lateinit var islandView: View
+    private lateinit var preview: View
+    private lateinit var previewImage: ImageView
+    private lateinit var previewChapter: TextView
+    private lateinit var previewTime: TextView
 
     private var saveHistory = true
     private var external = false
+
+    /** Quando o card foi tocado (para o log do tempo até o primeiro quadro); 0 = agora. */
+    private var requestedAtMs = 0L
 
     /** Brilho do vídeo no modo dormir, em %. Vale até fechar o app ([sessionBrightness]). */
     private var brightness = 100
@@ -122,8 +145,25 @@ class PlayerActivity : ComponentActivity() {
     /** As resoluções que o painel de qualidade mostra agora. */
     private var qualityHeights: List<Int> = emptyList()
 
-    /** Os trechos do "Skip ahead" marcados agora na barra de tempo. */
+    /** Os trechos que o avanço pula inteiros, marcados agora na barra de tempo. */
     private var shownSkipSpots: List<Long> = emptyList()
+
+    /** Os capítulos do vídeo atual (frestas na barra, o nome do atual e o do preview). */
+    private var chapters: List<Chapter> = emptyList()
+
+    /** A barra está sendo arrastada (com o dedo ou, na TV, com esquerda e direita). */
+    private var scrubbing = false
+
+    /** As miniaturas do preview do vídeo atual e as últimas folhas baixadas (no máximo [SHEETS_KEPT]). */
+    private var storyboard: Storyboard? = null
+    private val sheets = object : LinkedHashMap<Int, Bitmap>(SHEETS_KEPT, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Bitmap>?) = size > SHEETS_KEPT
+    }
+    private val sheetsLoading = HashSet<Int>()
+    private var previewFrame: Storyboard.Frame? = null
+    private val previewMatrix = Matrix()
+    private val timeText = StringBuilder()
+    private val timeFormat = java.util.Formatter(timeText, java.util.Locale.getDefault())
 
     /** Celular ou tablet (toques no vídeo, girar a tela, 1080p). */
     private val touch by lazy { !isTv() }
@@ -142,6 +182,8 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // A cor de destaque escolhida em Settings, para os drawables do player (values/accents.xml).
+        theme.applyStyle(Look.accent.playerStyle, true)
         super.onCreate(savedInstanceState)
         val target = resolveTarget(intent)
         if (target == null) {
@@ -152,6 +194,7 @@ class PlayerActivity : ComponentActivity() {
             return
         }
         external = target.external
+        if (savedInstanceState == null) requestedAtMs = intent.getLongExtra(EXTRA_REQUESTED_AT, 0L)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -174,6 +217,7 @@ class PlayerActivity : ComponentActivity() {
         controller.player.addListener(PlayerScreenListener())
         bindButtons()
         if (touch) bindTouchGestures()
+        bindScrubbing()
         buildSleepPanel()
         // O brilho escolhido num vídeo vale para os próximos, até fechar o app (pedido do Johan, 2026-11-03).
         if (sessionBrightness < 100) setBrightness(sessionBrightness)
@@ -213,7 +257,8 @@ class PlayerActivity : ComponentActivity() {
 
     private fun start(videoId: String, startMs: Long, saveHistory: Boolean, title: String?) {
         this.saveHistory = saveHistory
-        controller.open(videoId, startMs, saveHistory, title)
+        controller.open(videoId, startMs, saveHistory, title, requestedAtMs = requestedAtMs)
+        requestedAtMs = 0L
     }
 
     private fun ask(onChoice: (saveHistory: Boolean) -> Unit) {
@@ -230,6 +275,12 @@ class PlayerActivity : ComponentActivity() {
             PlaybackController.State.Loading, is PlaybackController.State.Playing -> {
                 // Também o próximo vídeo da sequência: título novo, sem os detalhes do anterior.
                 messageView.visibility = View.GONE
+                val board = (state as? PlaybackController.State.Playing)?.info?.storyboard
+                if (board !== storyboard) {
+                    storyboard = board
+                    sheets.clear()
+                    sheetsLoading.clear()
+                }
                 showTitle()
                 showDetail()
             }
@@ -283,10 +334,14 @@ class PlayerActivity : ComponentActivity() {
         saveButton.setImageResource(if (controls.saved == true) R.drawable.ic_bookmark else R.drawable.ic_bookmark_border)
         saveButton.setActive(controls.saved == true)
         saveButton.contentDescription = getString(if (controls.saved == true) R.string.player_saved else R.string.player_save)
-        skipButton.visibility = if (controls.skipAvailable) View.VISIBLE else View.GONE
         if (controls.skipSpots != shownSkipSpots) {
             shownSkipSpots = controls.skipSpots
             playerView.setExtraAdGroupMarkers(controls.skipSpots.toLongArray(), BooleanArray(controls.skipSpots.size))
+        }
+        if (controls.chapters != chapters) {
+            chapters = controls.chapters
+            timeBar.setChapters(chapters.map { it.startMs })
+            showChapter(controller.player.currentPosition)
         }
         captionsButton.visibility = if (controls.captionsAvailable) View.VISIBLE else View.GONE
         captionsButton.setActive(controls.captionsOn)
@@ -306,9 +361,6 @@ class PlayerActivity : ComponentActivity() {
             finish()
         }
         captionsButton.setOnClickListener { controller.toggleCaptions() }
-        skipButton.setOnClickListener {
-            if (!controller.skipAhead()) Toast.makeText(this, R.string.player_no_highlight, Toast.LENGTH_SHORT).show()
-        }
         sleepButton.setOnClickListener { togglePanel(sleepPanel) }
         rotateButton.setOnClickListener { rotate() }
         qualityButton.setOnClickListener { togglePanel(qualityPanel) }
@@ -510,6 +562,14 @@ class PlayerActivity : ComponentActivity() {
             cancelTurnOff(announce = true)
             return true
         }
+        // A tecla de avançar do controle remoto também pula o trecho (sem ele, o PlayerView avança 15 s).
+        if (event.keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+            ::controller.isInitialized
+        ) {
+            val player = controller.player
+            val from = player.currentPosition
+            if (jumpAhead(from, from + player.seekForwardIncrement)) return true
+        }
         return super.dispatchKeyEvent(event)
     }
 
@@ -546,7 +606,8 @@ class PlayerActivity : ComponentActivity() {
     /**
      * Toques no vídeo ([TouchRules]): um toque mostra ou esconde os controles (o PlayerView faz
      * isso no performClick); dois toques nos lados voltam ou avançam 10 s, e cada toque a mais do
-     * mesmo lado logo em seguida soma outros 10 s; dois toques no meio pausam ou tocam.
+     * mesmo lado logo em seguida soma outros 10 s; dois toques no meio pausam ou tocam. Avançar
+     * dentro de um trecho que o público pula, ou logo antes dele, vai para o fim do trecho ([jumpAhead]).
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun bindTouchGestures() {
@@ -587,13 +648,162 @@ class PlayerActivity : ComponentActivity() {
         streakZone = zone
         streakUntil = now + TouchRules.STREAK_MS
         val player = controller.player
-        player.seekTo(TouchRules.seekTarget(player.currentPosition, player.duration, zone))
+        val from = player.currentPosition
+        val to = TouchRules.seekTarget(from, player.duration, zone)
+        if (zone == TouchRules.Zone.FORWARD && jumpAhead(from, to)) {
+            // O próximo toque do mesmo lado volta a contar do zero: "+10 s" a partir do fim do trecho.
+            streakSeconds = 0
+            return
+        }
+        player.seekTo(to)
         val back = zone == TouchRules.Zone.BACK
         flash(
             text = getString(if (back) R.string.player_seek_back else R.string.player_seek_forward, streakSeconds),
             icon = 0,
             gravity = (if (back) Gravity.START else Gravity.END) or Gravity.CENTER_VERTICAL,
         )
+    }
+
+    /**
+     * A barra de tempo: o nome do capítulo acompanha a posição, e arrastar a barra mostra o preview
+     * ([showPreview]). Na TV, direita na barra avança o vídeo (o DefaultTimeBar arrasta e solta
+     * sozinho 1 s depois da última tecla); se o avanço começou dentro de um trecho que o público
+     * pula, ou logo antes dele, vai para o fim do trecho. Este ouvinte entra depois do do
+     * PlayerControlView, então o pulo vem depois do seek normal e fica valendo.
+     */
+    private fun bindScrubbing() {
+        timeBar.onPosition = { if (!scrubbing) showChapter(it) }
+        timeBar.addListener(
+            object : TimeBar.OnScrubListener {
+                private var from = C.TIME_UNSET
+
+                override fun onScrubStart(timeBar: TimeBar, position: Long) {
+                    from = controller.player.currentPosition
+                    scrubbing = true
+                    closePanel(focusButton = false)
+                    showPreview(position)
+                }
+
+                override fun onScrubMove(timeBar: TimeBar, position: Long) = showPreview(position)
+
+                override fun onScrubStop(timeBar: TimeBar, position: Long, canceled: Boolean) {
+                    scrubbing = false
+                    preview.visibility = View.GONE
+                    showChapter(position)
+                    if (!touch && !canceled && from != C.TIME_UNSET && position > from) jumpAhead(from, position)
+                    from = C.TIME_UNSET
+                }
+            },
+        )
+    }
+
+    /** O nome do capítulo em que [positionMs] está, logo acima da ilha (some sem capítulos). */
+    private fun showChapter(positionMs: Long) {
+        val title = Chapters.at(chapters, positionMs)?.title
+        if (chapterView.text?.toString() != title) chapterView.text = title
+        chapterView.visibility = if (title != null && !scrubbing) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * O cartão acima da ilha ao arrastar a barra (pedido do Johan, 2026-11-03): a miniatura daquele
+     * ponto (se o YouTube mandou o storyboard), o capítulo e o tempo, centrado no círculo da barra.
+     */
+    private fun showPreview(positionMs: Long) {
+        chapterView.visibility = View.GONE
+        val chapter = Chapters.at(chapters, positionMs)?.title
+        previewChapter.text = chapter
+        previewChapter.visibility = if (chapter != null) View.VISIBLE else View.GONE
+        previewTime.text = Util.getStringForTime(timeText, timeFormat, positionMs)
+        val board = storyboard
+        previewImage.visibility = if (board != null) View.VISIBLE else View.GONE
+        if (board != null) showFrame(board, positionMs)
+        preview.visibility = View.VISIBLE
+        placePreview(positionMs)
+    }
+
+    /** Centra o cartão no círculo da barra, sem sair da tela, logo acima da ilha. */
+    private fun placePreview(positionMs: Long) {
+        val root = preview.parent as? View ?: return
+        val spot = IntArray(2)
+        root.getLocationInWindow(spot)
+        val rootX = spot[0]
+        val rootY = spot[1]
+        timeBar.getLocationInWindow(spot)
+        val center = spot[0] - rootX + timeBar.xOf(positionMs)
+        islandView.getLocationInWindow(spot)
+        val islandTop = spot[1] - rootY
+        val width = preview.layoutParams.width.toFloat()
+        val edge = resources.getDimension(R.dimen.player_edge)
+        val left = (center - width / 2).coerceIn(edge, (root.width - edge - width).coerceAtLeast(edge))
+        preview.translationX = left
+        // O cartão fica embaixo (layout_gravity bottom): sobe até 10 dp acima da ilha.
+        preview.translationY = (islandTop - dp(10) - root.height).toFloat()
+    }
+
+    /** Mostra o quadro de [positionMs] na miniatura do preview, baixando a folha dele se faltar. */
+    private fun showFrame(board: Storyboard, positionMs: Long) {
+        val frame = board.frameAt(positionMs)
+        previewFrame = frame
+        val sheet = sheets[frame.sheet]
+        if (sheet != null) drawFrame(sheet, board, frame) else previewImage.setImageDrawable(null)
+        loadSheet(board, frame.sheet)
+        // A seguinte também, para o arrastar não esperar na virada de folha.
+        if (frame.sheet + 1 < board.sheetCount(controller.player.duration)) loadSheet(board, frame.sheet + 1)
+    }
+
+    private fun loadSheet(board: Storyboard, index: Int) {
+        if (sheets.containsKey(index) || !sheetsLoading.add(index)) return
+        val request = ImageRequest.Builder(this)
+            .data(board.url(index))
+            .size(CoilSize.ORIGINAL)
+            .target(
+                onError = { sheetsLoading.remove(index) },
+                onSuccess = { image ->
+                    sheetsLoading.remove(index)
+                    if (board !== storyboard) return@target
+                    val bitmap = image.toBitmap()
+                    sheets[index] = bitmap
+                    val frame = previewFrame
+                    if (frame?.sheet == index && preview.visibility == View.VISIBLE) drawFrame(bitmap, board, frame)
+                },
+            )
+            .build()
+        SingletonImageLoader.get(this).enqueue(request)
+    }
+
+    /** Recorta o quadro da folha: a folha inteira na ImageView, com uma matriz que mostra só ele. */
+    private fun drawFrame(sheet: Bitmap, board: Storyboard, frame: Storyboard.Frame) {
+        val frameWidth = sheet.width / board.cols.toFloat()
+        val frameHeight = sheet.height / board.rows.toFloat()
+        val viewWidth = previewImage.width.takeIf { it > 0 } ?: previewImage.layoutParams.width
+        val viewHeight = previewImage.height.takeIf { it > 0 } ?: previewImage.layoutParams.height
+        if (frameWidth <= 0 || frameHeight <= 0 || viewWidth <= 0 || viewHeight <= 0) return
+        // Preenche o 16:9 da miniatura (corta um pouco se o quadro tiver outra proporção).
+        val scale = maxOf(viewWidth / frameWidth, viewHeight / frameHeight)
+        previewMatrix.setScale(scale, scale)
+        previewMatrix.postTranslate(
+            -frame.col * frameWidth * scale + (viewWidth - frameWidth * scale) / 2,
+            -frame.row * frameHeight * scale + (viewHeight - frameHeight * scale) / 2,
+        )
+        if ((previewImage.drawable as? BitmapDrawable)?.bitmap !== sheet) previewImage.setImageBitmap(sheet)
+        previewImage.imageMatrix = previewMatrix
+        previewImage.invalidate()
+    }
+
+    /**
+     * Um avanço de [from] até [to] que começa dentro de um trecho que o público pula, ou logo antes
+     * dele, vai direto para o fim do trecho, como no app do YouTube ([PlaybackController.jumpAhead]).
+     * false = avanço normal, a cargo de quem chamou.
+     */
+    private fun jumpAhead(from: Long, to: Long): Boolean {
+        val end = controller.jumpAhead(from, to) ?: return false
+        controller.player.seekTo(end)
+        flash(
+            text = getString(R.string.player_jumped_ahead),
+            icon = R.drawable.ic_skip_ahead,
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL,
+        )
+        return true
     }
 
     private fun togglePlay() {
@@ -604,7 +814,7 @@ class PlayerActivity : ComponentActivity() {
         flash(text = "", icon = icon, gravity = Gravity.CENTER)
     }
 
-    /** Um aviso rápido por cima do vídeo (o pulo de 10 s ou o tocar/pausar). */
+    /** Um aviso rápido por cima do vídeo (o pulo de 10 s, o do trecho ou o tocar/pausar). */
     private fun flash(text: String, icon: Int, gravity: Int) {
         seekBadge.animate().cancel()
         seekBadge.text = text
@@ -665,13 +875,19 @@ class PlayerActivity : ComponentActivity() {
         subscribeButton = playerView.findViewById(R.id.player_subscribe)
         saveButton = playerView.findViewById(R.id.player_save)
         channelButton = playerView.findViewById(R.id.player_channel)
-        skipButton = playerView.findViewById(R.id.player_skip)
         captionsButton = playerView.findViewById(R.id.player_captions)
         sleepButton = playerView.findViewById(R.id.player_sleep)
         rotateButton = playerView.findViewById<ImageButton>(R.id.player_rotate).apply {
             visibility = if (touch) View.VISIBLE else View.GONE
         }
         island = PlayerIsland(playerView, tv = !touch).apply { fit(resources.configuration.screenWidthDp) }
+        timeBar = playerView.findViewById(R.id.exo_progress)
+        chapterView = playerView.findViewById(R.id.player_chapter)
+        islandView = playerView.findViewById(R.id.player_island)
+        preview = playerView.findViewById(R.id.player_preview)
+        previewImage = playerView.findViewById<ImageView>(R.id.player_preview_image).apply { clipToOutline = true }
+        previewChapter = playerView.findViewById(R.id.player_preview_chapter)
+        previewTime = playerView.findViewById(R.id.player_preview_time)
         sleepPanel = playerView.findViewById(R.id.player_sleep_panel)
         qualityButton = playerView.findViewById(R.id.player_quality_button)
         qualityPanel = playerView.findViewById(R.id.player_quality_panel)
@@ -706,7 +922,7 @@ class PlayerActivity : ComponentActivity() {
 
         // O aviso dos toques no vídeo (celular e tablet), por cima do escurecer.
         seekBadge = TextView(this).apply {
-            setBackgroundResource(R.drawable.player_pill_bg)
+            setBackgroundResource(R.drawable.player_badge_bg)
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.figtree_semibold)
@@ -765,6 +981,7 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         private const val EXTRA_VIDEO_ID = "video_id"
         private const val EXTRA_TITLE = "title"
+        private const val EXTRA_REQUESTED_AT = "requested_at"
         private const val KEY_POSITION = "position"
         private const val KEY_VIDEO = "video"
         private const val KEY_TITLE = "video_title"
@@ -789,6 +1006,9 @@ class PlayerActivity : ComponentActivity() {
 
         private const val STEP_SECONDS = (TouchRules.SEEK_STEP_MS / 1000).toInt()
 
+        /** Folhas do storyboard guardadas (cada uma tem 25 quadros, uns 50 s de vídeo). */
+        private const val SHEETS_KEPT = 4
+
         /** O aviso dos toques fica este tempo e some em [FLASH_FADE_MS]. */
         private const val FLASH_MS = 450L
         private const val FLASH_FADE_MS = 250L
@@ -797,5 +1017,6 @@ class PlayerActivity : ComponentActivity() {
             Intent(context, PlayerActivity::class.java)
                 .putExtra(EXTRA_VIDEO_ID, videoId)
                 .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_REQUESTED_AT, SystemClock.elapsedRealtime())
     }
 }

@@ -53,6 +53,9 @@ object SettingsRepository {
     private val SAVE_TARGET_TITLE = stringPreferencesKey("save_target_title")
     private val TURN_OFF_WHEN_DONE = booleanPreferencesKey("turn_off_when_done")
 
+    /** A Explore já explicou o que é (o aviso que aparece só na primeira vez). */
+    private val EXPLORE_INTRO_SEEN = booleanPreferencesKey("explore_intro_seen")
+
     /**
      * O que a Explore guardava até a 0.5.1: as categorias da 0.5.0, os temas do histórico e os
      * temas escondidos. A Explore agora vem dos canais destacados ([ExploreRepository]).
@@ -103,6 +106,12 @@ object SettingsRepository {
     suspend fun setCaptionsOn(value: Boolean) = store.edit { it[CAPTIONS_ON] = value }
 
     suspend fun setTurnOffWhenDone(value: Boolean) = store.edit { it[TURN_OFF_WHEN_DONE] = value }
+
+    /** true depois que o aviso da primeira vez na Explore foi fechado. */
+    val exploreIntroSeen: Flow<Boolean>
+        get() = store.data.map { it[EXPLORE_INTRO_SEEN] ?: false }
+
+    suspend fun setExploreIntroSeen() = store.edit { it[EXPLORE_INTRO_SEEN] = true }
 
     suspend fun setExcludedTopics(value: List<Topic>) = store.edit { it[EXCLUDED_TOPICS] = json.encodeToString(topics, value) }
 

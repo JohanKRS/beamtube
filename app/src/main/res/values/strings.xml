@@ -89,7 +89,6 @@
     <string name="playlist_subscribed_hint_touch">Tap again to unsubscribe. New videos in this playlist show up in Subscriptions.</string>
     <string name="playlist_subscribed_hint_tv">Press again to unsubscribe. New videos in this playlist show up in Subscriptions.</string>
     <string name="reorder">Reorder</string>
-    <string name="reorder_drag">Drag to move</string>
     <string name="reorder_hint_tv">Press OK on a video to pick it up, move it with up and down, and press OK again to drop it. Each move goes to your account right away.</string>
     <string name="reorder_failed">Couldn\'t move it: %1$s</string>
     <string name="reorder_done">Done</string>
@@ -108,8 +107,7 @@
     <string name="settings_playlists_empty">No subscribed playlists yet.</string>
     <string name="settings_unsubscribe">Unsubscribe</string>
     <string name="settings_save_target">Save button</string>
-    <string name="settings_save_target_current">The Save button in the player adds videos to %1$s.</string>
-    <string name="settings_save_target_choose">Choose a playlist</string>
+    <string name="settings_save_target_row">Saves videos to</string>
     <string name="settings_excluded">Topics to leave out</string>
     <string name="settings_excluded_hint">Videos about these topics don\'t show up in Recommended or in videos from subscribed playlists. A video matches a topic when its title or channel name has one of the keywords.</string>
     <string name="settings_preferred">Preferred topics</string>
@@ -126,6 +124,15 @@
     <string name="unblock">Unblock</string>
     <string name="settings_app_icon">App icon</string>
     <string name="settings_app_icon_hint">The new icon can take a few seconds to show up. Some launchers remove the home screen shortcut when it changes; add Doorglow again from the app list.</string>
+    <string name="settings_accent">Highlight color</string>
+    <string name="settings_accent_hint">The active tab, progress, focus and the buttons that are on, in the app and in the player.</string>
+    <string name="accent_amber">Amber</string>
+    <string name="accent_red">Red</string>
+    <string name="accent_pink">Pink</string>
+    <string name="accent_purple">Purple</string>
+    <string name="accent_blue">Blue</string>
+    <string name="accent_teal">Teal</string>
+    <string name="accent_green">Green</string>
     <string name="icon_night">Night blue</string>
     <string name="icon_black">Black</string>
     <string name="icon_teal">Teal</string>
@@ -161,8 +168,7 @@
     <string name="player_saved">Saved</string>
     <string name="player_saved_to">Saved to %1$s</string>
     <string name="player_removed_from">Removed from %1$s</string>
-    <string name="player_skip">Skip ahead</string>
-    <string name="player_no_highlight">Nothing to skip here.</string>
+    <string name="player_jumped_ahead">Jumped ahead</string>
     <string name="player_captions">Turn on captions</string>
     <string name="player_captions_off">Turn off captions</string>
     <string name="player_quality">Quality</string>
@@ -192,7 +198,8 @@
     <string name="ext_ask_no_history">Watch without saving to history</string>
     <string name="ext_ask_save_history">Watch and save to my history</string>
     <!-- Explore -->
-    <string name="explore_hint">Videos from the channels your subscriptions feature, new and old. Pull down for a different mix.</string>
-    <string name="explore_hint_tv">Videos from the channels your subscriptions feature, new and old. Hold OK on the tab for a different mix.</string>
+    <string name="got_it">Got it</string>
+    <string name="explore_intro">Videos from the channels your subscriptions feature, new and old. Pull down for a different mix.</string>
+    <string name="explore_intro_tv">Videos from the channels your subscriptions feature, new and old. Hold OK on the tab for a different mix.</string>
     <string name="explore_empty">Nothing to show yet. Explore uses the channels your subscriptions feature on their pages.</string>
 </resources>

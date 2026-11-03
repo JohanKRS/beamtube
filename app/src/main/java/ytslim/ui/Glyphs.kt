@@ -14,31 +14,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.dp
-import kotlin.math.max
-import kotlin.math.min
 
-/** A "fresta" de luz da porta, que marca a aba ativa: uma barrinha âmbar com um brilho suave em volta. */
+/**
+ * A "fresta" que marca a aba ativa: uma barrinha na cor de destaque, sem brilho em volta (pedido
+ * do Johan, 2026-11-03: o brilho fica só no ícone do canto, o [DoorGlyph]).
+ */
 @Composable
 fun LightSlit(modifier: Modifier) {
-    Box(
-        modifier
-            .drawBehind {
-                // Um brilho redondo, achatado na direção curta da barrinha.
-                val spread = 9.dp.toPx()
-                val radius = max(size.width, size.height) / 2 + spread
-                val squash = (min(size.width, size.height) / 2 + spread) / radius
-                withTransform({
-                    if (size.width >= size.height) scale(1f, squash, center) else scale(squash, 1f, center)
-                }) {
-                    drawCircle(
-                        brush = Brush.radialGradient(listOf(Look.Glow.copy(alpha = 0.42f), Look.Glow.copy(alpha = 0f)), center, radius),
-                        radius = radius,
-                        center = center,
-                    )
-                }
-            }
-            .background(Look.Glow, RoundedCornerShape(2.dp)),
-    )
+    Box(modifier.background(Look.Glow, RoundedCornerShape(2.dp)))
 }
 
 /**

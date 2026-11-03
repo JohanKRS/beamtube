@@ -1,8 +1,12 @@
 package ytslim.ui
 
 import android.content.Context
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
 import coil3.SingletonImageLoader
 import coil3.request.CachePolicy
@@ -39,12 +43,27 @@ object Thumbnails {
     }
 }
 
-/** Adianta as miniaturas de uma lista de vídeos, um pouco depois de ela aparecer (a tela vem primeiro). */
+/**
+ * Adianta as miniaturas dos [AHEAD] vídeos logo depois dos que estão na tela, conforme a lista rola (a
+ * tela vem primeiro). Antes, cada página que chegava adiantava a lista inteira: no Watch later, com as
+ * páginas carregando à frente, eram centenas de miniaturas de uma vez, disputando a rede e o
+ * processador com as que estavam na tela.
+ */
 @Composable
-fun PrefetchThumbnails(videos: List<Video>) {
+fun PrefetchThumbnails(videos: List<Video>, grid: LazyGridState) {
     val context = LocalContext.current.applicationContext
-    LaunchedEffect(videos.size) {
+    val current by rememberUpdatedState(videos)
+    LaunchedEffect(grid) {
         delay(400)
-        Thumbnails.prefetch(context, videos.map { it.thumbnailUrl })
+        // O índice do último item na tela (cabeçalhos contam, mas a janela é folgada) e a lista atual.
+        snapshotFlow { (grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) to current }
+            .collect { (last, list) ->
+                val from = (last + 1).coerceAtMost(list.size)
+                val to = (from + AHEAD).coerceAtMost(list.size)
+                Thumbnails.prefetch(context, list.subList(from, to).map { it.thumbnailUrl })
+            }
     }
 }
+
+/** Quantas miniaturas adiantar além da tela: umas duas telas na TV e no tablet, mais no celular. */
+private const val AHEAD = 24

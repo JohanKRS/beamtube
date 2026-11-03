@@ -10,6 +10,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -36,6 +39,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +61,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -65,6 +70,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -97,9 +103,9 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
-import androidx.tv.material3.Glow
 import androidx.tv.material3.Icon
 import androidx.tv.material3.IconButton
 import androidx.tv.material3.IconButtonDefaults
@@ -132,11 +138,15 @@ import ytslim.data.Video
 import ytslim.ui.AppIconPreview
 import ytslim.ui.ChannelViewModel
 import ytslim.ui.ExploreViewModel
+import ytslim.ui.Accent
+import ytslim.ui.Accents
 import ytslim.ui.DoorGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
 import ytslim.ui.LightSlit
+import ytslim.ui.MetaLine
+import ytslim.ui.metaAfterChannel
 import ytslim.ui.Look
 import ytslim.ui.Notice
 import ytslim.ui.Notices
@@ -169,10 +179,11 @@ import ytslim.ui.toggleSaved
 private val LocalInitialFocus = compositionLocalOf<MutableState<Boolean>> { mutableStateOf(false) }
 
 /**
- * As cores do Doorglow na TV. O foco é a luz da porta: botões e linhas focados ficam creme-âmbar com
- * texto escuro, e os cards ganham um contorno e um brilho quentes.
+ * As cores do Doorglow na TV. O foco é a luz da porta: botões e linhas focados ficam na cor de
+ * destaque com texto escuro, e os cards ganham um contorno claro. Refeitas quando a cor de
+ * destaque muda ([Look.accent]).
  */
-private val Colors = darkColorScheme(
+private fun colors() = darkColorScheme(
     primary = Look.Glow,
     onPrimary = Look.OnGlow,
     primaryContainer = Look.SurfaceHigh,
@@ -226,6 +237,9 @@ private val Floating = Color(0xF528292D)
 
 private val CardShape = RoundedCornerShape(14.dp)
 
+/** O canto dos cartões dos Ajustes (o mesmo do celular). */
+private val GroupCorner = 18.dp
+
 /** Interface da Android TV: D-pad, foco visível e cards maiores (Compose for TV). */
 object TvUi : Screens {
     private val OkKeys = setOf(android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER)
@@ -235,7 +249,7 @@ object TvUi : Screens {
 
     @Composable
     override fun Theme(content: @Composable () -> Unit) {
-        MaterialTheme(colorScheme = Colors, typography = Type) {
+        MaterialTheme(colorScheme = remember(Look.accent) { colors() }, typography = Type) {
             Surface(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(0.dp)) { content() }
         }
     }
@@ -324,8 +338,8 @@ object TvUi : Screens {
     override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, onReload: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
         val initialFocus = rememberSaveable { mutableStateOf(true) }
         var tabsFocused by remember { mutableStateOf(false) }
-        // Segurar OK numa aba recarrega a lista dela, quando o OK é solto. O Tab segue recebendo as
-        // teclas (o clique dele só escolhe a aba, que já está escolhida).
+        // Segurar OK numa aba recarrega a lista dela, quando o OK é solto depois de [OkHold.HOLD_MS].
+        // O Tab segue recebendo as teclas (o clique dele só escolhe a aba, que já está escolhida).
         var heldTab by remember { mutableStateOf<HomeTab?>(null) }
         val selectedTab = remember { FocusRequester() }
         // Voltar, de dentro do conteúdo, sobe para as abas; nas abas, sai do app.
@@ -356,11 +370,12 @@ object TvUi : Screens {
                         ),
                         modifier = (if (item == tab) Modifier.focusRequester(selectedTab) else Modifier)
                             .onPreviewKeyEvent { event ->
-                                if (event.nativeKeyEvent.keyCode in OkKeys) {
-                                    if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount > 0) {
+                                val key = event.nativeKeyEvent
+                                if (key.keyCode in OkKeys) {
+                                    if (event.type == KeyEventType.KeyDown && key.repeatCount == 0) {
                                         heldTab = item
                                     } else if (event.type == KeyEventType.KeyUp) {
-                                        if (heldTab == item) onReload(item)
+                                        if (heldTab == item && key.eventTime - key.downTime >= OkHold.HOLD_MS) onReload(item)
                                         heldTab = null
                                     }
                                 }
@@ -427,12 +442,27 @@ object TvUi : Screens {
     @Composable
     override fun Explore(vm: ExploreViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
-        Column(Modifier.fillMaxSize()) {
-            Hint(stringResource(R.string.explore_hint_tv))
-            Spacer(Modifier.height(16.dp))
-            Loadable(state, onRetry = vm::reload) { content ->
-                VideoGrid(content, stringResource(R.string.explore_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
+        val showIntro by vm.showIntro.collectAsStateWithLifecycle()
+        Loadable(state, onRetry = vm::reload) { content ->
+            VideoGrid(content, stringResource(R.string.explore_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
+        }
+        // Só na primeira vez (enquanto os primeiros vídeos carregam): o que é a Explore.
+        if (showIntro) ExploreIntro(onDismiss = vm::dismissIntro)
+    }
+
+    @Composable
+    private fun ExploreIntro(onDismiss: () -> Unit) {
+        val button = remember { FocusRequester() }
+        Dialog(onDismissRequest = onDismiss) {
+            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(560.dp)) {
+                Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(stringResource(R.string.tab_explore), style = MaterialTheme.typography.headlineSmall)
+                    Text(stringResource(R.string.explore_intro_tv), style = MaterialTheme.typography.bodyLarge)
+                    Button(onClick = onDismiss, modifier = Modifier.focusRequester(button)) { Text(stringResource(R.string.got_it)) }
+                }
             }
+            // Dentro do diálogo: a janela dele já existe quando o foco é pedido.
+            LaunchedEffect(Unit) { runCatching { button.requestFocus() } }
         }
     }
 
@@ -509,18 +539,25 @@ object TvUi : Screens {
 
     /** Os filtros (busca e Recomendações): cada botão abre a lista dos valores, com o atual em foco. */
     @Composable
-    private fun FilterButtons(choices: List<SearchFilterChoice>, onChange: (SearchFilters) -> Unit) {
+    internal fun FilterButtons(choices: List<SearchFilterChoice>, onChange: (SearchFilters) -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             choices.forEach { choice ->
                 key(choice.label) {
                     var open by remember { mutableStateOf(false) }
                     Box {
                         val label = stringResource(R.string.search_filter_value, stringResource(choice.label), choice.selected.text())
-                        if (choice.isDefault) {
-                            OutlinedButton(onClick = { open = true }) { Text(label) }
-                        } else {
-                            Button(onClick = { open = true }) { Text(label) }
-                        }
+                        // Leves (2026-11-03): sem contorno, num cinza um pouco mais claro que o fundo; o filtro
+                        // mudado fica âmbar, e o foco, creme como os outros botões da TV.
+                        Button(
+                            onClick = { open = true },
+                            colors = ButtonDefaults.colors(
+                                containerColor = if (choice.isDefault) Look.Surface else Look.Glow.copy(alpha = 0.16f),
+                                contentColor = if (choice.isDefault) Look.Sub else Look.Glow,
+                                focusedContainerColor = Look.Text,
+                                focusedContentColor = Look.Ground,
+                            ),
+                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+                        ) { Text(label, style = MaterialTheme.typography.labelLarge) }
                         if (open) {
                             FilterMenu(choice, onDismiss = { open = false }) { picked ->
                                 open = false
@@ -624,7 +661,7 @@ object TvUi : Screens {
     }
 
     @Composable
-    private fun PlaylistGrid(playlists: List<Playlist>, onOpen: (Playlist) -> Unit) {
+    internal fun PlaylistGrid(playlists: List<Playlist>, onOpen: (Playlist) -> Unit) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
@@ -653,68 +690,86 @@ object TvUi : Screens {
         var choosingTarget by rememberSaveable { mutableStateOf(false) }
         var editing by remember { mutableStateOf<Pair<TopicList, Int?>?>(null) }
 
+        // Em cartões, como no celular (2026-11-03): o nome do grupo em cima, as linhas num cartão e a
+        // explicação embaixo. O foco continua o do ListItem (a linha fica creme).
         LazyColumn(
-            modifier = Modifier.fillMaxWidth(0.7f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.fillMaxWidth(0.7f).widthIn(max = 820.dp),
             contentPadding = PaddingValues(bottom = 48.dp),
         ) {
-            item { SectionTitle(stringResource(R.string.settings_subscriptions)) }
-            item {
-                ListItem(
-                    selected = false,
-                    onClick = { vm.setShowLives(!settings.showLives) },
-                    headlineContent = { Text(stringResource(R.string.settings_show_lives)) },
-                    supportingContent = { Text(stringResource(R.string.settings_show_lives_desc)) },
-                    trailingContent = { Switch(checked = settings.showLives, onCheckedChange = null) },
-                )
-            }
-
-            item { SectionTitle(stringResource(R.string.settings_save_target)) }
-            item {
-                val target = settings.saveTarget.title ?: stringResource(R.string.watch_later)
-                ListItem(
-                    selected = false,
-                    onClick = {
-                        choosingTarget = !choosingTarget
-                        if (choosingTarget) vm.loadOwnPlaylists()
-                    },
-                    headlineContent = { Text(stringResource(R.string.settings_save_target_current, target)) },
-                    supportingContent = { Text(stringResource(R.string.settings_save_target_choose)) },
-                )
-            }
-            if (choosingTarget) {
-                when (val own = ownPlaylists) {
-                    null, UiState.Loading -> item { Text(stringResource(R.string.loading), Modifier.padding(16.dp)) }
-                    is UiState.Error -> item {
+            group(
+                "lives",
+                R.string.settings_subscriptions,
+                rows = listOf(
+                    row("show") {
                         ListItem(
                             selected = false,
-                            onClick = vm::loadOwnPlaylists,
-                            headlineContent = { Text(stringResource(R.string.error_generic, own.message)) },
-                            trailingContent = { Text(stringResource(R.string.retry)) },
+                            onClick = { vm.setShowLives(!settings.showLives) },
+                            headlineContent = { Text(stringResource(R.string.settings_show_lives)) },
+                            supportingContent = { Text(stringResource(R.string.settings_show_lives_desc)) },
+                            trailingContent = { Switch(checked = settings.showLives, onCheckedChange = null) },
                         )
-                    }
-                    is UiState.Ready -> items(own.data, key = { "target:" + it.id }) { playlist ->
+                    },
+                ),
+            )
+
+            val targetRows = buildList<Pair<Any, @Composable () -> Unit>> {
+                add(
+                    row("current") {
+                        val target = settings.saveTarget.title ?: stringResource(R.string.watch_later)
                         ListItem(
                             selected = false,
                             onClick = {
-                                vm.setSaveTarget(playlist)
-                                choosingTarget = false
+                                choosingTarget = !choosingTarget
+                                if (choosingTarget) vm.loadOwnPlaylists()
                             },
-                            headlineContent = { Text(playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            leadingContent = { RadioButton(selected = playlist.id == settings.saveTarget.playlistId, onClick = null) },
+                            headlineContent = { Text(stringResource(R.string.settings_save_target_row)) },
+                            trailingContent = { Text(target, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         )
+                    },
+                )
+                if (choosingTarget) {
+                    when (val own = ownPlaylists) {
+                        null, UiState.Loading -> add(row("loading") { EmptyRow(stringResource(R.string.loading)) })
+                        is UiState.Error -> add(
+                            row("error") {
+                                ListItem(
+                                    selected = false,
+                                    onClick = vm::loadOwnPlaylists,
+                                    headlineContent = { Text(stringResource(R.string.error_generic, own.message)) },
+                                    trailingContent = { Text(stringResource(R.string.retry)) },
+                                )
+                            },
+                        )
+                        is UiState.Ready -> own.data.forEach { playlist ->
+                            add(
+                                row(playlist.id) {
+                                    ListItem(
+                                        selected = false,
+                                        onClick = {
+                                            vm.setSaveTarget(playlist)
+                                            choosingTarget = false
+                                        },
+                                        headlineContent = { Text(playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        leadingContent = { RadioButton(selected = playlist.id == settings.saveTarget.playlistId, onClick = null) },
+                                    )
+                                },
+                            )
+                        }
                     }
                 }
             }
+            group("target", R.string.settings_save_target, rows = targetRows)
 
-            topicSection(
+            topicGroup(
+                key = "excluded",
                 title = R.string.settings_excluded,
                 hint = R.string.settings_excluded_hint,
                 topics = settings.filters.excluded,
                 onEdit = { editing = TopicList.EXCLUDED to it },
                 onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
             )
-            topicSection(
+            topicGroup(
+                key = "preferred",
                 title = R.string.settings_preferred,
                 hint = R.string.settings_preferred_hint,
                 topics = settings.filters.preferred,
@@ -722,94 +777,132 @@ object TvUi : Screens {
                 onRemove = { vm.removeTopic(TopicList.PREFERRED, it) },
             )
 
-            item { SectionTitle(stringResource(R.string.settings_blocked)) }
-            item { Hint(stringResource(R.string.settings_blocked_hint)) }
-            if (settings.filters.blocked.isEmpty()) {
-                item { Text(stringResource(R.string.settings_blocked_empty), Modifier.padding(16.dp)) }
-            }
-            items(settings.filters.blocked, key = { "blocked:" + it.id }) { channel ->
-                ListItem(
-                    selected = false,
-                    onClick = { vm.unblock(channel.id) },
-                    headlineContent = { Text(channel.name.ifBlank { channel.id }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    trailingContent = { Text(stringResource(R.string.unblock)) },
-                )
-            }
-
-            item { SectionTitle(stringResource(R.string.settings_links)) }
-            items(externalLinkOptions) { (mode, label) ->
-                ListItem(
-                    selected = false,
-                    onClick = { vm.setExternalLinks(mode) },
-                    headlineContent = { Text(stringResource(label)) },
-                    leadingContent = { RadioButton(selected = settings.externalLinks == mode, onClick = null) },
-                )
-            }
-
-            item { SectionTitle(stringResource(R.string.settings_playlists)) }
-            item { Hint(stringResource(R.string.settings_playlists_hint)) }
-            error?.let { message ->
-                item {
-                    Text(
-                        stringResource(R.string.action_failed, message),
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
-                }
-            }
-            when (val p = playlists) {
-                UiState.Loading -> item { Text(stringResource(R.string.loading), Modifier.padding(16.dp)) }
-                is UiState.Error -> item {
-                    ListItem(
-                        selected = false,
-                        onClick = vm::reloadPlaylists,
-                        headlineContent = { Text(stringResource(R.string.error_generic, p.message)) },
-                        trailingContent = { Text(stringResource(R.string.retry)) },
-                    )
-                }
-                is UiState.Ready -> {
-                    if (p.data.isEmpty()) {
-                        item { Text(stringResource(R.string.settings_playlists_empty), Modifier.padding(16.dp)) }
-                    }
-                    items(p.data, key = { it.playlist.browseId }) { item ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+            group(
+                "blocked",
+                R.string.settings_blocked,
+                hint = R.string.settings_blocked_hint,
+                rows = if (settings.filters.blocked.isEmpty()) {
+                    listOf(row("empty") { EmptyRow(stringResource(R.string.settings_blocked_empty)) })
+                } else {
+                    settings.filters.blocked.map { channel ->
+                        row(channel.id) {
                             ListItem(
                                 selected = false,
-                                onClick = { onOpenPlaylist(item.playlist) },
-                                headlineContent = { Text(item.playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                supportingContent = item.playlist.info?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
-                                modifier = Modifier.weight(1f),
+                                onClick = { vm.unblock(channel.id) },
+                                headlineContent = { Text(channel.name.ifBlank { channel.id }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                trailingContent = { Text(stringResource(R.string.unblock)) },
                             )
-                            Spacer(Modifier.width(12.dp))
-                            OutlinedButton(onClick = { vm.unsubscribe(item.playlist) }, enabled = !item.busy) {
-                                Text(stringResource(R.string.settings_unsubscribe))
-                            }
+                        }
+                    }
+                },
+            )
+
+            group(
+                "links",
+                R.string.settings_links,
+                rows = externalLinkOptions.map { (mode, label) ->
+                    row(mode) {
+                        ListItem(
+                            selected = false,
+                            onClick = { vm.setExternalLinks(mode) },
+                            headlineContent = { Text(stringResource(label)) },
+                            leadingContent = { RadioButton(selected = settings.externalLinks == mode, onClick = null) },
+                        )
+                    }
+                },
+            )
+
+            val playlistRows = buildList<Pair<Any, @Composable () -> Unit>> {
+                error?.let { message ->
+                    add(row("error") { EmptyRow(stringResource(R.string.action_failed, message), MaterialTheme.colorScheme.error) })
+                }
+                when (val p = playlists) {
+                    UiState.Loading -> add(row("loading") { EmptyRow(stringResource(R.string.loading)) })
+                    is UiState.Error -> add(
+                        row("retry") {
+                            ListItem(
+                                selected = false,
+                                onClick = vm::reloadPlaylists,
+                                headlineContent = { Text(stringResource(R.string.error_generic, p.message)) },
+                                trailingContent = { Text(stringResource(R.string.retry)) },
+                            )
+                        },
+                    )
+                    is UiState.Ready -> {
+                        if (p.data.isEmpty()) add(row("empty") { EmptyRow(stringResource(R.string.settings_playlists_empty)) })
+                        p.data.forEach { item ->
+                            add(
+                                row(item.playlist.browseId) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        ListItem(
+                                            selected = false,
+                                            onClick = { onOpenPlaylist(item.playlist) },
+                                            headlineContent = { Text(item.playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                            supportingContent = item.playlist.info?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Spacer(Modifier.width(12.dp))
+                                        OutlinedButton(onClick = { vm.unsubscribe(item.playlist) }, enabled = !item.busy) {
+                                            Text(stringResource(R.string.settings_unsubscribe))
+                                        }
+                                    }
+                                },
+                            )
                         }
                     }
                 }
             }
+            group("playlists", R.string.settings_playlists, hint = R.string.settings_playlists_hint, rows = playlistRows)
 
-            item { SectionTitle(stringResource(R.string.settings_app_icon)) }
-            item { Hint(stringResource(R.string.settings_app_icon_hint)) }
-            items(AppIcon.entries) { icon ->
-                ListItem(
-                    selected = false,
-                    onClick = { vm.setAppIcon(icon) },
-                    headlineContent = { Text(stringResource(icon.label)) },
-                    leadingContent = { AppIconPreview(icon) },
-                    trailingContent = { RadioButton(selected = appIcon == icon, onClick = null) },
-                )
-            }
+            group(
+                "icon",
+                R.string.settings_app_icon,
+                hint = R.string.settings_app_icon_hint,
+                rows = AppIcon.entries.map { icon ->
+                    row(icon.name) {
+                        ListItem(
+                            selected = false,
+                            onClick = { vm.setAppIcon(icon) },
+                            headlineContent = { Text(stringResource(icon.label)) },
+                            leadingContent = { AppIconPreview(icon) },
+                            trailingContent = { RadioButton(selected = appIcon == icon, onClick = null) },
+                        )
+                    }
+                },
+            )
 
-            item { SectionTitle(stringResource(R.string.settings_account)) }
-            item {
-                ListItem(
-                    selected = false,
-                    onClick = { vm.signOut(onSignedOut) },
-                    headlineContent = { Text(stringResource(R.string.sign_out)) },
-                    supportingContent = vm.accountName?.let { { Text(stringResource(R.string.settings_signed_in_as, it)) } },
-                )
-            }
+            // A cor de destaque, como a do ícone (pedido do Johan, 2026-11-03).
+            group(
+                "accent",
+                R.string.settings_accent,
+                hint = R.string.settings_accent_hint,
+                rows = Accent.entries.map { option ->
+                    row(option.name) {
+                        ListItem(
+                            selected = false,
+                            onClick = { Accents.select(option) },
+                            headlineContent = { Text(stringResource(option.label)) },
+                            leadingContent = { Box(Modifier.size(24.dp).background(Color(option.glow), CircleShape)) },
+                            trailingContent = { RadioButton(selected = Look.accent == option, onClick = null) },
+                        )
+                    }
+                },
+            )
+
+            group(
+                "account",
+                R.string.settings_account,
+                rows = listOf(
+                    row("signout") {
+                        ListItem(
+                            selected = false,
+                            onClick = { vm.signOut(onSignedOut) },
+                            headlineContent = { Text(stringResource(R.string.sign_out)) },
+                            supportingContent = vm.accountName?.let { { Text(stringResource(R.string.settings_signed_in_as, it)) } },
+                        )
+                    },
+                ),
+            )
         }
 
         editing?.let { (list, index) ->
@@ -825,36 +918,73 @@ object TvUi : Screens {
         }
     }
 
-    private fun LazyListScope.topicSection(
+    private fun LazyListScope.topicGroup(
+        key: String,
         title: Int,
         hint: Int,
         topics: List<Topic>,
         onEdit: (Int?) -> Unit,
         onRemove: (Int) -> Unit,
     ) {
-        item { SectionTitle(stringResource(title)) }
-        item { Hint(stringResource(hint)) }
-        if (topics.isEmpty()) item { Text(stringResource(R.string.settings_topics_empty), Modifier.padding(16.dp)) }
-        itemsIndexed(topics) { index, topic ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ListItem(
-                    selected = false,
-                    onClick = { onEdit(index) },
-                    headlineContent = { Text(topic.name) },
-                    supportingContent = { Text(topic.keywords.joinToString(", "), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    modifier = Modifier.weight(1f),
+        val rows = buildList<Pair<Any, @Composable () -> Unit>> {
+            if (topics.isEmpty()) add(row("empty") { EmptyRow(stringResource(R.string.settings_topics_empty)) })
+            topics.forEachIndexed { index, topic ->
+                add(
+                    row("$index:${topic.name}") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ListItem(
+                                selected = false,
+                                onClick = { onEdit(index) },
+                                headlineContent = { Text(topic.name) },
+                                supportingContent = { Text(topic.keywords.joinToString(", "), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            OutlinedButton(onClick = { onRemove(index) }) { Text(stringResource(R.string.topic_remove)) }
+                        }
+                    },
                 )
-                Spacer(Modifier.width(12.dp))
-                OutlinedButton(onClick = { onRemove(index) }) { Text(stringResource(R.string.topic_remove)) }
             }
-        }
-        item {
-            ListItem(
-                selected = false,
-                onClick = { onEdit(null) },
-                headlineContent = { Text(stringResource(R.string.topic_add)) },
+            add(
+                row("add") {
+                    ListItem(
+                        selected = false,
+                        onClick = { onEdit(null) },
+                        headlineContent = { Text("+ " + stringResource(R.string.topic_add), color = Look.Glow) },
+                    )
+                },
             )
         }
+        group(key, title, hint = hint, rows = rows)
+    }
+
+    /**
+     * Um grupo dos Ajustes: [title] em cima, as [rows] num cartão e [hint] embaixo. O cartão é
+     * desenhado em pedaços, um por linha da lista (cantos arredondados só no primeiro e no último).
+     */
+    private fun LazyListScope.group(key: String, title: Int?, hint: Int? = null, rows: List<Pair<Any, @Composable () -> Unit>>) {
+        if (title != null) item(key = "$key:title") { SectionTitle(stringResource(title)) }
+        rows.forEachIndexed { index, (rowKey, content) ->
+            item(key = "$key:row:$rowKey") { Box(Modifier.groupPiece(index, rows.size)) { content() } }
+        }
+        if (hint != null) item(key = "$key:hint") { Hint(stringResource(hint)) }
+    }
+
+    /** Uma linha de um [group], com a chave dela na lista. */
+    private fun row(key: Any, content: @Composable () -> Unit): Pair<Any, @Composable () -> Unit> = key to content
+
+    private fun Modifier.groupPiece(index: Int, count: Int): Modifier {
+        val top = if (index == 0) GroupCorner else 0.dp
+        val bottom = if (index == count - 1) GroupCorner else 0.dp
+        return fillMaxWidth()
+            .background(Look.Surface, RoundedCornerShape(top, top, bottom, bottom))
+            .padding(start = 8.dp, end = 8.dp, top = if (index == 0) 8.dp else 0.dp, bottom = if (index == count - 1) 8.dp else 0.dp)
+    }
+
+    /** Uma linha só de texto num grupo (vazio, carregando, erro). */
+    @Composable
+    private fun EmptyRow(text: String, color: Color = Look.Sub) {
+        Text(text, color = color, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp))
     }
 
     @Composable
@@ -1175,7 +1305,7 @@ object TvUi : Screens {
     }
 
     @Composable
-    private fun VideoGrid(
+    internal fun VideoGrid(
         content: VideoListContent,
         emptyText: String,
         onNearEnd: () -> Unit,
@@ -1189,8 +1319,10 @@ object TvUi : Screens {
     ) {
         val firstFocus = remember { FocusRequester() }
         val saved by SavedVideos.ids.collectAsStateWithLifecycle()
-        PrefetchThumbnails(content.videos)
+        val grid = rememberLazyGridState()
+        PrefetchThumbnails(content.videos, grid)
         LazyVerticalGrid(
+            state = grid,
             columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
             verticalArrangement = Arrangement.spacedBy(GridGapY),
@@ -1316,7 +1448,7 @@ object TvUi : Screens {
                     )
                 }
             }
-            CardText(video.title, subtitleOf(video))
+            VideoText(video)
         }
     }
 
@@ -1442,20 +1574,58 @@ object TvUi : Screens {
         }
     }
 
-    /** Card com o foco da TV: cresce 6%, ganha um contorno creme e um brilho âmbar. */
+    /**
+     * Card com o foco da TV: cresce 6% e ganha um contorno claro, sem brilho em volta (pedido do
+     * Johan, 2026-11-03: brilho só no ícone do canto; e a sombra borrada pesava nas TVs de 32
+     * bits). Com [onLongClick], o OK curto e o longo são medidos pelo app ([OkHold]), e não pelo Card.
+     */
     @Composable
     private fun GlowCard(onClick: () -> Unit, onLongClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
+        val interaction = remember { MutableInteractionSource() }
+        val hold = onLongClick?.let { rememberOkHold(interaction, onClick, it) }
         Card(
             onClick = onClick,
-            onLongClick = onLongClick,
-            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).then(if (hold != null) Modifier.okHold(hold) else Modifier),
             shape = CardDefaults.shape(CardShape),
             colors = CardDefaults.colors(containerColor = Look.Surface),
             scale = CardDefaults.scale(focusedScale = 1.06f),
             border = CardDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Look.GlowSoft), shape = CardShape)),
-            glow = CardDefaults.glow(focusedGlow = Glow(elevationColor = Look.Glow.copy(alpha = 0.45f), elevation = 18.dp)),
+            interactionSource = interaction,
         ) { content() }
     }
+
+    /** O [OkHold] de um card, com o "apertado" passado para o [interaction] dele. */
+    @Composable
+    private fun rememberOkHold(interaction: MutableInteractionSource, onClick: () -> Unit, onLongClick: () -> Unit): OkHold {
+        val scope = rememberCoroutineScope()
+        val click by rememberUpdatedState(onClick)
+        val longClick by rememberUpdatedState(onLongClick)
+        return remember(interaction, scope) {
+            var press: PressInteraction.Press? = null
+            OkHold(
+                scope,
+                onPress = { down ->
+                    press?.let { interaction.tryEmit(PressInteraction.Release(it)) }
+                    press = if (down) PressInteraction.Press(Offset.Zero).also { interaction.tryEmit(it) } else null
+                },
+                onClick = { click() },
+                onLongClick = { longClick() },
+            )
+        }
+    }
+
+    /** Todas as teclas de OK vão para o [hold], antes do Card; o foco saindo cancela o OK apertado. */
+    private fun Modifier.okHold(hold: OkHold): Modifier =
+        onFocusChanged { if (!it.hasFocus) hold.cancel() }
+            .onPreviewKeyEvent { event ->
+                val key = event.nativeKeyEvent
+                if (key.keyCode !in OkKeys) return@onPreviewKeyEvent false
+                when (event.type) {
+                    KeyEventType.KeyDown -> if (key.repeatCount == 0) hold.down()
+                    KeyEventType.KeyUp -> hold.up()
+                }
+                true
+            }
 
     @Composable
     private fun Badge(text: String, color: Color, modifier: Modifier) {
@@ -1466,6 +1636,26 @@ object TvUi : Screens {
             modifier = modifier.padding(8.dp)
                 .background(color, RoundedCornerShape(6.dp))
                 .padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
+
+    /**
+     * O título e, embaixo, o canal numa linha e o resto (visualizações, data) na outra, em vez de
+     * os dois numa linha só, cortados.
+     */
+    @Composable
+    private fun VideoText(video: Video) {
+        val name = video.channelName?.takeIf { it.isNotBlank() }
+        if (video.fromPlaylist != null || name == null) return CardText(video.title, subtitleOf(video))
+        CardText(video.title, null)
+        val style = MaterialTheme.typography.bodySmall
+        val rest = metaAfterChannel(video.info, name, video.published)
+        MetaLine(
+            channel = { Text(name, style = style, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            rest = rest?.let { { Text(rest, style = style, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            separator = { Text(" · ", style = style, color = Look.Sub) },
+            modifier = Modifier.padding(top = 2.dp, start = 2.dp, end = 2.dp),
+            stacked = true,
         )
     }
 
@@ -1603,18 +1793,36 @@ object TvUi : Screens {
     private fun Hint(text: String) {
         Text(
             text,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
         )
+    }
+
+    @Composable
+    internal fun GridSkeleton() {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            horizontalArrangement = Arrangement.spacedBy(GridGapX),
+            verticalArrangement = Arrangement.spacedBy(GridGapY),
+            contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
+            userScrollEnabled = false,
+        ) {
+            items(8) {
+                Column {
+                    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Look.Surface, CardShape))
+                    Box(Modifier.padding(top = 14.dp).fillMaxWidth(0.85f).height(16.dp).background(Look.Surface, RoundedCornerShape(6.dp)))
+                    Box(Modifier.padding(top = 10.dp).fillMaxWidth(0.5f).height(12.dp).background(Look.Surface, RoundedCornerShape(6.dp)))
+                }
+            }
+        }
     }
 
     @Composable
     private fun <T> Loadable(state: UiState<T>, onRetry: () -> Unit, content: @Composable (T) -> Unit) {
         when (state) {
-            UiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Text(stringResource(R.string.loading), style = MaterialTheme.typography.titleMedium)
-            }
+            // No lugar do "Loading…" (2026-11-03): cartões vazios onde os vídeos vão entrar, parados.
+            UiState.Loading -> GridSkeleton()
             is UiState.Error -> Column(
                 Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,

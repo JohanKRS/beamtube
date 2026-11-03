@@ -5,23 +5,48 @@
   botões do vídeo. Poucos botões, com foco bem visível para o D-pad da TV.
 -->
 <resources>
-    <color name="player_accent">@color/launcher_night_glow</color>
     <color name="player_icon">#F3EFE4</color>
     <color name="player_text_secondary">#C9C6BD</color>
     <color name="player_on_light">#18191B</color>
 
-    <!-- Margens da tela e o título. Na TV (values-television) ficam maiores, longe da borda. -->
-    <dimen name="player_edge">32dp</dimen>
-    <dimen name="player_edge_top">20dp</dimen>
-    <dimen name="player_edge_bottom">18dp</dimen>
-    <dimen name="player_title_size">17sp</dimen>
+    <!--
+      Margens da tela, o título e os tamanhos dos botões. Compactos desde 2026-11-03 (pedido do
+      Johan: mais espaço para o vídeo); antes 32/20/18 dp de margem, título de 17 sp em duas linhas,
+      ilha de 56 dp e botões de 40 dp. Na TV (values-television) ficam um pouco maiores, longe da
+      borda e fáceis de ver com o foco.
+    -->
+    <dimen name="player_edge">20dp</dimen>
+    <dimen name="player_edge_top">12dp</dimen>
+    <dimen name="player_title_size">15sp</dimen>
+    <integer name="player_title_lines">1</integer>
+    <dimen name="player_row_height">48dp</dimen>
+    <dimen name="player_play_size">38dp</dimen>
+    <dimen name="player_button_size">36dp</dimen>
+    <dimen name="player_button_padding">9dp</dimen>
+    <dimen name="player_pill_button_size">32dp</dimen>
+    <dimen name="player_pill_button_padding">7dp</dimen>
+    <dimen name="player_subscribe_height">28dp</dimen>
+    <!--
+      A barra de baixo vai de borda a borda (2026-11-03); o conteúdo dela fica a esta distância
+      das laterais e da borda de baixo.
+    -->
+    <dimen name="player_bar_side">14dp</dimen>
+    <dimen name="player_bar_bottom">4dp</dimen>
+    <dimen name="player_actions_gap">12dp</dimen>
+    <!-- A barra de tempo: a ChapterTimeBar usa as mesmas medidas para pôr a fresta dos capítulos. -->
+    <dimen name="player_bar_height">3dp</dimen>
+    <dimen name="player_scrubber_dragged">18dp</dimen>
+    <dimen name="player_chapter_gap">2dp</dimen>
+    <!-- O preview ao arrastar a barra: a miniatura (16:9) dentro de um cartão de vidro. -->
+    <dimen name="player_preview_width">168dp</dimen>
+    <dimen name="player_preview_height">90dp</dimen>
 
     <!-- Botão de ícone (like, legenda, lua…). -->
     <style name="PlayerButton">
-        <item name="android:layout_width">40dp</item>
-        <item name="android:layout_height">40dp</item>
+        <item name="android:layout_width">@dimen/player_button_size</item>
+        <item name="android:layout_height">@dimen/player_button_size</item>
         <item name="android:layout_marginStart">2dp</item>
-        <item name="android:padding">10dp</item>
+        <item name="android:padding">@dimen/player_button_padding</item>
         <item name="android:background">@drawable/player_button_bg</item>
         <item name="android:scaleType">fitCenter</item>
         <item name="android:focusable">true</item>
@@ -30,26 +55,10 @@
 
     <!-- Botão de ícone dentro da pílula de cima. -->
     <style name="PlayerPillButton" parent="PlayerButton">
-        <item name="android:layout_width">36dp</item>
-        <item name="android:layout_height">36dp</item>
+        <item name="android:layout_width">@dimen/player_pill_button_size</item>
+        <item name="android:layout_height">@dimen/player_pill_button_size</item>
         <item name="android:layout_marginStart">0dp</item>
-        <item name="android:padding">8dp</item>
-    </style>
-
-    <style name="PlayerTextButton">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">40dp</item>
-        <item name="android:layout_marginStart">2dp</item>
-        <item name="android:paddingStart">12dp</item>
-        <item name="android:paddingEnd">14dp</item>
-        <item name="android:gravity">center</item>
-        <item name="android:background">@drawable/player_button_bg</item>
-        <item name="android:textColor">@color/player_icon</item>
-        <item name="android:textSize">14sp</item>
-        <item name="android:fontFamily">@font/figtree_semibold</item>
-        <item name="android:drawablePadding">6dp</item>
-        <item name="android:focusable">true</item>
-        <item name="android:clickable">true</item>
+        <item name="android:padding">@dimen/player_pill_button_padding</item>
     </style>
 
     <!-- Painel (resolução, dormir): um cartão à direita, logo acima da ilha. -->
@@ -57,6 +66,8 @@
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_gravity">end</item>
+        <item name="android:layout_marginStart">@dimen/player_edge</item>
+        <item name="android:layout_marginEnd">@dimen/player_edge</item>
         <item name="android:layout_marginBottom">10dp</item>
         <item name="android:background">@drawable/player_panel_bg</item>
         <item name="android:orientation">vertical</item>

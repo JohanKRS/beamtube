@@ -5,7 +5,6 @@ import android.view.FocusFinder
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
 import androidx.media3.common.util.UnstableApi
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
@@ -25,7 +24,7 @@ class PlayerIslandTest {
     /** Os controles com tudo que pode aparecer na ilha, medidos numa tela de [widthDp]. */
     private fun controls(widthDp: Int, tv: Boolean = false): View {
         val view = LayoutInflater.from(context).inflate(R.layout.player_controls, null)
-        listOf(R.id.player_skip, R.id.player_captions, R.id.player_quality_button, R.id.player_rotate)
+        listOf(R.id.player_captions, R.id.player_quality_button, R.id.player_rotate, R.id.player_actions, R.id.player_save)
             .forEach { view.findViewById<View>(it).visibility = View.VISIBLE }
         PlayerIsland(view, tv).fit(widthDp)
         val density = context.resources.displayMetrics.density
@@ -47,19 +46,18 @@ class PlayerIslandTest {
         val bar = view.findViewById<View>(R.id.exo_progress)
         assertEquals(R.id.player_bar_row, (bar.parent as View).id)
         assertTrue(bar.width > 150 * context.resources.displayMetrics.density)
-        listOf(R.id.player_skip, R.id.player_captions, R.id.player_quality_button, R.id.player_rotate, R.id.player_sleep)
+        listOf(R.id.player_captions, R.id.player_quality_button, R.id.player_rotate, R.id.player_sleep)
             .forEach { assertTrue(view.resources.getResourceEntryName(it), view.findViewById<View>(it).fitsInItsRow()) }
-        assertTrue(view.findViewById<TextView>(R.id.player_skip).text.isNullOrEmpty())
     }
 
     @Test
-    @Config(qualifiers = "w800dp-h360dp-land")
-    fun lyingDownItIsOneRowWithTheLabel() {
-        val view = controls(800)
+    @Config(qualifiers = "w640dp-h360dp-land")
+    fun aSmallPhoneLyingDownIsOneRow() {
+        val view = controls(640)
         val bar = view.findViewById<View>(R.id.exo_progress)
         assertEquals(R.id.player_button_row, (bar.parent as View).id)
         assertFalse(view.findViewById<View>(R.id.player_bar_row).isShown)
-        assertEquals(context.getString(R.string.player_skip), view.findViewById<TextView>(R.id.player_skip).text.toString())
+        assertTrue(bar.width > 200 * context.resources.displayMetrics.density)
         assertTrue(view.findViewById<View>(R.id.player_sleep).fitsInItsRow())
     }
 
@@ -84,20 +82,41 @@ class PlayerIslandTest {
     fun onTheTvTheRemoteReachesTheButtonsBelowTheBar() {
         val view = controls(960, tv = true) as ViewGroup
         val bar = view.findViewById<View>(R.id.exo_progress)
-        // A barra numa linha só dela, e o Skip ahead com o texto.
+        // A barra numa linha só dela.
         assertEquals(R.id.player_bar_row, (bar.parent as View).id)
-        assertEquals(context.getString(R.string.player_skip), view.findViewById<TextView>(R.id.player_skip).text.toString())
         // Na barra, esquerda e direita avançam o vídeo: baixo leva aos botões, e cima volta.
         // Com o controle remoto a TV não está no modo de toque, e todo botão focável conta. Fora de
         // uma janela o Robolectric fica no modo de toque: aqui os botões contam nele também.
         ArrayList<View>().also { view.addFocusables(it, View.FOCUS_DOWN, View.FOCUSABLES_ALL) }
             .forEach { it.isFocusableInTouchMode = true }
         val below = FocusFinder.getInstance().findNextFocus(view, bar, View.FOCUS_DOWN)
-        assertEquals(R.id.player_button_row, (below.parent as View).id)
+        // Na linha de baixo: um botão dela, ou uma das ações que desceram para ela.
+        assertTrue((below.parent as View).id in listOf(R.id.player_button_row, R.id.player_actions))
         val sleep = view.findViewById<View>(R.id.player_sleep)
         assertEquals(bar, FocusFinder.getInstance().findNextFocus(view, sleep, View.FOCUS_UP))
         // E entre os botões, direita anda de um para o outro.
         val quality = view.findViewById<View>(R.id.player_quality_button)
         assertEquals(R.id.player_rotate, FocusFinder.getInstance().findNextFocus(view, quality, View.FOCUS_RIGHT).id)
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television")
+    fun onTheTvTheActionsSitInTheBottomBar() {
+        val view = controls(960, tv = true) as ViewGroup
+        val row = view.findViewById<ViewGroup>(R.id.player_button_row)
+        val actions = view.findViewById<View>(R.id.player_actions)
+        // Logo depois do tocar/pausar, sem a pílula, e fora do canto de cima.
+        assertEquals(row, actions.parent)
+        assertEquals(1, row.indexOfChild(actions))
+        assertEquals(null, actions.background)
+        assertFalse(view.findViewById<ViewGroup>(R.id.player_top).indexOfChild(actions) >= 0)
+        // As ações ficam à esquerda; legenda, resolução e lua continuam à direita.
+        assertTrue(actions.left + view.findViewById<View>(R.id.player_subscribe).right < view.findViewById<View>(R.id.player_captions).left)
+        ArrayList<View>().also { view.addFocusables(it, View.FOCUS_DOWN, View.FOCUSABLES_ALL) }
+            .forEach { it.isFocusableInTouchMode = true }
+        val play = view.findViewById<View>(R.id.exo_play_pause)
+        assertEquals(R.id.player_like, FocusFinder.getInstance().findNextFocus(view, play, View.FOCUS_RIGHT).id)
+        val like = view.findViewById<View>(R.id.player_like)
+        assertEquals(view.findViewById<View>(R.id.exo_progress), FocusFinder.getInstance().findNextFocus(view, like, View.FOCUS_UP))
     }
 }

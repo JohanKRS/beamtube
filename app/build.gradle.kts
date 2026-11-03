@@ -65,7 +65,10 @@ android {
             resValue("string", "app_name", "$appName (debug)")
         }
         release {
-            isMinifyEnabled = false
+            // R8: otimiza o Compose, o Media3 e o resto, e tira o que não é usado (ex.: os milhares de
+            // ícones do material-icons-extended). O motor fica inteiro (proguard-rules.pro).
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Sem a chave das releases (ex.: build local de teste), assina com a de debug desta máquina:
             // instala num aparelho limpo, mas não atualiza por cima da versão das releases.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
@@ -142,8 +145,11 @@ dependencies {
     implementation(libs.haze)
 
     implementation(libs.coil.compose)
-    implementation(libs.coil.network.ktor)
-    implementation(libs.ktor.client.android)
+    // Miniaturas pelo OkHttp 3 do motor, em HTTP/2 (ui/ImageHttp.kt).
+    implementation(libs.coil.network.core)
+
+    // Diz no log se o Android já compilou o app com o perfil (src/main/baseline-prof.txt).
+    implementation(libs.androidx.profileinstaller)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.rx2)
@@ -153,13 +159,20 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    // Fotos das telas (ScreensShots): só com -Pytslim.screenshots=true.
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }
 
 // Os testes do motor falam com o YouTube de verdade; só rodam com -Pytslim.online=true.
 val online = providers.gradleProperty("ytslim.online").map { it.toBoolean() }.getOrElse(false)
+// As fotos das telas (para comparar o visual) só rodam com -Pytslim.screenshots=<pasta das imagens de exemplo>.
+val screenshots = providers.gradleProperty("ytslim.screenshots").orNull
 tasks.withType<Test>().configureEach {
     systemProperty("ytslim.online", online.toString())
     if (!online) filter.excludeTestsMatching("*OnlineTest")
+    if (screenshots == null) filter.excludeTestsMatching("*ScreenShots") else systemProperty("ytslim.screenshots", screenshots)
     // Espelho opcional para o Robolectric baixar o android-all (ex.: quando o Maven Central limita).
     providers.gradleProperty("robolectric.repo").orNull?.let { systemProperty("robolectric.dependency.repo.url", it) }
     testLogging {

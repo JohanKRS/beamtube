@@ -5,7 +5,7 @@ import com.liskovsoft.youtubeapi.service.data.YouTubeMediaItem
 
 enum class Rating { NONE, LIKED, DISLIKED }
 
-/** O que a página do vídeo mostra além do player: avaliação, inscrição no canal e capítulos. */
+/** O que a página do vídeo mostra além do player: avaliação e inscrição no canal. */
 data class VideoState(
     /** O título pela página do vídeo: o player usa quando o stream vem sem título. */
     val title: String?,
@@ -13,7 +13,6 @@ data class VideoState(
     val channelName: String?,
     val subscribed: Boolean,
     val rating: Rating,
-    val chapterStartsMs: List<Long>,
 )
 
 /** Like/dislike e inscrever/cancelar inscrição no canal do vídeo. */
@@ -31,7 +30,6 @@ object VideoActions {
                 MediaItemMetadata.LIKE_STATUS_DISLIKE -> Rating.DISLIKED
                 else -> Rating.NONE
             },
-            chapterStartsMs = m.chapters.orEmpty().map { it.startTimeMs }.filter { it > 0 },
         )
     }
 

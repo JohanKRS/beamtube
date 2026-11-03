@@ -166,6 +166,9 @@ class EngineOnlineTest {
                     val labels = info.adaptiveFormats.orEmpty().filter { it.mimeType?.startsWith("audio/") == true }
                         .mapNotNull { it.language }.distinct()
                     println("[online] $videoId [$client]: ${stream?.let { it::class.simpleName } ?: "nada tocável (sabr=${info.containsSabrFormats()})"}, áudio=$labels")
+                    // O preview ao arrastar a barra: a primeira folha do storyboard, se o cliente mandou.
+                    val board = Storyboard.from(runCatching { info.createStoryboard() }.getOrNull())
+                    println("[online]     storyboard: ${board?.let { "${it.cols}x${it.rows} a cada ${it.intervalMs} ms, ${it.url(0)}" } ?: "nenhum"}")
                     if (stream is Stream.DashManifest) {
                         manifests++
                         val manifest = DashManifestParser().parse(Uri.EMPTY, stream.xml.inputStream())

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A miniatura do preview: cantos arredondados (o PlayerActivity recorta pelo contorno) e um cinza enquanto a folha carrega. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="10dp" />
+    <solid android:color="#2C2D31" />
+</shape>
