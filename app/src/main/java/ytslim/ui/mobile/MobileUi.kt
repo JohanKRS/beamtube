@@ -151,6 +151,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import dev.chrisbanes.haze.ExperimentalHazeApi
+import dev.chrisbanes.haze.HazeEffectScope
+import dev.chrisbanes.haze.HazeInputScale
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -243,6 +246,14 @@ private fun glassStyle(edge: GlassEdge): HazeStyle {
 private val TopGlass = glassStyle(GlassEdge.Top)
 private val BottomGlass = glassStyle(GlassEdge.Bottom)
 private val StartGlass = glassStyle(GlassEdge.Start)
+
+/**
+ * O desfoque calculado numa cópia menor do que passa por baixo e ampliado (o Haze escolhe a
+ * escala): com 24 dp de desfoque a diferença não aparece, e rolar fica bem mais barato
+ * (2026-11-03, sugestão da thread de desempenho).
+ */
+@OptIn(ExperimentalHazeApi::class)
+private val LightGlass: HazeEffectScope.() -> Unit = { inputScale = HazeInputScale.Auto }
 
 private val Colors = darkColorScheme(
     primary = Look.Glow,
@@ -532,7 +543,7 @@ object MobileUi : Screens {
     /** Barra de cima de vidro: passa por trás da barra de status. */
     @Composable
     private fun TopBar(haze: HazeState, system: SystemInsets, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-        Box(modifier.fillMaxWidth().height(system.top + TopBarHeight).hazeEffect(haze, TopGlass)) {
+        Box(modifier.fillMaxWidth().height(system.top + TopBarHeight).hazeEffect(haze, TopGlass, block = LightGlass)) {
             Row(
                 Modifier.fillMaxSize().padding(top = system.top, start = 4.dp, end = system.end + 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -545,7 +556,7 @@ object MobileUi : Screens {
     /** Barra de abas de vidro, só com ícones: vai até o fim da tela, por trás da barra de gestos. */
     @Composable
     private fun BottomNav(haze: HazeState, system: SystemInsets, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
-        Box(modifier.fillMaxWidth().height(system.bottom + BottomBarHeight).hazeEffect(haze, BottomGlass)) {
+        Box(modifier.fillMaxWidth().height(system.bottom + BottomBarHeight).hazeEffect(haze, BottomGlass, block = LightGlass)) {
             Hairline(Modifier.align(Alignment.TopStart).fillMaxWidth().height(1.dp))
             Row(
                 Modifier.align(Alignment.TopCenter).widthIn(max = 520.dp).fillMaxWidth().height(BottomBarHeight)
@@ -570,7 +581,7 @@ object MobileUi : Screens {
     /** Trilho de vidro à esquerda, na tela deitada: vai de cima a baixo, por trás das barras do sistema. */
     @Composable
     private fun Rail(haze: HazeState, system: SystemInsets, items: List<TabInfo>, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
-        Box(modifier.fillMaxHeight().width(RailWidth + system.start).hazeEffect(haze, StartGlass)) {
+        Box(modifier.fillMaxHeight().width(RailWidth + system.start).hazeEffect(haze, StartGlass, block = LightGlass)) {
             Column(
                 Modifier.fillMaxHeight().padding(start = system.start, top = system.top + 20.dp, bottom = system.bottom + 16.dp).width(RailWidth),
                 horizontalAlignment = Alignment.CenterHorizontally,

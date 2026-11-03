@@ -108,8 +108,6 @@
     <string name="settings_playlists_empty">No subscribed playlists yet.</string>
     <string name="settings_unsubscribe">Unsubscribe</string>
     <string name="settings_save_target">Save button</string>
-    <string name="settings_save_target_current">The Save button in the player adds videos to %1$s.</string>
-    <string name="settings_save_target_choose">Choose a playlist</string>
     <string name="settings_save_target_row">Saves videos to</string>
     <string name="settings_excluded">Topics to leave out</string>
     <string name="settings_excluded_hint">Videos about these topics don\'t show up in Recommended or in videos from subscribed playlists. A video matches a topic when its title or channel name has one of the keywords.</string>
