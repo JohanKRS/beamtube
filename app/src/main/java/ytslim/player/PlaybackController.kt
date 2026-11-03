@@ -41,6 +41,7 @@ import kotlinx.coroutines.launch
 import ytslim.data.AudioRules
 import ytslim.data.AuthRepository
 import ytslim.data.Caption
+import ytslim.data.Chapter
 import ytslim.data.HeatSegment
 import ytslim.data.HeatmapRepository
 import ytslim.data.PlaybackInfo
@@ -85,6 +86,8 @@ class PlaybackController(
         val captionsOn: Boolean = false,
         /** Onde começa cada trecho que o avanço pula inteiro ([jumpAhead]), para marcar na barra de tempo. */
         val skipSpots: List<Long> = emptyList(),
+        /** Os capítulos do vídeo (divisões na barra e o nome do atual); vazio sem capítulos. */
+        val chapters: List<Chapter> = emptyList(),
         val page: VideoState? = null,
         /** O vídeo está na playlist do botão "Save"? null = sem botão (sem login ou não deu para saber). */
         val saved: Boolean? = null,
@@ -225,13 +228,14 @@ class PlaybackController(
         }
     }
 
-    /** Gráfico de "mais repetidos" e a página do vídeo (like, inscrição, capítulos), em paralelo ao stream. */
+    /** Gráfico de "mais repetidos", capítulos e a página do vídeo (like, inscrição), em paralelo ao stream. */
     private fun loadExtras(videoId: String) {
         extrasJob?.cancel()
         extrasJob = scope.launch {
             launch {
-                heatmap = HeatmapRepository.load(videoId)
-                if (heatmap.isNotEmpty()) _controls.update { it.copy(skipSpots = SkipRules.valleys(heatmap)) }
+                val markers = HeatmapRepository.load(videoId)
+                heatmap = markers.heat
+                _controls.update { it.copy(skipSpots = SkipRules.valleys(heatmap), chapters = markers.chapters) }
             }
             if (AuthRepository.isSigned()) {
                 launch {

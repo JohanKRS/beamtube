@@ -8,7 +8,10 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
@@ -24,6 +27,7 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -44,10 +48,13 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
-import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.TimeBar
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import coil3.size.Size as CoilSize
+import coil3.toBitmap
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -56,10 +63,13 @@ import ytslim.MainActivity
 import ytslim.R
 import ytslim.isTv
 import ytslim.data.AppScope
+import ytslim.data.Chapter
+import ytslim.data.Chapters
 import ytslim.data.ExternalLinks
 import ytslim.data.PlayQueue
 import ytslim.data.Rating
 import ytslim.data.SettingsRepository
+import ytslim.data.Storyboard
 import ytslim.data.VideoLinks
 
 /**
@@ -101,6 +111,13 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var queueRow: LinearLayout
     private lateinit var endRow: LinearLayout
     private lateinit var dimView: View
+    private lateinit var timeBar: ChapterTimeBar
+    private lateinit var chapterView: TextView
+    private lateinit var islandView: View
+    private lateinit var preview: View
+    private lateinit var previewImage: ImageView
+    private lateinit var previewChapter: TextView
+    private lateinit var previewTime: TextView
 
     private var saveHistory = true
     private var external = false
@@ -126,6 +143,23 @@ class PlayerActivity : ComponentActivity() {
 
     /** Os trechos que o avanço pula inteiros, marcados agora na barra de tempo. */
     private var shownSkipSpots: List<Long> = emptyList()
+
+    /** Os capítulos do vídeo atual (frestas na barra, o nome do atual e o do preview). */
+    private var chapters: List<Chapter> = emptyList()
+
+    /** A barra está sendo arrastada (com o dedo ou, na TV, com esquerda e direita). */
+    private var scrubbing = false
+
+    /** As miniaturas do preview do vídeo atual e as últimas folhas baixadas (no máximo [SHEETS_KEPT]). */
+    private var storyboard: Storyboard? = null
+    private val sheets = object : LinkedHashMap<Int, Bitmap>(SHEETS_KEPT, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Bitmap>?) = size > SHEETS_KEPT
+    }
+    private val sheetsLoading = HashSet<Int>()
+    private var previewFrame: Storyboard.Frame? = null
+    private val previewMatrix = Matrix()
+    private val timeText = StringBuilder()
+    private val timeFormat = java.util.Formatter(timeText, java.util.Locale.getDefault())
 
     /** Celular ou tablet (toques no vídeo, girar a tela, 1080p). */
     private val touch by lazy { !isTv() }
@@ -175,7 +209,8 @@ class PlayerActivity : ComponentActivity() {
         playerView.player = controller.player
         controller.player.addListener(PlayerScreenListener())
         bindButtons()
-        if (touch) bindTouchGestures() else bindTimeBarJump()
+        if (touch) bindTouchGestures()
+        bindScrubbing()
         buildSleepPanel()
         // O brilho escolhido num vídeo vale para os próximos, até fechar o app (pedido do Johan, 2026-11-03).
         if (sessionBrightness < 100) setBrightness(sessionBrightness)
@@ -232,6 +267,12 @@ class PlayerActivity : ComponentActivity() {
             PlaybackController.State.Loading, is PlaybackController.State.Playing -> {
                 // Também o próximo vídeo da sequência: título novo, sem os detalhes do anterior.
                 messageView.visibility = View.GONE
+                val board = (state as? PlaybackController.State.Playing)?.info?.storyboard
+                if (board !== storyboard) {
+                    storyboard = board
+                    sheets.clear()
+                    sheetsLoading.clear()
+                }
                 showTitle()
                 showDetail()
             }
@@ -288,6 +329,11 @@ class PlayerActivity : ComponentActivity() {
         if (controls.skipSpots != shownSkipSpots) {
             shownSkipSpots = controls.skipSpots
             playerView.setExtraAdGroupMarkers(controls.skipSpots.toLongArray(), BooleanArray(controls.skipSpots.size))
+        }
+        if (controls.chapters != chapters) {
+            chapters = controls.chapters
+            timeBar.setChapters(chapters.map { it.startMs })
+            showChapter(controller.player.currentPosition)
         }
         captionsButton.visibility = if (controls.captionsAvailable) View.VISIBLE else View.GONE
         captionsButton.setActive(controls.captionsOn)
@@ -611,28 +657,129 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /**
-     * TV: na barra de tempo, direita avança o vídeo (o DefaultTimeBar arrasta e solta sozinho 1 s
-     * depois da última tecla). Se o avanço começou dentro de um trecho que o público pula, ou logo
-     * antes dele, vai para o fim do trecho. Este ouvinte entra depois do do PlayerControlView, então
-     * o pulo vem depois do seek normal e fica valendo.
+     * A barra de tempo: o nome do capítulo acompanha a posição, e arrastar a barra mostra o preview
+     * ([showPreview]). Na TV, direita na barra avança o vídeo (o DefaultTimeBar arrasta e solta
+     * sozinho 1 s depois da última tecla); se o avanço começou dentro de um trecho que o público
+     * pula, ou logo antes dele, vai para o fim do trecho. Este ouvinte entra depois do do
+     * PlayerControlView, então o pulo vem depois do seek normal e fica valendo.
      */
-    private fun bindTimeBarJump() {
-        playerView.findViewById<DefaultTimeBar>(R.id.exo_progress).addListener(
+    private fun bindScrubbing() {
+        timeBar.onPosition = { if (!scrubbing) showChapter(it) }
+        timeBar.addListener(
             object : TimeBar.OnScrubListener {
                 private var from = C.TIME_UNSET
 
                 override fun onScrubStart(timeBar: TimeBar, position: Long) {
                     from = controller.player.currentPosition
+                    scrubbing = true
+                    closePanel(focusButton = false)
+                    showPreview(position)
                 }
 
-                override fun onScrubMove(timeBar: TimeBar, position: Long) = Unit
+                override fun onScrubMove(timeBar: TimeBar, position: Long) = showPreview(position)
 
                 override fun onScrubStop(timeBar: TimeBar, position: Long, canceled: Boolean) {
-                    if (!canceled && from != C.TIME_UNSET && position > from) jumpAhead(from, position)
+                    scrubbing = false
+                    preview.visibility = View.GONE
+                    showChapter(position)
+                    if (!touch && !canceled && from != C.TIME_UNSET && position > from) jumpAhead(from, position)
                     from = C.TIME_UNSET
                 }
             },
         )
+    }
+
+    /** O nome do capítulo em que [positionMs] está, logo acima da ilha (some sem capítulos). */
+    private fun showChapter(positionMs: Long) {
+        val title = Chapters.at(chapters, positionMs)?.title
+        if (chapterView.text?.toString() != title) chapterView.text = title
+        chapterView.visibility = if (title != null && !scrubbing) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * O cartão acima da ilha ao arrastar a barra (pedido do Johan, 2026-11-03): a miniatura daquele
+     * ponto (se o YouTube mandou o storyboard), o capítulo e o tempo, centrado no círculo da barra.
+     */
+    private fun showPreview(positionMs: Long) {
+        chapterView.visibility = View.GONE
+        val chapter = Chapters.at(chapters, positionMs)?.title
+        previewChapter.text = chapter
+        previewChapter.visibility = if (chapter != null) View.VISIBLE else View.GONE
+        previewTime.text = Util.getStringForTime(timeText, timeFormat, positionMs)
+        val board = storyboard
+        previewImage.visibility = if (board != null) View.VISIBLE else View.GONE
+        if (board != null) showFrame(board, positionMs)
+        preview.visibility = View.VISIBLE
+        placePreview(positionMs)
+    }
+
+    /** Centra o cartão no círculo da barra, sem sair da tela, logo acima da ilha. */
+    private fun placePreview(positionMs: Long) {
+        val root = preview.parent as? View ?: return
+        val spot = IntArray(2)
+        root.getLocationInWindow(spot)
+        val rootX = spot[0]
+        val rootY = spot[1]
+        timeBar.getLocationInWindow(spot)
+        val center = spot[0] - rootX + timeBar.xOf(positionMs)
+        islandView.getLocationInWindow(spot)
+        val islandTop = spot[1] - rootY
+        val width = preview.layoutParams.width.toFloat()
+        val edge = resources.getDimension(R.dimen.player_edge)
+        val left = (center - width / 2).coerceIn(edge, (root.width - edge - width).coerceAtLeast(edge))
+        preview.translationX = left
+        // O cartão fica embaixo (layout_gravity bottom): sobe até 10 dp acima da ilha.
+        preview.translationY = (islandTop - dp(10) - root.height).toFloat()
+    }
+
+    /** Mostra o quadro de [positionMs] na miniatura do preview, baixando a folha dele se faltar. */
+    private fun showFrame(board: Storyboard, positionMs: Long) {
+        val frame = board.frameAt(positionMs)
+        previewFrame = frame
+        val sheet = sheets[frame.sheet]
+        if (sheet != null) drawFrame(sheet, board, frame) else previewImage.setImageDrawable(null)
+        loadSheet(board, frame.sheet)
+        // A seguinte também, para o arrastar não esperar na virada de folha.
+        if (frame.sheet + 1 < board.sheetCount(controller.player.duration)) loadSheet(board, frame.sheet + 1)
+    }
+
+    private fun loadSheet(board: Storyboard, index: Int) {
+        if (sheets.containsKey(index) || !sheetsLoading.add(index)) return
+        val request = ImageRequest.Builder(this)
+            .data(board.url(index))
+            .size(CoilSize.ORIGINAL)
+            .target(
+                onError = { sheetsLoading.remove(index) },
+                onSuccess = { image ->
+                    sheetsLoading.remove(index)
+                    if (board !== storyboard) return@target
+                    val bitmap = image.toBitmap()
+                    sheets[index] = bitmap
+                    val frame = previewFrame
+                    if (frame?.sheet == index && preview.visibility == View.VISIBLE) drawFrame(bitmap, board, frame)
+                },
+            )
+            .build()
+        SingletonImageLoader.get(this).enqueue(request)
+    }
+
+    /** Recorta o quadro da folha: a folha inteira na ImageView, com uma matriz que mostra só ele. */
+    private fun drawFrame(sheet: Bitmap, board: Storyboard, frame: Storyboard.Frame) {
+        val frameWidth = sheet.width / board.cols.toFloat()
+        val frameHeight = sheet.height / board.rows.toFloat()
+        val viewWidth = previewImage.width.takeIf { it > 0 } ?: previewImage.layoutParams.width
+        val viewHeight = previewImage.height.takeIf { it > 0 } ?: previewImage.layoutParams.height
+        if (frameWidth <= 0 || frameHeight <= 0 || viewWidth <= 0 || viewHeight <= 0) return
+        // Preenche o 16:9 da miniatura (corta um pouco se o quadro tiver outra proporção).
+        val scale = maxOf(viewWidth / frameWidth, viewHeight / frameHeight)
+        previewMatrix.setScale(scale, scale)
+        previewMatrix.postTranslate(
+            -frame.col * frameWidth * scale + (viewWidth - frameWidth * scale) / 2,
+            -frame.row * frameHeight * scale + (viewHeight - frameHeight * scale) / 2,
+        )
+        if ((previewImage.drawable as? BitmapDrawable)?.bitmap !== sheet) previewImage.setImageBitmap(sheet)
+        previewImage.imageMatrix = previewMatrix
+        previewImage.invalidate()
     }
 
     /**
@@ -726,6 +873,13 @@ class PlayerActivity : ComponentActivity() {
             visibility = if (touch) View.VISIBLE else View.GONE
         }
         island = PlayerIsland(playerView, tv = !touch).apply { fit(resources.configuration.screenWidthDp) }
+        timeBar = playerView.findViewById(R.id.exo_progress)
+        chapterView = playerView.findViewById(R.id.player_chapter)
+        islandView = playerView.findViewById(R.id.player_island)
+        preview = playerView.findViewById(R.id.player_preview)
+        previewImage = playerView.findViewById<ImageView>(R.id.player_preview_image).apply { clipToOutline = true }
+        previewChapter = playerView.findViewById(R.id.player_preview_chapter)
+        previewTime = playerView.findViewById(R.id.player_preview_time)
         sleepPanel = playerView.findViewById(R.id.player_sleep_panel)
         qualityButton = playerView.findViewById(R.id.player_quality_button)
         qualityPanel = playerView.findViewById(R.id.player_quality_panel)
@@ -842,6 +996,9 @@ class PlayerActivity : ComponentActivity() {
         private const val TURN_OFF_DELAY_MS = 10_000L
 
         private const val STEP_SECONDS = (TouchRules.SEEK_STEP_MS / 1000).toInt()
+
+        /** Folhas do storyboard guardadas (cada uma tem 25 quadros, uns 50 s de vídeo). */
+        private const val SHEETS_KEPT = 4
 
         /** O aviso dos toques fica este tempo e some em [FLASH_FADE_MS]. */
         private const val FLASH_MS = 450L

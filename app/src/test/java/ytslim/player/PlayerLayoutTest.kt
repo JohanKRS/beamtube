@@ -35,6 +35,10 @@ class PlayerLayoutTest {
             assertNotNull(view.findViewById<View>(R.id.exo_progress))
             // Botões que dependem do vídeo começam escondidos.
             assertEquals(View.GONE, view.findViewById<View>(R.id.player_captions).visibility)
+            // O nome do capítulo só com capítulos, e o preview só ao arrastar a barra.
+            assertEquals(View.GONE, view.findViewById<View>(R.id.player_chapter).visibility)
+            assertEquals(View.GONE, view.findViewById<View>(R.id.player_preview).visibility)
+            assertTrue(view.findViewById<View>(R.id.exo_progress) is ChapterTimeBar)
             assertEquals(View.GONE, view.findViewById<View>(R.id.player_actions).visibility)
             // A lua fica sempre; o painel de dormir só abre pelo botão.
             assertEquals(View.VISIBLE, view.findViewById<View>(R.id.player_sleep).visibility)

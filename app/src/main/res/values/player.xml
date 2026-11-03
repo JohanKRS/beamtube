@@ -28,6 +28,13 @@
     <dimen name="player_pill_button_size">32dp</dimen>
     <dimen name="player_pill_button_padding">7dp</dimen>
     <dimen name="player_subscribe_height">28dp</dimen>
+    <!-- A barra de tempo: a ChapterTimeBar usa as mesmas medidas para pôr a fresta dos capítulos. -->
+    <dimen name="player_bar_height">3dp</dimen>
+    <dimen name="player_scrubber_dragged">18dp</dimen>
+    <dimen name="player_chapter_gap">2dp</dimen>
+    <!-- O preview ao arrastar a barra: a miniatura (16:9) dentro de um cartão de vidro. -->
+    <dimen name="player_preview_width">168dp</dimen>
+    <dimen name="player_preview_height">90dp</dimen>
 
     <!-- Botão de ícone (like, legenda, lua…). -->
     <style name="PlayerButton">

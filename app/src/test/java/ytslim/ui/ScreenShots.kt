@@ -300,7 +300,7 @@ class ScreenShots {
      * O player de verdade (PlayerActivity) com os controles abertos e uma miniatura no lugar do
      * vídeo. Sem login, a pílula de cima (like, Save, Subscribe) aparece à mão.
      */
-    private fun playerShot(name: String, tv: Boolean = false, jumped: Boolean = false) {
+    private fun playerShot(name: String, tv: Boolean = false, jumped: Boolean = false, scrub: Boolean = false) {
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         val v = videos[1]
         val intent = ytslim.player.PlayerActivity.intent(context, v.id, v.title)
@@ -314,25 +314,60 @@ class ScreenShots {
         playerView.findViewById<android.view.View>(ytslim.R.id.player_captions)?.visibility = android.view.View.VISIBLE
         playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_channel)?.apply { text = v.channelName; visibility = android.view.View.VISIBLE }
         playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_quality_button)?.apply { text = if (tv) "2160p" else "1080p"; visibility = android.view.View.VISIBLE }
-        playerView.findViewById<android.widget.TextView>(androidx.media3.ui.R.id.exo_position)?.text = "4:12"
-        playerView.findViewById<android.widget.TextView>(androidx.media3.ui.R.id.exo_duration)?.text = "15:17"
-        playerView.findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)?.apply {
-            setDuration(917_000); setPosition(252_000); setBufferedPosition(400_000)
-        }
         playerView.showController()
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        // Os capítulos de 0e3GPea1Tyg (lidos em 2026-11-03), numa barra de 15:17 parada em 4:12.
+        val bar = playerView.findViewById<ytslim.player.ChapterTimeBar>(androidx.media3.ui.R.id.exo_progress)
+        bar.setDuration(917_000); bar.setPosition(252_000); bar.setBufferedPosition(400_000)
+        bar.setChapters(listOf(0L, 240_000L, 460_000L, 624_000L, 676_000L))
+        playerView.findViewById<android.widget.TextView>(androidx.media3.ui.R.id.exo_position)?.text = "4:12"
+        playerView.findViewById<android.widget.TextView>(androidx.media3.ui.R.id.exo_duration)?.text = "15:17"
+        playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_chapter)?.apply {
+            text = "Honeycomb"; visibility = if (scrub) android.view.View.GONE else android.view.View.VISIBLE
+        }
+        if (scrub) {
+            val preview = playerView.findViewById<android.view.View>(ytslim.R.id.player_preview)
+            playerView.findViewById<android.widget.ImageView>(ytslim.R.id.player_preview_image).apply {
+                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                clipToOutline = true
+                setImageBitmap(BitmapFactory.decodeFile(File(dir, "thumbs/${videos[4].id}.jpg").path))
+            }
+            playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_preview_chapter).text = "Tug Of War"
+            playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_preview_time).text = "8:12"
+            preview.visibility = android.view.View.VISIBLE
+            bar.setPosition(492_000)
+            relayout(activity)
+            ytslim.player.PlayerActivity::class.java.getDeclaredMethod("placePreview", Long::class.javaPrimitiveType)
+                .apply { isAccessible = true }
+                .invoke(activity, 492_000L)
+        }
         if (jumped) {
             ytslim.player.PlayerActivity::class.java
                 .getDeclaredMethod("flash", String::class.java, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
                 .apply { isAccessible = true }
                 .invoke(activity, activity.getString(ytslim.R.string.player_jumped_ahead), ytslim.R.drawable.ic_skip_ahead, android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL)
-            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            // O aviso some numa animação que o Robolectric termina na hora: segura ele na tela.
+            (ytslim.player.PlayerActivity::class.java.getDeclaredField("seekBadge").apply { isAccessible = true }.get(activity) as android.view.View).apply {
+                animate().cancel(); alpha = 1f; visibility = android.view.View.VISIBLE
+            }
         }
+        relayout(activity)
         val view = activity.window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
         view.draw(android.graphics.Canvas(bitmap))
         val out = File(dir, "out").apply { mkdirs() }
         File(out, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    /** Mede e arruma a tela de novo (o Robolectric não roda o quadro seguinte sozinho). */
+    private fun relayout(activity: android.app.Activity) {
+        activity.window.decorView.apply {
+            measure(
+                android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(height, android.view.View.MeasureSpec.EXACTLY),
+            )
+            layout(left, top, right, bottom)
+        }
     }
 
     @Test
@@ -346,6 +381,14 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
     fun playerPhoneJumped() = playerShot("player-phone-jumped", jumped = true)
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneScrub() = playerShot("player-phone-scrub", scrub = true)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvScrub() = playerShot("player-tv-scrub", tv = true, scrub = true)
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")

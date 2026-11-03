@@ -16,4 +16,7 @@
     <dimen name="player_pill_button_size">36dp</dimen>
     <dimen name="player_pill_button_padding">8dp</dimen>
     <dimen name="player_subscribe_height">32dp</dimen>
+    <dimen name="player_chapter_gap">3dp</dimen>
+    <dimen name="player_preview_width">216dp</dimen>
+    <dimen name="player_preview_height">117dp</dimen>
 </resources>

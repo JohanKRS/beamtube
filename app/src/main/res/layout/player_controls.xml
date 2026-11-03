@@ -7,6 +7,9 @@
   na TV ela vira duas linhas (PlayerIsland). Os tamanhos ficam em values/player.xml (compactos
   desde 2026-11-03, um pouco maiores na TV). Os painéis da resolução e do modo dormir abrem acima
   da ilha, à direita; as opções deles o PlayerActivity cria.
+  Os capítulos (2026-11-03): uma fresta na barra onde cada um começa (ChapterTimeBar) e o nome do
+  atual logo acima da ilha. Ao arrastar a barra, um cartão acima dela mostra a miniatura daquele
+  ponto, o nome do capítulo e o tempo (PlayerActivity.showPreview).
   Os ids exo_* são os que o PlayerControlView do Media3 procura; os player_* o app liga.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -219,11 +222,29 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- O capítulo em que o vídeo está (só em vídeos com capítulos). -->
+        <TextView
+            android:id="@+id/player_chapter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:layout_marginEnd="14dp"
+            android:layout_marginBottom="6dp"
+            android:ellipsize="end"
+            android:fontFamily="@font/figtree_semibold"
+            android:maxLines="1"
+            android:shadowColor="#B3000000"
+            android:shadowRadius="8"
+            android:textColor="@color/player_icon"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
         <!--
           A ilha. Numa tela estreita (o celular em pé) e na TV o PlayerIsland passa o tempo e a
           barra para a linha de cima (player_bar_row).
         -->
         <LinearLayout
+            android:id="@+id/player_island"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/player_island_bg"
@@ -267,7 +288,7 @@
                   As marcas claras na barra são onde começam os trechos que o público pula: avançar
                   dentro de um deles, ou logo antes, vai para o fim dele (PlayerActivity.jumpAhead).
                 -->
-                <androidx.media3.ui.DefaultTimeBar
+                <ytslim.player.ChapterTimeBar
                     android:id="@id/exo_progress"
                     android:layout_width="0dp"
                     android:layout_height="32dp"
@@ -275,11 +296,11 @@
                     android:focusable="true"
                     app:ad_marker_color="@color/player_icon"
                     app:ad_marker_width="3dp"
-                    app:bar_height="3dp"
+                    app:bar_height="@dimen/player_bar_height"
                     app:buffered_color="#61F3EFE4"
                     app:played_color="@color/player_accent"
                     app:scrubber_color="@color/player_accent"
-                    app:scrubber_dragged_size="18dp"
+                    app:scrubber_dragged_size="@dimen/player_scrubber_dragged"
                     app:scrubber_enabled_size="12dp"
                     app:touch_target_height="32dp"
                     app:unplayed_color="#38F3EFE4" />
@@ -348,5 +369,54 @@
                     android:src="@drawable/ic_bedtime" />
             </LinearLayout>
         </LinearLayout>
+    </LinearLayout>
+
+    <!--
+      O preview ao arrastar a barra: a miniatura do ponto (o storyboard do YouTube), o capítulo e o
+      tempo. O PlayerActivity põe o cartão acima da ilha, seguindo o círculo da barra.
+    -->
+    <LinearLayout
+        android:id="@+id/player_preview"
+        android:layout_width="@dimen/player_preview_width"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:background="@drawable/player_preview_bg"
+        android:orientation="vertical"
+        android:padding="4dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/player_preview_image"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/player_preview_height"
+            android:layout_marginBottom="3dp"
+            android:background="@drawable/player_preview_frame_bg"
+            android:importantForAccessibility="no"
+            android:scaleType="matrix" />
+
+        <TextView
+            android:id="@+id/player_preview_chapter"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:fontFamily="@font/figtree_semibold"
+            android:gravity="center"
+            android:maxLines="1"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:textColor="@color/player_icon"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/player_preview_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="3dp"
+            android:fontFamily="@font/figtree_medium"
+            android:fontFeatureSettings="tnum"
+            android:gravity="center"
+            android:textColor="@color/player_text_secondary"
+            android:textSize="12sp" />
     </LinearLayout>
 </FrameLayout>

@@ -31,6 +31,8 @@ data class PlaybackInfo(
     val audioLabels: List<String>,
     val clientName: String?,
     val captions: List<Caption>,
+    /** As miniaturas do preview ao arrastar a barra; null se o cliente do YouTube não mandou. */
+    val storyboard: Storyboard? = null,
 )
 
 sealed interface PlaybackResult {
@@ -126,6 +128,7 @@ object PlaybackRepository {
                     auto = sub.type == "asr" || sub.vssId?.startsWith("a.") == true,
                 )
             },
+            storyboard = if (isLive) null else Storyboard.from(runCatching { createStoryboard() }.getOrNull()),
         )
     }
 }
