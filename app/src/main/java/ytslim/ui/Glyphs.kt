@@ -10,6 +10,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.dp
 import kotlin.math.max
@@ -39,16 +41,66 @@ fun LightSlit(modifier: Modifier) {
     )
 }
 
-/** A porta entreaberta do ícone: só a fresta de luz, sem o fundo. */
+/**
+ * A porta entreaberta do ícone, sem o fundo: o brilho em volta, a fresta com o miolo mais claro
+ * e a luz no chão sumindo aos poucos. As medidas são as da grade de 108 do ícone
+ * (tools/make_icons.py), da altura 24 à 84, centralizadas na largura.
+ */
 @Composable
 fun DoorGlyph(modifier: Modifier) {
     Box(
         modifier.drawBehind {
-            val w = size.width
-            val h = size.height
-            drawRoundRect(Look.Glow.copy(alpha = 0.08f), Offset.Zero, Size(w, h), CornerRadius(w * 0.45f))
-            drawRoundRect(Look.Glow.copy(alpha = 0.16f), Offset(w * 0.17f, h * 0.05f), Size(w * 0.66f, h * 0.9f), CornerRadius(w * 0.3f))
-            drawRoundRect(Look.GlowSoft, Offset(w * 0.33f, h * 0.08f), Size(w * 0.34f, h * 0.84f), CornerRadius(w * 0.08f))
+            val s = size.height / 60f
+            fun x(v: Float) = size.width / 2 + (v - 54f) * s
+            fun y(v: Float) = (v - 24f) * s
+            val center = Offset(x(54f), y(52f))
+            withTransform({ scale(1f, 1.5f, center) }) {
+                drawCircle(
+                    Brush.radialGradient(
+                        0f to Look.Glow.copy(alpha = 0.55f),
+                        0.45f to Look.Glow.copy(alpha = 0.18f),
+                        1f to Color.Transparent,
+                        center = center,
+                        radius = 18f * s,
+                    ),
+                    radius = 18f * s,
+                    center = center,
+                )
+            }
+            val floor = Path().apply {
+                moveTo(x(51f), y(74f))
+                lineTo(x(57f), y(74f))
+                lineTo(x(71f), y(84f))
+                lineTo(x(37f), y(84f))
+                close()
+            }
+            drawPath(
+                floor,
+                Brush.verticalGradient(
+                    0f to Look.GlowSoft.copy(alpha = 0.42f),
+                    0.5f to Look.GlowSoft.copy(alpha = 0.14f),
+                    1f to Color.Transparent,
+                    startY = y(74f),
+                    endY = y(84f),
+                ),
+            )
+            drawRoundRect(Look.GlowSoft, Offset(x(51f), y(30f)), Size(6f * s, 44f * s), CornerRadius(s))
+            drawRoundRect(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.25f to SlitCore.copy(alpha = 0.8f),
+                    0.75f to SlitCore.copy(alpha = 0.8f),
+                    1f to Color.Transparent,
+                    startY = y(33f),
+                    endY = y(71f),
+                ),
+                Offset(x(53.4f), y(33f)),
+                Size(1.2f * s, 38f * s),
+                CornerRadius(0.6f * s),
+            )
         },
     )
 }
+
+/** O miolo da fresta: a luz misturada com branco, como no ícone. */
+private val SlitCore = Color(0xFFFFF4DA)
