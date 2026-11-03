@@ -10,6 +10,7 @@ import coil3.network.NetworkHeaders
 import coil3.network.NetworkRequest
 import coil3.network.NetworkResponse
 import coil3.network.NetworkResponseBody
+import coil3.request.crossfade
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -29,8 +30,13 @@ import kotlin.coroutines.resumeWithException
  *
  * Dois pedidos da mesma imagem ao mesmo tempo (o adiantado de [Thumbnails] e o da tela) baixam uma
  * vez só.
+ *
+ * As imagens que chegam da rede ou do disco entram num esmaecer curto ([FADE_MS]); as que já estão na
+ * memória (as adiantadas, ao voltar para uma tela) aparecem direto, sem animação.
  */
 object ImageHttp {
+    private const val FADE_MS = 120
+
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .dispatcher(Dispatcher().apply {
@@ -52,6 +58,7 @@ object ImageHttp {
                 ),
             )
         }
+        .crossfade(FADE_MS)
         .build()
 }
 

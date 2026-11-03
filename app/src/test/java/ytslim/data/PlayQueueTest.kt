@@ -75,6 +75,26 @@ class PlayQueueTest {
     }
 
     @Test
+    fun peekShowsTheNextWithoutAdvancing() {
+        PlayQueue.start(list, "a", page = null)
+        PlayQueue.setLeft(2)
+        assertEquals("b", PlayQueue.peek()?.id)
+        assertEquals("b", PlayQueue.peek()?.id)
+        assertEquals(2, PlayQueue.left.value)
+        assertEquals("b", runBlocking { PlayQueue.next() }?.id)
+        assertEquals("c", PlayQueue.peek()?.id)
+    }
+
+    @Test
+    fun peekRespectsTheLimitAndAnEmptySequence() {
+        PlayQueue.start(list, "a", page = null)
+        PlayQueue.setLeft(0)
+        assertNull(PlayQueue.peek())
+        PlayQueue.clear()
+        assertNull(PlayQueue.peek())
+    }
+
+    @Test
     fun unknownVideoStartsNoSequence() {
         PlayQueue.start(list, "zzz", page = null)
         assertFalse(PlayQueue.active.value)
