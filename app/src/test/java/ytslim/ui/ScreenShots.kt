@@ -274,7 +274,17 @@ class ScreenShots {
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
     fun phoneLoading() = shot("phone-loading") {
         MobileUi.Theme {
-            MobileUi.Home(HomeTab.RECOMMENDED, {}, {}) { MobileUi.Loadable<Unit>(UiState.Loading, {}) {} }
+            MobileUi.Home(HomeTab.RECOMMENDED, {}, {}) {
+                MobileUi.Loadable<Unit>(UiState.Loading, {}, placeholder = { MobileUi.VideoGridSkeleton() }) {}
+            }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvLoading() = shot("tv-loading") {
+        TvUi.Theme {
+            TvUi.Home(HomeTab.EXPLORE, {}, {}) { TvUi.GridSkeleton() }
         }
     }
 

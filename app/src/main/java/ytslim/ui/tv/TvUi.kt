@@ -1779,11 +1779,29 @@ object TvUi : Screens {
     }
 
     @Composable
+    internal fun GridSkeleton() {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            horizontalArrangement = Arrangement.spacedBy(GridGapX),
+            verticalArrangement = Arrangement.spacedBy(GridGapY),
+            contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
+            userScrollEnabled = false,
+        ) {
+            items(8) {
+                Column {
+                    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Look.Surface, CardShape))
+                    Box(Modifier.padding(top = 14.dp).fillMaxWidth(0.85f).height(16.dp).background(Look.Surface, RoundedCornerShape(6.dp)))
+                    Box(Modifier.padding(top = 10.dp).fillMaxWidth(0.5f).height(12.dp).background(Look.Surface, RoundedCornerShape(6.dp)))
+                }
+            }
+        }
+    }
+
+    @Composable
     private fun <T> Loadable(state: UiState<T>, onRetry: () -> Unit, content: @Composable (T) -> Unit) {
         when (state) {
-            UiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Text(stringResource(R.string.loading), style = MaterialTheme.typography.titleMedium)
-            }
+            // No lugar do "Loading…" (2026-11-03): cartões vazios onde os vídeos vão entrar, parados.
+            UiState.Loading -> GridSkeleton()
             is UiState.Error -> Column(
                 Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,

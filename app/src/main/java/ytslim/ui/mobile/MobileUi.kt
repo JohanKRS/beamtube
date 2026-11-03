@@ -216,6 +216,9 @@ private val TopBarHeight = 56.dp
 private val BottomBarHeight = 60.dp
 private val RailWidth = 80.dp
 
+/** Quantos cartões o esqueleto de carregamento mostra (o bastante para encher a tela). */
+private const val SKELETON_CARDS = 8
+
 /**
  * Quanto as barras de vidro cobrem de cada lado. O conteúdo ocupa a tela inteira e rola por baixo
  * delas; as listas usam isto no contentPadding para o primeiro e o último item ficarem visíveis.
@@ -654,7 +657,7 @@ object MobileUi : Screens {
     @Composable
     override fun Feed(vm: FeedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
-        Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
+        Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton() }) { content ->
             VideoGrid(content, emptyText = stringResource(R.string.feed_empty), onNearEnd = vm::loadMore, onPlay = onPlay, onOpenChannel = onOpenChannel)
         }
     }
@@ -663,7 +666,8 @@ object MobileUi : Screens {
     override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
         val filters by vm.filters.collectAsStateWithLifecycle()
-        Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
+        val filterRow: @Composable () -> Unit = { FilterRow(feedFilterChoices(filters), onChange = vm::setFilters, padding = PaddingValues(0.dp)) }
+        Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton(header = filterRow) }) { content ->
             VideoGrid(
                 content,
                 emptyText = stringResource(if (filters.isDefault) R.string.recommended_empty else R.string.recommended_filtered_empty),
@@ -671,7 +675,7 @@ object MobileUi : Screens {
                 onPlay = onPlay,
                 onOpenChannel = onOpenChannel,
                 // Os filtros rolam junto com a lista, no topo dela.
-                header = { FilterRow(feedFilterChoices(filters), onChange = vm::setFilters, padding = PaddingValues(0.dp)) },
+                header = filterRow,
             )
         }
     }
@@ -680,7 +684,7 @@ object MobileUi : Screens {
     override fun Explore(vm: ExploreViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
         val showIntro by vm.showIntro.collectAsStateWithLifecycle()
-        Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
+        Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton() }) { content ->
             VideoGrid(
                 content,
                 emptyText = stringResource(R.string.explore_empty),
@@ -803,7 +807,7 @@ object MobileUi : Screens {
             } else {
                 results?.let { state ->
                     CompositionLocalProvider(LocalBars provides PaddingValues(bottom = bars.calculateBottomPadding())) {
-                        Loadable(state, onRetry = { vm.search() }) { data ->
+                        Loadable(state, onRetry = { vm.search() }, placeholder = { VideoGridSkeleton(top = 12.dp) }) { data ->
                             SearchResults(data, onNearEnd = vm::loadMore, onPlay, onOpenChannel, onOpenPlaylist)
                         }
                     }
@@ -1822,6 +1826,47 @@ object MobileUi : Screens {
         }
     }
 
+    /**
+     * O esqueleto de uma grade de vídeos enquanto a primeira página carrega, no lugar do círculo
+     * (2026-11-03): os cartões aparecem no lugar onde os vídeos vão entrar. Parado, sem brilho
+     * correndo, para não custar nada enquanto a rede trabalha.
+     */
+    @Composable
+    internal fun VideoGridSkeleton(header: (@Composable () -> Unit)? = null, top: Dp = 20.dp) {
+        LazyVerticalGrid(
+            columns = videoColumns(),
+            contentPadding = barsPlus(top = top),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(26.dp),
+            userScrollEnabled = false,
+        ) {
+            if (header != null) item(span = { GridItemSpan(maxLineSpan) }) { header() }
+            items(SKELETON_CARDS) { SkeletonCard() }
+        }
+    }
+
+    @Composable
+    private fun SkeletonCard() {
+        Column(Modifier.fillMaxWidth()) {
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Look.Surface, RoundedCornerShape(14.dp)))
+            Spacer(Modifier.height(14.dp))
+            Bone(Modifier.fillMaxWidth(0.88f).height(13.dp))
+            Spacer(Modifier.height(8.dp))
+            Bone(Modifier.fillMaxWidth(0.5f).height(13.dp))
+            Spacer(Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(18.dp).background(Look.Surface, CircleShape))
+                Spacer(Modifier.width(8.dp))
+                Bone(Modifier.width(132.dp).height(10.dp))
+            }
+        }
+    }
+
+    @Composable
+    private fun Bone(modifier: Modifier) {
+        Box(modifier.background(Look.Surface, RoundedCornerShape(6.dp)))
+    }
+
     @Composable
     private fun Progress() {
         Box(Modifier.fillMaxWidth().padding(16.dp), Alignment.Center) { CircularProgressIndicator() }
@@ -1851,9 +1896,16 @@ object MobileUi : Screens {
      */
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    internal fun <T> Loadable(state: UiState<T>, onRetry: () -> Unit, refresh: Refreshable? = null, content: @Composable (T) -> Unit) {
+    internal fun <T> Loadable(
+        state: UiState<T>,
+        onRetry: () -> Unit,
+        refresh: Refreshable? = null,
+        placeholder: (@Composable () -> Unit)? = null,
+        content: @Composable (T) -> Unit,
+    ) {
         when (state) {
-            UiState.Loading -> Box(Modifier.fillMaxSize().padding(LocalBars.current), Alignment.Center) { CircularProgressIndicator() }
+            UiState.Loading -> placeholder?.invoke()
+                ?: Box(Modifier.fillMaxSize().padding(LocalBars.current), Alignment.Center) { CircularProgressIndicator() }
             is UiState.Error -> Column(
                 Modifier.fillMaxSize().padding(LocalBars.current).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
