@@ -1,8 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Na TV, os controles ficam dentro da área segura da tela (overscan) e o título cresce um pouco. -->
+<!--
+  Na TV, os controles ficam dentro da área segura da tela (overscan), o título pode ir a duas
+  linhas e os botões ficam um pouco maiores que no celular, para o foco do D-pad aparecer bem.
+-->
 <resources>
     <dimen name="player_edge">48dp</dimen>
     <dimen name="player_edge_top">27dp</dimen>
     <dimen name="player_edge_bottom">27dp</dimen>
-    <dimen name="player_title_size">20sp</dimen>
+    <dimen name="player_title_size">18sp</dimen>
+    <integer name="player_title_lines">2</integer>
+    <dimen name="player_row_height">52dp</dimen>
+    <dimen name="player_play_size">42dp</dimen>
+    <dimen name="player_button_size">40dp</dimen>
+    <dimen name="player_button_padding">10dp</dimen>
+    <dimen name="player_pill_button_size">36dp</dimen>
+    <dimen name="player_pill_button_padding">8dp</dimen>
+    <dimen name="player_subscribe_height">32dp</dimen>
 </resources>

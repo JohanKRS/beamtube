@@ -2,9 +2,10 @@
 <!--
   Controles do player (opção A, escolhida pelo Johan em 2026-11-02).
   Em cima: título, canal (abre a página dele) e, à direita, uma pílula de vidro com like, dislike,
-  Save e Subscribe. Embaixo: uma ilha de vidro com tocar/pausar, tempo, barra, pular partes,
-  legenda, resolução, girar a tela (só no celular e no tablet) e o modo dormir (lua); no celular
-  em pé ela vira duas linhas (PlayerIsland). Os painéis da resolução e do modo dormir abrem acima
+  Save e Subscribe. Embaixo: uma ilha de vidro com tocar/pausar, tempo, barra, legenda,
+  resolução, girar a tela (só no celular e no tablet) e o modo dormir (lua); no celular em pé e
+  na TV ela vira duas linhas (PlayerIsland). Os tamanhos ficam em values/player.xml (compactos
+  desde 2026-11-03, um pouco maiores na TV). Os painéis da resolução e do modo dormir abrem acima
   da ilha, à direita; as opções deles o PlayerActivity cria.
   Os ids exo_* são os que o PlayerControlView do Media3 procura; os player_* o app liga.
 -->
@@ -16,7 +17,7 @@
 
     <View
         android:layout_width="match_parent"
-        android:layout_height="140dp"
+        android:layout_height="112dp"
         android:layout_gravity="bottom"
         android:background="@drawable/player_scrim_bottom" />
 
@@ -31,7 +32,7 @@
         android:paddingStart="@dimen/player_edge"
         android:paddingTop="@dimen/player_edge_top"
         android:paddingEnd="@dimen/player_edge"
-        android:paddingBottom="48dp">
+        android:paddingBottom="32dp">
 
         <LinearLayout
             android:layout_width="0dp"
@@ -45,14 +46,13 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:fontFamily="@font/figtree_semibold"
-                android:maxLines="2"
+                android:maxLines="@integer/player_title_lines"
                 android:textColor="@color/player_icon"
                 android:textSize="@dimen/player_title_size" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -60,7 +60,7 @@
                 <TextView
                     android:id="@+id/player_channel"
                     android:layout_width="wrap_content"
-                    android:layout_height="28dp"
+                    android:layout_height="26dp"
                     android:layout_marginStart="-8dp"
                     android:background="@drawable/player_button_bg"
                     android:clickable="true"
@@ -96,7 +96,7 @@
             android:background="@drawable/player_pill_bg"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="4dp"
+            android:padding="3dp"
             android:visibility="gone">
 
             <ImageButton
@@ -121,15 +121,15 @@
             <TextView
                 android:id="@+id/player_subscribe"
                 android:layout_width="wrap_content"
-                android:layout_height="32dp"
+                android:layout_height="@dimen/player_subscribe_height"
                 android:layout_marginStart="4dp"
                 android:background="@drawable/player_subscribe_bg"
                 android:clickable="true"
                 android:focusable="true"
                 android:fontFamily="@font/figtree_semibold"
                 android:gravity="center"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
                 android:text="@string/player_subscribe"
                 android:textColor="@color/player_subscribe_text"
                 android:textSize="13sp" />
@@ -220,8 +220,8 @@
         </LinearLayout>
 
         <!--
-          A ilha. Numa tela estreita (o celular em pé) o PlayerActivity.fitIsland passa o tempo e
-          a barra para a linha de cima (player_bar_row) e deixa o Skip ahead só com o ícone.
+          A ilha. Numa tela estreita (o celular em pé) e na TV o PlayerIsland passa o tempo e a
+          barra para a linha de cima (player_bar_row).
         -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -234,8 +234,8 @@
             <LinearLayout
                 android:id="@+id/player_bar_row"
                 android:layout_width="match_parent"
-                android:layout_height="40dp"
-                android:layout_marginTop="6dp"
+                android:layout_height="36dp"
+                android:layout_marginTop="4dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:visibility="gone" />
@@ -243,18 +243,18 @@
             <LinearLayout
                 android:id="@+id/player_button_row"
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
+                android:layout_height="@dimen/player_row_height"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
                 <ImageButton
                     android:id="@id/exo_play_pause"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
+                    android:layout_width="@dimen/player_play_size"
+                    android:layout_height="@dimen/player_play_size"
                     android:background="@drawable/player_play_bg"
                     android:contentDescription="@string/player_play_pause"
                     android:focusable="true"
-                    android:padding="12dp"
+                    android:padding="11dp"
                     android:scaleType="fitCenter"
                     android:tint="@color/player_on_light" />
 
@@ -263,7 +263,10 @@
                     style="@style/PlayerTime"
                     android:layout_marginStart="6dp" />
 
-                <!-- As marcas claras na barra são onde começam os trechos que o "Skip ahead" pula. -->
+                <!--
+                  As marcas claras na barra são onde começam os trechos que o público pula: avançar
+                  dentro de um deles, ou logo antes, vai para o fim dele (PlayerActivity.jumpAhead).
+                -->
                 <androidx.media3.ui.DefaultTimeBar
                     android:id="@id/exo_progress"
                     android:layout_width="0dp"
@@ -300,13 +303,6 @@
                     android:layout_width="0dp"
                     android:layout_height="1dp"
                     android:layout_weight="1"
-                    android:visibility="gone" />
-
-                <TextView
-                    android:id="@+id/player_skip"
-                    style="@style/PlayerTextButton"
-                    android:drawableStart="@drawable/ic_skip_ahead"
-                    android:text="@string/player_skip"
                     android:visibility="gone" />
 
                 <ImageButton

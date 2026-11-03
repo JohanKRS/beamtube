@@ -38,13 +38,16 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
+import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
+import androidx.media3.ui.TimeBar
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -84,7 +87,6 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var subscribeButton: TextView
     private lateinit var saveButton: ImageButton
     private lateinit var channelButton: TextView
-    private lateinit var skipButton: TextView
     private lateinit var captionsButton: ImageButton
     private lateinit var sleepButton: ImageButton
     private lateinit var rotateButton: ImageButton
@@ -122,7 +124,7 @@ class PlayerActivity : ComponentActivity() {
     /** As resoluções que o painel de qualidade mostra agora. */
     private var qualityHeights: List<Int> = emptyList()
 
-    /** Os trechos do "Skip ahead" marcados agora na barra de tempo. */
+    /** Os trechos que o avanço pula inteiros, marcados agora na barra de tempo. */
     private var shownSkipSpots: List<Long> = emptyList()
 
     /** Celular ou tablet (toques no vídeo, girar a tela, 1080p). */
@@ -173,7 +175,7 @@ class PlayerActivity : ComponentActivity() {
         playerView.player = controller.player
         controller.player.addListener(PlayerScreenListener())
         bindButtons()
-        if (touch) bindTouchGestures()
+        if (touch) bindTouchGestures() else bindTimeBarJump()
         buildSleepPanel()
         // O brilho escolhido num vídeo vale para os próximos, até fechar o app (pedido do Johan, 2026-11-03).
         if (sessionBrightness < 100) setBrightness(sessionBrightness)
@@ -283,7 +285,6 @@ class PlayerActivity : ComponentActivity() {
         saveButton.setImageResource(if (controls.saved == true) R.drawable.ic_bookmark else R.drawable.ic_bookmark_border)
         saveButton.setActive(controls.saved == true)
         saveButton.contentDescription = getString(if (controls.saved == true) R.string.player_saved else R.string.player_save)
-        skipButton.visibility = if (controls.skipAvailable) View.VISIBLE else View.GONE
         if (controls.skipSpots != shownSkipSpots) {
             shownSkipSpots = controls.skipSpots
             playerView.setExtraAdGroupMarkers(controls.skipSpots.toLongArray(), BooleanArray(controls.skipSpots.size))
@@ -306,9 +307,6 @@ class PlayerActivity : ComponentActivity() {
             finish()
         }
         captionsButton.setOnClickListener { controller.toggleCaptions() }
-        skipButton.setOnClickListener {
-            if (!controller.skipAhead()) Toast.makeText(this, R.string.player_no_highlight, Toast.LENGTH_SHORT).show()
-        }
         sleepButton.setOnClickListener { togglePanel(sleepPanel) }
         rotateButton.setOnClickListener { rotate() }
         qualityButton.setOnClickListener { togglePanel(qualityPanel) }
@@ -510,6 +508,14 @@ class PlayerActivity : ComponentActivity() {
             cancelTurnOff(announce = true)
             return true
         }
+        // A tecla de avançar do controle remoto também pula o trecho (sem ele, o PlayerView avança 15 s).
+        if (event.keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+            ::controller.isInitialized
+        ) {
+            val player = controller.player
+            val from = player.currentPosition
+            if (jumpAhead(from, from + player.seekForwardIncrement)) return true
+        }
         return super.dispatchKeyEvent(event)
     }
 
@@ -546,7 +552,8 @@ class PlayerActivity : ComponentActivity() {
     /**
      * Toques no vídeo ([TouchRules]): um toque mostra ou esconde os controles (o PlayerView faz
      * isso no performClick); dois toques nos lados voltam ou avançam 10 s, e cada toque a mais do
-     * mesmo lado logo em seguida soma outros 10 s; dois toques no meio pausam ou tocam.
+     * mesmo lado logo em seguida soma outros 10 s; dois toques no meio pausam ou tocam. Avançar
+     * dentro de um trecho que o público pula, ou logo antes dele, vai para o fim do trecho ([jumpAhead]).
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun bindTouchGestures() {
@@ -587,13 +594,61 @@ class PlayerActivity : ComponentActivity() {
         streakZone = zone
         streakUntil = now + TouchRules.STREAK_MS
         val player = controller.player
-        player.seekTo(TouchRules.seekTarget(player.currentPosition, player.duration, zone))
+        val from = player.currentPosition
+        val to = TouchRules.seekTarget(from, player.duration, zone)
+        if (zone == TouchRules.Zone.FORWARD && jumpAhead(from, to)) {
+            // O próximo toque do mesmo lado volta a contar do zero: "+10 s" a partir do fim do trecho.
+            streakSeconds = 0
+            return
+        }
+        player.seekTo(to)
         val back = zone == TouchRules.Zone.BACK
         flash(
             text = getString(if (back) R.string.player_seek_back else R.string.player_seek_forward, streakSeconds),
             icon = 0,
             gravity = (if (back) Gravity.START else Gravity.END) or Gravity.CENTER_VERTICAL,
         )
+    }
+
+    /**
+     * TV: na barra de tempo, direita avança o vídeo (o DefaultTimeBar arrasta e solta sozinho 1 s
+     * depois da última tecla). Se o avanço começou dentro de um trecho que o público pula, ou logo
+     * antes dele, vai para o fim do trecho. Este ouvinte entra depois do do PlayerControlView, então
+     * o pulo vem depois do seek normal e fica valendo.
+     */
+    private fun bindTimeBarJump() {
+        playerView.findViewById<DefaultTimeBar>(R.id.exo_progress).addListener(
+            object : TimeBar.OnScrubListener {
+                private var from = C.TIME_UNSET
+
+                override fun onScrubStart(timeBar: TimeBar, position: Long) {
+                    from = controller.player.currentPosition
+                }
+
+                override fun onScrubMove(timeBar: TimeBar, position: Long) = Unit
+
+                override fun onScrubStop(timeBar: TimeBar, position: Long, canceled: Boolean) {
+                    if (!canceled && from != C.TIME_UNSET && position > from) jumpAhead(from, position)
+                    from = C.TIME_UNSET
+                }
+            },
+        )
+    }
+
+    /**
+     * Um avanço de [from] até [to] que começa dentro de um trecho que o público pula, ou logo antes
+     * dele, vai direto para o fim do trecho, como no app do YouTube ([PlaybackController.jumpAhead]).
+     * false = avanço normal, a cargo de quem chamou.
+     */
+    private fun jumpAhead(from: Long, to: Long): Boolean {
+        val end = controller.jumpAhead(from, to) ?: return false
+        controller.player.seekTo(end)
+        flash(
+            text = getString(R.string.player_jumped_ahead),
+            icon = R.drawable.ic_skip_ahead,
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL,
+        )
+        return true
     }
 
     private fun togglePlay() {
@@ -604,7 +659,7 @@ class PlayerActivity : ComponentActivity() {
         flash(text = "", icon = icon, gravity = Gravity.CENTER)
     }
 
-    /** Um aviso rápido por cima do vídeo (o pulo de 10 s ou o tocar/pausar). */
+    /** Um aviso rápido por cima do vídeo (o pulo de 10 s, o do trecho ou o tocar/pausar). */
     private fun flash(text: String, icon: Int, gravity: Int) {
         seekBadge.animate().cancel()
         seekBadge.text = text
@@ -665,7 +720,6 @@ class PlayerActivity : ComponentActivity() {
         subscribeButton = playerView.findViewById(R.id.player_subscribe)
         saveButton = playerView.findViewById(R.id.player_save)
         channelButton = playerView.findViewById(R.id.player_channel)
-        skipButton = playerView.findViewById(R.id.player_skip)
         captionsButton = playerView.findViewById(R.id.player_captions)
         sleepButton = playerView.findViewById(R.id.player_sleep)
         rotateButton = playerView.findViewById<ImageButton>(R.id.player_rotate).apply {

@@ -34,7 +34,6 @@ class PlayerLayoutTest {
             assertNotNull(view.findViewById<View>(R.id.exo_play_pause))
             assertNotNull(view.findViewById<View>(R.id.exo_progress))
             // Botões que dependem do vídeo começam escondidos.
-            assertEquals(View.GONE, view.findViewById<View>(R.id.player_skip).visibility)
             assertEquals(View.GONE, view.findViewById<View>(R.id.player_captions).visibility)
             assertEquals(View.GONE, view.findViewById<View>(R.id.player_actions).visibility)
             // A lua fica sempre; o painel de dormir só abre pelo botão.

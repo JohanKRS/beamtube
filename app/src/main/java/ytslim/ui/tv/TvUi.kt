@@ -141,6 +141,8 @@ import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
 import ytslim.ui.LightSlit
+import ytslim.ui.MetaLine
+import ytslim.ui.metaAfterChannel
 import ytslim.ui.Look
 import ytslim.ui.Notice
 import ytslim.ui.Notices
@@ -529,7 +531,7 @@ object TvUi : Screens {
 
     /** Os filtros (busca e Recomendações): cada botão abre a lista dos valores, com o atual em foco. */
     @Composable
-    private fun FilterButtons(choices: List<SearchFilterChoice>, onChange: (SearchFilters) -> Unit) {
+    internal fun FilterButtons(choices: List<SearchFilterChoice>, onChange: (SearchFilters) -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             choices.forEach { choice ->
                 key(choice.label) {
@@ -644,7 +646,7 @@ object TvUi : Screens {
     }
 
     @Composable
-    private fun PlaylistGrid(playlists: List<Playlist>, onOpen: (Playlist) -> Unit) {
+    internal fun PlaylistGrid(playlists: List<Playlist>, onOpen: (Playlist) -> Unit) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
@@ -1195,7 +1197,7 @@ object TvUi : Screens {
     }
 
     @Composable
-    private fun VideoGrid(
+    internal fun VideoGrid(
         content: VideoListContent,
         emptyText: String,
         onNearEnd: () -> Unit,
@@ -1336,7 +1338,7 @@ object TvUi : Screens {
                     )
                 }
             }
-            CardText(video.title, subtitleOf(video))
+            VideoText(video)
         }
     }
 
@@ -1524,6 +1526,26 @@ object TvUi : Screens {
             modifier = modifier.padding(8.dp)
                 .background(color, RoundedCornerShape(6.dp))
                 .padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
+
+    /**
+     * O título e, embaixo, o canal numa linha e o resto (visualizações, data) na outra, em vez de
+     * os dois numa linha só, cortados.
+     */
+    @Composable
+    private fun VideoText(video: Video) {
+        val name = video.channelName?.takeIf { it.isNotBlank() }
+        if (video.fromPlaylist != null || name == null) return CardText(video.title, subtitleOf(video))
+        CardText(video.title, null)
+        val style = MaterialTheme.typography.bodySmall
+        val rest = metaAfterChannel(video.info, name, video.published)
+        MetaLine(
+            channel = { Text(name, style = style, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            rest = rest?.let { { Text(rest, style = style, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            separator = { Text(" · ", style = style, color = Look.Sub) },
+            modifier = Modifier.padding(top = 2.dp, start = 2.dp, end = 2.dp),
+            stacked = true,
         )
     }
 

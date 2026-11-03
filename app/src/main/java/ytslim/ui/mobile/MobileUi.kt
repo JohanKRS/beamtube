@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,7 +41,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridItemScope
@@ -50,7 +50,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -93,8 +92,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Typography
@@ -178,6 +177,7 @@ import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
 import ytslim.ui.LightSlit
+import ytslim.ui.MetaLine
 import ytslim.ui.ListMotion
 import ytslim.ui.Look
 import ytslim.ui.Notice
@@ -600,7 +600,7 @@ object MobileUi : Screens {
 
     /** Página fora das abas (playlist, canal): barra de vidro com o Voltar, e o conteúdo rolando por baixo. */
     @Composable
-    private fun DetailFrame(
+    internal fun DetailFrame(
         title: String,
         navigation: @Composable () -> Unit,
         actions: @Composable RowScope.() -> Unit = {},
@@ -803,7 +803,7 @@ object MobileUi : Screens {
 
     /** Os filtros (busca e Recomendações): um chip por filtro, cada um com o menu dos valores. */
     @Composable
-    private fun FilterRow(
+    internal fun FilterRow(
         choices: List<SearchFilterChoice>,
         onChange: (SearchFilters) -> Unit,
         padding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
@@ -856,7 +856,7 @@ object MobileUi : Screens {
     }
 
     @Composable
-    private fun SearchResults(
+    internal fun SearchResults(
         data: SearchViewModel.Results,
         onNearEnd: () -> Unit,
         onPlay: (Video) -> Unit,
@@ -902,7 +902,7 @@ object MobileUi : Screens {
     }
 
     @Composable
-    private fun PlaylistGrid(playlists: List<Playlist>, onOpen: (Playlist) -> Unit, header: (@Composable () -> Unit)? = null) {
+    internal fun PlaylistGrid(playlists: List<Playlist>, onOpen: (Playlist) -> Unit, header: (@Composable () -> Unit)? = null) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 340.dp),
             contentPadding = barsPlus(top = 12.dp),
@@ -927,149 +927,175 @@ object MobileUi : Screens {
         // Tópico aberto no diálogo: a lista e a posição (null = tópico novo).
         var editing by remember { mutableStateOf<Pair<TopicList, Int?>?>(null) }
 
+        // Em grupos (cartões arredondados com as linhas dentro), com a explicação embaixo de cada
+        // um, em letra pequena. A conta fica em cima: as Configurações abrem pelo avatar.
         LazyColumn(
-            Modifier.fillMaxSize().widthIn(max = 760.dp),
-            contentPadding = barsPlus(start = 0.dp, top = 4.dp, end = 0.dp),
+            Modifier.fillMaxSize(),
+            contentPadding = barsPlus(top = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            item { SectionTitle(stringResource(R.string.settings_subscriptions)) }
-            item {
-                ListItem(
-                    headlineContent = { Text(stringResource(R.string.settings_show_lives)) },
-                    supportingContent = { Text(stringResource(R.string.settings_show_lives_desc)) },
-                    trailingContent = { Switch(checked = settings.showLives, onCheckedChange = null) },
-                    modifier = Modifier.clickable(role = Role.Switch) { vm.setShowLives(!settings.showLives) },
-                )
-            }
-
-            item { SectionTitle(stringResource(R.string.settings_save_target)) }
-            item {
-                val target = settings.saveTarget.title ?: stringResource(R.string.watch_later)
-                ListItem(
-                    headlineContent = { Text(stringResource(R.string.settings_save_target_current, target)) },
-                    supportingContent = { Text(stringResource(R.string.settings_save_target_choose)) },
-                    trailingContent = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
-                    modifier = Modifier.clickable {
-                        choosingTarget = !choosingTarget
-                        if (choosingTarget) vm.loadOwnPlaylists()
-                    },
-                )
-            }
-            if (choosingTarget) {
-                when (val own = ownPlaylists) {
-                    null, UiState.Loading -> item { Progress() }
-                    is UiState.Error -> item { ErrorRow(own.message, onRetry = vm::loadOwnPlaylists) }
-                    is UiState.Ready -> items(own.data, key = { "target:" + it.id }) { playlist ->
-                        val selected = playlist.id == settings.saveTarget.playlistId
-                        ListItem(
-                            headlineContent = { Text(playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            leadingContent = { RadioButton(selected = selected, onClick = null) },
-                            modifier = Modifier.selectable(selected = selected, role = Role.RadioButton) {
-                                vm.setSaveTarget(playlist)
-                                choosingTarget = false
-                            },
-                        )
+            item(key = "account") {
+                SettingsGroup(null) {
+                    val account = remember { AuthRepository.account() }
+                    val name = account?.name ?: vm.accountName
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Avatar(name.orEmpty().ifBlank { "?" }, account?.photo, 44.dp)
+                        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                            Text(name.orEmpty(), style = RowTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(stringResource(R.string.settings_account), style = Meta)
+                        }
+                        TextButton(onClick = { vm.signOut(onSignedOut) }) { Text(stringResource(R.string.sign_out)) }
                     }
                 }
             }
 
-            topicSection(
-                title = R.string.settings_excluded,
-                hint = R.string.settings_excluded_hint,
-                topics = settings.filters.excluded,
-                onEdit = { editing = TopicList.EXCLUDED to it },
-                onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
-            )
-            topicSection(
-                title = R.string.settings_preferred,
-                hint = R.string.settings_preferred_hint,
-                topics = settings.filters.preferred,
-                onEdit = { editing = TopicList.PREFERRED to it },
-                onRemove = { vm.removeTopic(TopicList.PREFERRED, it) },
-            )
-
-            item { SectionTitle(stringResource(R.string.settings_blocked)) }
-            item { Hint(stringResource(R.string.settings_blocked_hint)) }
-            if (settings.filters.blocked.isEmpty()) {
-                item { EmptyLine(stringResource(R.string.settings_blocked_empty)) }
+            item(key = "subscriptions") {
+                SettingsGroup(stringResource(R.string.settings_subscriptions)) {
+                    SettingsRow(
+                        title = stringResource(R.string.settings_show_lives),
+                        subtitle = stringResource(R.string.settings_show_lives_desc),
+                        modifier = Modifier.clickable(role = Role.Switch) { vm.setShowLives(!settings.showLives) },
+                    ) { SettingsSwitch(settings.showLives) }
+                }
             }
-            items(settings.filters.blocked, key = { "blocked:" + it.id }) { channel ->
-                ListItem(
-                    headlineContent = { Text(channel.name.ifBlank { channel.id }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    trailingContent = { TextButton(onClick = { vm.unblock(channel.id) }) { Text(stringResource(R.string.unblock)) } },
+
+            item(key = "save") {
+                SettingsGroup(stringResource(R.string.settings_save_target)) {
+                    val target = settings.saveTarget.title ?: stringResource(R.string.watch_later)
+                    SettingsRow(
+                        title = stringResource(R.string.settings_save_target_row),
+                        modifier = Modifier.clickable {
+                            choosingTarget = !choosingTarget
+                            if (choosingTarget) vm.loadOwnPlaylists()
+                        },
+                    ) { Value(target, open = choosingTarget) }
+                    if (choosingTarget) {
+                        when (val own = ownPlaylists) {
+                            null, UiState.Loading -> { RowDivider(); Progress() }
+                            is UiState.Error -> { RowDivider(); ErrorRow(own.message, onRetry = vm::loadOwnPlaylists) }
+                            is UiState.Ready -> own.data.forEach { playlist ->
+                                val selected = playlist.id == settings.saveTarget.playlistId
+                                RowDivider()
+                                SettingsRow(
+                                    title = playlist.title,
+                                    modifier = Modifier.selectable(selected = selected, role = Role.RadioButton) {
+                                        vm.setSaveTarget(playlist)
+                                        choosingTarget = false
+                                    },
+                                    indent = true,
+                                ) { if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(20.dp)) }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item(key = "excluded") {
+                TopicGroup(
+                    title = R.string.settings_excluded,
+                    hint = R.string.settings_excluded_hint,
+                    topics = settings.filters.excluded,
+                    onEdit = { editing = TopicList.EXCLUDED to it },
+                    onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
+                )
+            }
+            item(key = "preferred") {
+                TopicGroup(
+                    title = R.string.settings_preferred,
+                    hint = R.string.settings_preferred_hint,
+                    topics = settings.filters.preferred,
+                    onEdit = { editing = TopicList.PREFERRED to it },
+                    onRemove = { vm.removeTopic(TopicList.PREFERRED, it) },
                 )
             }
 
-            item { SectionTitle(stringResource(R.string.settings_links)) }
-            items(externalLinkOptions) { (mode, label) ->
-                ListItem(
-                    headlineContent = { Text(stringResource(label)) },
-                    leadingContent = { RadioButton(selected = settings.externalLinks == mode, onClick = null) },
-                    modifier = Modifier.selectable(
-                        selected = settings.externalLinks == mode,
-                        role = Role.RadioButton,
-                        onClick = { vm.setExternalLinks(mode) },
-                    ),
-                )
+            item(key = "blocked") {
+                SettingsGroup(stringResource(R.string.settings_blocked), hint = stringResource(R.string.settings_blocked_hint)) {
+                    if (settings.filters.blocked.isEmpty()) EmptyRow(stringResource(R.string.settings_blocked_empty))
+                    settings.filters.blocked.forEachIndexed { i, channel ->
+                        if (i > 0) RowDivider()
+                        SettingsRow(title = channel.name.ifBlank { channel.id }) {
+                            TextButton(onClick = { vm.unblock(channel.id) }) { Text(stringResource(R.string.unblock)) }
+                        }
+                    }
+                }
             }
 
-            item { SectionTitle(stringResource(R.string.settings_playlists)) }
-            item { Hint(stringResource(R.string.settings_playlists_hint)) }
-            error?.let { message ->
-                item {
+            item(key = "links") {
+                SettingsGroup(stringResource(R.string.settings_links)) {
+                    externalLinkOptions.forEachIndexed { i, (mode, label) ->
+                        if (i > 0) RowDivider()
+                        val selected = settings.externalLinks == mode
+                        SettingsRow(
+                            title = stringResource(label),
+                            modifier = Modifier.selectable(selected = selected, role = Role.RadioButton) { vm.setExternalLinks(mode) },
+                        ) { if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(20.dp)) }
+                    }
+                }
+            }
+
+            item(key = "playlists") {
+                SettingsGroup(stringResource(R.string.settings_playlists), hint = stringResource(R.string.settings_playlists_hint)) {
+                    error?.let { message ->
+                        Text(
+                            stringResource(R.string.action_failed, message),
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        )
+                    }
+                    when (val p = playlists) {
+                        UiState.Loading -> Progress()
+                        is UiState.Error -> ErrorRow(p.message, onRetry = vm::reloadPlaylists)
+                        is UiState.Ready -> {
+                            if (p.data.isEmpty()) EmptyRow(stringResource(R.string.settings_playlists_empty))
+                            p.data.forEachIndexed { i, item ->
+                                if (i > 0) RowDivider()
+                                Row(
+                                    Modifier.fillMaxWidth().clickable { onOpenPlaylist(item.playlist) }
+                                        .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Thumbnail(item.playlist.thumbnailUrl, Modifier.width(80.dp), corner = 8.dp)
+                                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                                        Text(item.playlist.title, style = RowTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        item.playlist.info?.let { Text(it, style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                    }
+                                    if (item.busy) {
+                                        CircularProgressIndicator(Modifier.padding(horizontal = 12.dp).size(22.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        TextButton(onClick = { vm.unsubscribe(item.playlist) }) { Text(stringResource(R.string.settings_unsubscribe)) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item(key = "icon") {
+                // As sete cores lado a lado; a escolhida ganha um anel âmbar e o nome embaixo.
+                SettingsGroup(stringResource(R.string.settings_app_icon), hint = stringResource(R.string.settings_app_icon_hint)) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        AppIcon.entries.forEach { icon ->
+                            val selected = appIcon == icon
+                            Box(
+                                Modifier.size(44.dp).clip(CircleShape)
+                                    .border(2.dp, if (selected) Look.Glow else Color.Transparent, CircleShape)
+                                    .selectable(selected = selected, role = Role.RadioButton) { vm.setAppIcon(icon) },
+                                contentAlignment = Alignment.Center,
+                            ) { AppIconPreview(icon, 36.dp) }
+                        }
+                    }
                     Text(
-                        stringResource(R.string.action_failed, message),
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        stringResource(appIcon.label),
+                        style = Meta,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 14.dp),
                     )
                 }
-            }
-            when (val p = playlists) {
-                UiState.Loading -> item { Progress() }
-                is UiState.Error -> item { ErrorRow(p.message, onRetry = vm::reloadPlaylists) }
-                is UiState.Ready -> {
-                    if (p.data.isEmpty()) {
-                        item { EmptyLine(stringResource(R.string.settings_playlists_empty)) }
-                    }
-                    items(p.data, key = { it.playlist.browseId }) { item ->
-                        ListItem(
-                            headlineContent = { Text(item.playlist.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                            supportingContent = item.playlist.info?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
-                            leadingContent = { Thumbnail(item.playlist.thumbnailUrl, Modifier.width(96.dp), corner = 8.dp) },
-                            trailingContent = {
-                                if (item.busy) CircularProgressIndicator(Modifier.size(24.dp))
-                                else TextButton(onClick = { vm.unsubscribe(item.playlist) }) {
-                                    Text(stringResource(R.string.settings_unsubscribe))
-                                }
-                            },
-                            modifier = Modifier.clickable { onOpenPlaylist(item.playlist) },
-                        )
-                    }
-                }
-            }
-
-            item { SectionTitle(stringResource(R.string.settings_app_icon)) }
-            item { Hint(stringResource(R.string.settings_app_icon_hint)) }
-            items(AppIcon.entries) { icon ->
-                ListItem(
-                    headlineContent = { Text(stringResource(icon.label)) },
-                    leadingContent = { AppIconPreview(icon) },
-                    trailingContent = { RadioButton(selected = appIcon == icon, onClick = null) },
-                    modifier = Modifier.selectable(
-                        selected = appIcon == icon,
-                        role = Role.RadioButton,
-                        onClick = { vm.setAppIcon(icon) },
-                    ),
-                )
-            }
-
-            item { SectionTitle(stringResource(R.string.settings_account)) }
-            item {
-                ListItem(
-                    headlineContent = { Text(vm.accountName?.let { stringResource(R.string.settings_signed_in_as, it) } ?: "") },
-                    trailingContent = {
-                        OutlinedButton(onClick = { vm.signOut(onSignedOut) }) { Text(stringResource(R.string.sign_out)) }
-                    },
-                )
             }
         }
 
@@ -1086,31 +1112,115 @@ object MobileUi : Screens {
         }
     }
 
-    private fun LazyListScope.topicSection(
-        title: Int,
-        hint: Int,
-        topics: List<Topic>,
-        onEdit: (Int?) -> Unit,
-        onRemove: (Int) -> Unit,
+    /** Um grupo das Configurações: o nome em cima, um cartão com as linhas e a explicação embaixo. */
+    @Composable
+    private fun SettingsGroup(title: String?, hint: String? = null, content: @Composable () -> Unit) {
+        Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(bottom = 8.dp)) {
+            if (title != null) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.2.sp),
+                    color = Look.Sub,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 8.dp),
+                )
+            }
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Look.Surface)) { content() }
+            if (hint != null) {
+                Text(
+                    hint,
+                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 17.sp),
+                    color = Look.Sub.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp),
+                )
+            }
+        }
+    }
+
+    /** Uma linha dentro de um grupo: o título (e uma linha menor embaixo) e, à direita, o controle. */
+    @Composable
+    private fun SettingsRow(
+        title: String,
+        modifier: Modifier = Modifier,
+        subtitle: String? = null,
+        indent: Boolean = false,
+        trailing: (@Composable () -> Unit)? = null,
     ) {
-        item { SectionTitle(stringResource(title)) }
-        item { Hint(stringResource(hint)) }
-        if (topics.isEmpty()) item { EmptyLine(stringResource(R.string.settings_topics_empty)) }
-        itemsIndexed(topics) { index, topic ->
-            ListItem(
-                headlineContent = { Text(topic.name) },
-                supportingContent = { Text(topic.keywords.joinToString(", "), maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                trailingContent = {
-                    IconButton(onClick = { onRemove(index) }) {
-                        Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.topic_remove), tint = Look.Sub)
-                    }
-                },
-                modifier = Modifier.clickable { onEdit(index) },
+        Row(
+            modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = if (indent) 32.dp else 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 20.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (subtitle != null) Text(subtitle, style = Meta, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            }
+            trailing?.invoke()
+        }
+    }
+
+    /** O valor escolhido, à direita da linha, com a seta que abre a escolha. */
+    @Composable
+    private fun Value(text: String, open: Boolean) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text, style = Meta.copy(fontSize = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp))
+            Icon(
+                Icons.Filled.ArrowDropDown,
+                contentDescription = null,
+                tint = Look.Sub,
+                modifier = Modifier.graphicsLayer { rotationZ = if (open) 180f else 0f },
             )
         }
-        item {
-            TextButton(onClick = { onEdit(null) }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                Text(stringResource(R.string.topic_add))
+    }
+
+    @Composable
+    private fun SettingsSwitch(checked: Boolean) {
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Look.OnGlow,
+                checkedTrackColor = Look.Glow,
+                checkedBorderColor = Look.Glow,
+                uncheckedThumbColor = Look.Sub,
+                uncheckedTrackColor = Look.Ground,
+                uncheckedBorderColor = Look.Outline,
+            ),
+        )
+    }
+
+    /** O fio entre as linhas de um grupo, a partir do começo do texto. */
+    @Composable
+    private fun RowDivider() {
+        Box(Modifier.padding(start = 16.dp).fillMaxWidth().height(1.dp).background(Look.Hairline))
+    }
+
+    @Composable
+    private fun EmptyRow(text: String) {
+        Text(text, style = Meta.copy(fontSize = 14.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp))
+    }
+
+    @Composable
+    private fun TopicGroup(title: Int, hint: Int, topics: List<Topic>, onEdit: (Int?) -> Unit, onRemove: (Int) -> Unit) {
+        SettingsGroup(stringResource(title), hint = stringResource(hint)) {
+            topics.forEachIndexed { index, topic ->
+                if (index > 0) RowDivider()
+                SettingsRow(
+                    title = topic.name,
+                    subtitle = topic.keywords.joinToString(", "),
+                    modifier = Modifier.clickable { onEdit(index) },
+                ) {
+                    IconButton(onClick = { onRemove(index) }) {
+                        Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.topic_remove), tint = Look.Sub, modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+            if (topics.isNotEmpty()) RowDivider()
+            Row(
+                Modifier.fillMaxWidth().clickable { onEdit(null) }.padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(R.string.topic_add), style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp), color = Look.Glow)
             }
         }
     }
@@ -1255,7 +1365,7 @@ object MobileUi : Screens {
     }
 
     @Composable
-    private fun Segment(label: String, selected: Boolean, onClick: () -> Unit) {
+    internal fun Segment(label: String, selected: Boolean, onClick: () -> Unit) {
         FilterChip(
             selected = selected,
             onClick = onClick,
@@ -1272,7 +1382,7 @@ object MobileUi : Screens {
     }
 
     @Composable
-    private fun SubscribeHeader(state: PlaylistViewModel.Subscription.Shown, onToggle: () -> Unit) {
+    internal fun SubscribeHeader(state: PlaylistViewModel.Subscription.Shown, onToggle: () -> Unit) {
         Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (state.subscribed) {
@@ -1349,7 +1459,7 @@ object MobileUi : Screens {
     }
 
     @Composable
-    private fun VideoGrid(
+    internal fun VideoGrid(
         content: VideoListContent,
         emptyText: String,
         onNearEnd: () -> Unit,
@@ -1401,7 +1511,7 @@ object MobileUi : Screens {
      * celular, duas no tablet deitado).
      */
     @Composable
-    private fun VideoRows(
+    internal fun VideoRows(
         content: VideoListContent,
         onNearEnd: () -> Unit,
         onPlay: (Video) -> Unit,
@@ -1526,7 +1636,8 @@ object MobileUi : Screens {
             VideoThumb(video, saved = cards.showSaved && video.id in cards.saved, corner = 14.dp, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             Text(video.title, style = CardTitle, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp))
-            MetaRow(video, cards.photos[video.channelId], onOpenChannel)
+            // Em várias colunas, o canal e o resto sempre em duas linhas (os cartões lado a lado ficam iguais).
+            MetaRow(video, cards.photos[video.channelId], onOpenChannel, stacked = LocalConfiguration.current.screenWidthDp >= 560)
         }
     }
 
@@ -1550,7 +1661,7 @@ object MobileUi : Screens {
             VideoThumb(video, saved = cards.showSaved && video.id in cards.saved, corner = 10.dp, modifier = Modifier.width(152.dp), compact = true)
             Column(Modifier.weight(1f).padding(start = 14.dp, top = 1.dp)) {
                 Text(video.title, style = RowTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                MetaRow(video, cards.photos[video.channelId], onOpenChannel)
+                MetaRow(video, cards.photos[video.channelId], onOpenChannel, stacked = true)
             }
             handle?.invoke(this)
         }
@@ -1602,38 +1713,37 @@ object MobileUi : Screens {
 
     /** "[avatar] Canal · 12K views · 2 hours ago". O avatar e o nome levam ao canal. */
     @Composable
-    private fun MetaRow(video: Video, photo: String?, onOpenChannel: ((Channel) -> Unit)?) {
+    private fun MetaRow(video: Video, photo: String?, onOpenChannel: ((Channel) -> Unit)?, stacked: Boolean) {
         val rest = video.fromPlaylist?.let { stringResource(R.string.from_playlist_short, it) }
             ?: metaAfterChannel(video.info, video.channelName, video.published)
         val name = video.channelName?.takeIf { it.isNotBlank() }
         val channel = channelOf(video)
-        Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (name != null) {
-                val open = if (onOpenChannel != null && channel != null) {
-                    val label = stringResource(R.string.video_open_channel, name)
-                    Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = label) { onOpenChannel(channel) }
-                } else {
-                    Modifier
+        // O canal e o resto numa linha só quando cabem; senão o resto desce, inteiro (MetaLine).
+        MetaLine(
+            channel = name?.let {
+                {
+                    val open = if (onOpenChannel != null && channel != null) {
+                        val label = stringResource(R.string.video_open_channel, name)
+                        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = label) { onOpenChannel(channel) }
+                    } else {
+                        Modifier
+                    }
+                    Row(open.padding(horizontal = 2.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Avatar(name, photo, 18.dp)
+                        Spacer(Modifier.width(7.dp))
+                        Text(name, style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
-                Row(
-                    Modifier.weight(1f, fill = false).then(open).padding(horizontal = 2.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Avatar(name, photo, 18.dp)
-                    Spacer(Modifier.width(7.dp))
-                    Text(name, style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-            if (rest != null) {
-                Text(
-                    (if (name != null) "· " else "") + rest,
-                    style = Meta,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false).padding(start = if (name != null) 3.dp else 2.dp, top = 7.dp, bottom = 7.dp),
-                )
-            }
-        }
+            },
+            rest = rest?.let {
+                { Text(rest, style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp, vertical = 7.dp)) }
+            },
+            separator = { Text("·", style = Meta, modifier = Modifier.padding(start = 3.dp, end = 1.dp)) },
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+            stacked = stacked,
+            // A linha de baixo encosta na de cima (os 7 dp em volta de cada uma são para o toque).
+            lineGap = (-12).dp,
+        )
     }
 
     /** Foto redonda do canal; sem foto (canal em que não está inscrito), a primeira letra. */
@@ -1695,30 +1805,10 @@ object MobileUi : Screens {
     }
 
     @Composable
-    private fun BackButton(onBack: () -> Unit) {
+    internal fun BackButton(onBack: () -> Unit) {
         IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
         }
-    }
-
-    @Composable
-    private fun SectionTitle(text: String) {
-        Text(
-            text,
-            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.2.sp),
-            color = Look.Sub,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 28.dp, bottom = 6.dp),
-        )
-    }
-
-    @Composable
-    private fun Hint(text: String, modifier: Modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Text(text, style = MaterialTheme.typography.bodySmall, color = Look.Sub, modifier = modifier)
-    }
-
-    @Composable
-    private fun EmptyLine(text: String) {
-        Text(text, color = Look.Sub, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
     }
 
     @Composable
@@ -1750,7 +1840,7 @@ object MobileUi : Screens {
      */
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    private fun <T> Loadable(state: UiState<T>, onRetry: () -> Unit, refresh: Refreshable? = null, content: @Composable (T) -> Unit) {
+    internal fun <T> Loadable(state: UiState<T>, onRetry: () -> Unit, refresh: Refreshable? = null, content: @Composable (T) -> Unit) {
         when (state) {
             UiState.Loading -> Box(Modifier.fillMaxSize().padding(LocalBars.current), Alignment.Center) { CircularProgressIndicator() }
             is UiState.Error -> Column(

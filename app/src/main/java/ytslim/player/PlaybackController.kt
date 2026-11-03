@@ -83,8 +83,7 @@ class PlaybackController(
     data class Controls(
         val captionsAvailable: Boolean = false,
         val captionsOn: Boolean = false,
-        val skipAvailable: Boolean = false,
-        /** Onde começa cada trecho que o "Skip ahead" pula, para marcar na barra de tempo. */
+        /** Onde começa cada trecho que o avanço pula inteiro ([jumpAhead]), para marcar na barra de tempo. */
         val skipSpots: List<Long> = emptyList(),
         val page: VideoState? = null,
         /** O vídeo está na playlist do botão "Save"? null = sem botão (sem login ou não deu para saber). */
@@ -232,7 +231,7 @@ class PlaybackController(
         extrasJob = scope.launch {
             launch {
                 heatmap = HeatmapRepository.load(videoId)
-                if (heatmap.isNotEmpty()) _controls.update { it.copy(skipAvailable = true, skipSpots = SkipRules.valleys(heatmap)) }
+                if (heatmap.isNotEmpty()) _controls.update { it.copy(skipSpots = SkipRules.valleys(heatmap)) }
             }
             if (AuthRepository.isSigned()) {
                 launch {
@@ -242,7 +241,7 @@ class PlaybackController(
                     _controls.update { it.copy(saved = saved?.let { server -> SavedVideos.changedHere(videoId) ?: server }) }
                 }
                 val page = VideoActions.state(videoId)
-                _controls.update { it.copy(page = page, skipAvailable = it.skipAvailable || !page?.chapterStartsMs.isNullOrEmpty()) }
+                _controls.update { it.copy(page = page) }
             }
         }
     }
@@ -324,18 +323,13 @@ class PlaybackController(
     }
 
     /**
-     * Pula o trecho que o público pula ([SkipRules.nextSkip]); sem o gráfico, para o próximo
-     * capítulo. false se não há o que pular aqui.
+     * Para onde vai um avanço de [from] até [to] quando ele começa dentro de um trecho que o
+     * público pula, ou logo antes dele: o fim desse trecho ([SkipRules.valleyEnd]), se ficar além
+     * de [to]. null = avanço normal.
      */
-    fun skipAhead(): Boolean {
-        val position = player.currentPosition
-        val target = if (heatmap.isNotEmpty()) {
-            SkipRules.nextSkip(heatmap, position)
-        } else {
-            SkipRules.nextChapter(_controls.value.page?.chapterStartsMs.orEmpty(), position)
-        } ?: return false
-        player.seekTo(target)
-        return true
+    fun jumpAhead(from: Long, to: Long): Long? {
+        val end = SkipRules.valleyEnd(heatmap, from) ?: return null
+        return end.takeIf { it > to }
     }
 
     fun rate(target: Rating) {

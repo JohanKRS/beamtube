@@ -110,6 +110,7 @@
     <string name="settings_save_target">Save button</string>
     <string name="settings_save_target_current">The Save button in the player adds videos to %1$s.</string>
     <string name="settings_save_target_choose">Choose a playlist</string>
+    <string name="settings_save_target_row">Saves videos to</string>
     <string name="settings_excluded">Topics to leave out</string>
     <string name="settings_excluded_hint">Videos about these topics don\'t show up in Recommended or in videos from subscribed playlists. A video matches a topic when its title or channel name has one of the keywords.</string>
     <string name="settings_preferred">Preferred topics</string>
@@ -161,8 +162,7 @@
     <string name="player_saved">Saved</string>
     <string name="player_saved_to">Saved to %1$s</string>
     <string name="player_removed_from">Removed from %1$s</string>
-    <string name="player_skip">Skip ahead</string>
-    <string name="player_no_highlight">Nothing to skip here.</string>
+    <string name="player_jumped_ahead">Jumped ahead</string>
     <string name="player_captions">Turn on captions</string>
     <string name="player_captions_off">Turn off captions</string>
     <string name="player_quality">Quality</string>
