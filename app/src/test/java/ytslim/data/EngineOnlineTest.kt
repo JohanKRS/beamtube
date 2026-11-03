@@ -142,6 +142,15 @@ class EngineOnlineTest {
         videos.older.take(4).forEach { println("[online]   ${it.title.take(60)} | ${it.channelName} | ${it.info}") }
         assertTrue(videos.recent.isNotEmpty())
         assertTrue((videos.recent + videos.older).all { it.channelId == featured.id })
+        // Os filtros da aba (data, duração, mais vistos) leem a idade, a duração e as visualizações de cada vídeo.
+        val all = videos.recent + videos.older
+        val dated = all.count { (RelativeTime.agoMs(it.published) ?: RelativeTime.agoMs(it.info)) != null }
+        val timed = all.count { it.durationMs > 0 }
+        val viewed = all.count { ViewCount.parse(it.info) != null }
+        println("[online] de ${all.size}: $dated com data, $timed com duração, $viewed com visualizações")
+        all.take(3).forEach { println("[online]   ${it.title.take(40)} | published=${it.published} | info=${it.info} | ${it.durationMs} ms") }
+        assertTrue("faltou a data dos vídeos do canal", dated >= all.size * 3 / 4)
+        assertTrue("faltou a duração dos vídeos do canal", timed >= all.size * 3 / 4)
         val picked = ExploreRules.pick(videos, ContentFilters(), kotlin.random.Random(1))
         println("[online] sorteados: ${picked.joinToString { it.title.take(40) }}")
         assertTrue(picked.size == ExploreRules.RECENT_PER_CHANNEL + ExploreRules.OLDER_PER_CHANNEL)

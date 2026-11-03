@@ -7,7 +7,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import java.io.ByteArrayOutputStream
 
 /**
- * Filtros da busca (e das Recomendações, onde o app aplica o mesmo filtro localmente: ver
+ * Filtros da busca (e da Explore, onde o app aplica o mesmo filtro localmente: ver
  * [FeedFilter]). Cada [code] é o número que o próprio YouTube usa no parâmetro de filtros
  * (o "sp" da busca no site); 0 é "sem filtro".
  */

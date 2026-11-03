@@ -309,6 +309,32 @@
                     style="@style/PlayerTime"
                     android:textColor="@color/player_text_secondary" />
 
+                <!--
+                  Ao vivo, no lugar do tempo e da duração (que ficam parados numa live): o ponto é
+                  vermelho no ponto ao vivo e cinza atrás dele, e tocar volta para o ao vivo. O
+                  PlayerIsland põe o botão na linha dos botões, onde o foco da TV chega.
+                -->
+                <TextView
+                    android:id="@+id/player_live"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:background="@drawable/player_button_bg"
+                    android:clickable="true"
+                    android:contentDescription="@string/player_go_live"
+                    android:drawableStart="@drawable/player_live_dot"
+                    android:drawablePadding="6dp"
+                    android:focusable="true"
+                    android:fontFamily="@font/figtree_bold"
+                    android:gravity="center"
+                    android:letterSpacing="0.06"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="@string/player_live"
+                    android:textColor="@color/player_icon"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+
                 <View
                     android:id="@+id/player_island_divider"
                     android:layout_width="1dp"

@@ -44,6 +44,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
@@ -103,9 +104,13 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var rotateButton: ImageButton
     private lateinit var island: PlayerIsland
     private lateinit var captionsView: SubtitleView
+    private lateinit var captionLift: CaptionLift
     private lateinit var seekBadge: TextView
     private lateinit var sleepPanel: View
     private lateinit var qualityButton: TextView
+    private lateinit var liveButton: TextView
+    private lateinit var positionView: View
+    private lateinit var durationView: View
     private lateinit var qualityPanel: View
     private lateinit var qualityRow: LinearLayout
     private lateinit var brightnessRow: LinearLayout
@@ -147,6 +152,7 @@ class PlayerActivity : ComponentActivity() {
 
     /** Os trechos que o avanço pula inteiros, marcados agora na barra de tempo. */
     private var shownSkipSpots: List<Long> = emptyList()
+    private var showingLive = false
 
     /** Os capítulos do vídeo atual (frestas na barra, o nome do atual e o do preview). */
     private var chapters: List<Chapter> = emptyList()
@@ -242,6 +248,12 @@ class PlayerActivity : ComponentActivity() {
                 launch { controller.controls.collect(::renderControls) }
                 launch { controller.ended.collect(::onEnded) }
                 launch { controller.quality.collect(::renderQuality) }
+                launch {
+                    while (true) {
+                        renderLive()
+                        delay(LIVE_TICK_MS)
+                    }
+                }
                 launch { combine(PlayQueue.active, PlayQueue.left) { _, _ -> }.collect { renderSleep() } }
                 launch {
                     controller.notices.collect { notice ->
@@ -364,12 +376,18 @@ class PlayerActivity : ComponentActivity() {
         sleepButton.setOnClickListener { togglePanel(sleepPanel) }
         rotateButton.setOnClickListener { rotate() }
         qualityButton.setOnClickListener { togglePanel(qualityPanel) }
-        // O painel some junto com os controles.
+        liveButton.setOnClickListener {
+            controller.player.seekToDefaultPosition()
+            renderLive()
+        }
+        // O painel some junto com os controles, e a legenda sobe e desce com eles.
         playerView.setControllerVisibilityListener(
             PlayerView.ControllerVisibilityListener { visibility ->
                 if (visibility != View.VISIBLE) closePanel(focusButton = false)
+                captionLift.setOpen(visibility == View.VISIBLE)
             },
         )
+        captionLift.setOpen(playerView.isControllerFullyVisible)
     }
 
     /**
@@ -392,6 +410,35 @@ class PlayerActivity : ComponentActivity() {
             if (quality.heights.isEmpty() && openPanel == qualityPanel) closePanel(focusButton = false)
         }
         qualityRow.select(quality.manual ?: AUTO_QUALITY)
+    }
+
+    /**
+     * Ao vivo (pedido do Johan, 2026-11-03): numa live o tempo e a duração ficam parados (a janela
+     * que dá para voltar anda junto com o vídeo), então dão lugar ao botão LIVE. O ponto fica
+     * vermelho no ponto ao vivo e cinza quando o vídeo está atrás dele; tocar volta para o ao vivo.
+     * Roda a cada segundo enquanto a tela está aberta.
+     */
+    private fun renderLive() {
+        val player = controller.player
+        val live = player.isCurrentMediaItemLive
+        if (live != showingLive) {
+            showingLive = live
+            positionView.visibility = if (live) View.GONE else View.VISIBLE
+            durationView.visibility = if (live) View.GONE else View.VISIBLE
+            liveButton.visibility = if (live) View.VISIBLE else View.GONE
+        }
+        if (!live) return
+        val atLive = behindLiveMs(player) < LIVE_SLACK_MS
+        liveButton.compoundDrawableTintList = ColorStateList.valueOf(color(if (atLive) R.color.player_live else R.color.player_text_secondary))
+    }
+
+    /** Quanto o vídeo está atrás do ponto em que o player toca uma live (a folga que ele mantém do fim). */
+    private fun behindLiveMs(player: Player): Long {
+        val offset = player.currentLiveOffset
+        if (offset == C.TIME_UNSET || player.currentTimeline.isEmpty) return 0
+        val window = player.currentTimeline.getWindow(player.currentMediaItemIndex, Timeline.Window())
+        val target = window.liveConfiguration?.targetOffsetMs?.takeIf { it != C.TIME_UNSET } ?: 0
+        return offset - target
     }
 
     private fun chooseQuality(height: Int?) {
@@ -890,6 +937,9 @@ class PlayerActivity : ComponentActivity() {
         previewTime = playerView.findViewById(R.id.player_preview_time)
         sleepPanel = playerView.findViewById(R.id.player_sleep_panel)
         qualityButton = playerView.findViewById(R.id.player_quality_button)
+        liveButton = playerView.findViewById(R.id.player_live)
+        positionView = playerView.findViewById(androidx.media3.ui.R.id.exo_position)
+        durationView = playerView.findViewById(androidx.media3.ui.R.id.exo_duration)
         qualityPanel = playerView.findViewById(R.id.player_quality_panel)
         qualityRow = playerView.findViewById(R.id.player_quality_options)
         brightnessRow = playerView.findViewById(R.id.player_sleep_brightness)
@@ -910,6 +960,8 @@ class PlayerActivity : ComponentActivity() {
             setApplyEmbeddedFontSizes(false)
             setStyle(CaptionRules.style(ResourcesCompat.getFont(this@PlayerActivity, R.font.figtree_semibold)))
             setUserDefaultTextSize()
+            // Uma margem pequena da borda de baixo, só para a legenda não encostar nela.
+            setPadding(0, 0, 0, resources.getDimensionPixelSize(R.dimen.player_captions_bottom))
         }
         val original = playerView.subtitleView
         val captionsParent = original?.parent as? ViewGroup
@@ -919,6 +971,7 @@ class PlayerActivity : ComponentActivity() {
         } else {
             (playerView.overlayFrameLayout ?: playerView).addView(captionsView, 0, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         }
+        captionLift = CaptionLift(captionsView, listOf(chapterView, islandView))
 
         // O aviso dos toques no vídeo (celular e tablet), por cima do escurecer.
         seekBadge = TextView(this).apply {
@@ -988,6 +1041,12 @@ class PlayerActivity : ComponentActivity() {
 
         /** O mesmo show_timeout do player_view. */
         private const val CONTROLS_TIMEOUT_MS = 4000
+
+        /** De quanto em quanto tempo o botão LIVE confere se o vídeo está no ao vivo. */
+        private const val LIVE_TICK_MS = 1000L
+
+        /** Até esta distância do ponto ao vivo o vídeo ainda conta como ao vivo (o player oscila um pouco). */
+        private const val LIVE_SLACK_MS = 10_000L
 
         /** A opção "Auto" do painel de resolução (as outras são as alturas). */
         private const val AUTO_QUALITY = 0

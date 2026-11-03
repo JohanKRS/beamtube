@@ -105,9 +105,10 @@ class PlayerIslandTest {
         val view = controls(960, tv = true) as ViewGroup
         val row = view.findViewById<ViewGroup>(R.id.player_button_row)
         val actions = view.findViewById<View>(R.id.player_actions)
-        // Logo depois do tocar/pausar, sem a pílula, e fora do canto de cima.
+        // Logo depois do tocar/pausar (e do LIVE, que só aparece em lives), sem a pílula, e fora do canto de cima.
         assertEquals(row, actions.parent)
-        assertEquals(1, row.indexOfChild(actions))
+        assertEquals(2, row.indexOfChild(actions))
+        assertEquals(1, row.indexOfChild(view.findViewById(R.id.player_live)))
         assertEquals(null, actions.background)
         assertFalse(view.findViewById<ViewGroup>(R.id.player_top).indexOfChild(actions) >= 0)
         // As ações ficam à esquerda; legenda, resolução e lua continuam à direita.
@@ -118,5 +119,31 @@ class PlayerIslandTest {
         assertEquals(R.id.player_like, FocusFinder.getInstance().findNextFocus(view, play, View.FOCUS_RIGHT).id)
         val like = view.findViewById<View>(R.id.player_like)
         assertEquals(view.findViewById<View>(R.id.exo_progress), FocusFinder.getInstance().findNextFocus(view, like, View.FOCUS_UP))
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television")
+    fun onTheTvTheRemoteReachesTheLiveButton() {
+        val view = controls(960, tv = true) as ViewGroup
+        val live = view.findViewById<View>(R.id.player_live).apply { visibility = View.VISIBLE }
+        view.measure(View.MeasureSpec.makeMeasureSpec(view.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(view.height, View.MeasureSpec.EXACTLY))
+        view.layout(0, 0, view.width, view.height)
+        // Na linha dos botões, logo depois do tocar: na linha da barra, direita avançaria o vídeo.
+        assertEquals(R.id.player_button_row, (live.parent as View).id)
+        ArrayList<View>().also { view.addFocusables(it, View.FOCUS_DOWN, View.FOCUSABLES_ALL) }
+            .forEach { it.isFocusableInTouchMode = true }
+        val play = view.findViewById<View>(R.id.exo_play_pause)
+        assertEquals(live, FocusFinder.getInstance().findNextFocus(view, play, View.FOCUS_RIGHT))
+        assertEquals(R.id.player_like, FocusFinder.getInstance().findNextFocus(view, live, View.FOCUS_RIGHT).id)
+    }
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land")
+    fun lyingDownTheLiveButtonTakesThePlaceOfTheTime() {
+        val view = controls(891)
+        val row = view.findViewById<ViewGroup>(R.id.player_button_row)
+        val live = view.findViewById<View>(R.id.player_live)
+        assertEquals(row, live.parent)
+        assertEquals(row.indexOfChild(view.findViewById(androidx.media3.ui.R.id.exo_duration)) + 1, row.indexOfChild(live))
     }
 }

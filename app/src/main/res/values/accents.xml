@@ -15,33 +15,33 @@
         <item name="doorglowAccentSoft">#FFFFE3A3</item>
     </style>
 
-    <style name="PlayerAccent.Red">
-        <item name="doorglowAccent">#FFFF6B5F</item>
-        <item name="doorglowAccentSoft">#FFFFB4AC</item>
-    </style>
-
-    <style name="PlayerAccent.Pink">
-        <item name="doorglowAccent">#FFFF8CC6</item>
-        <item name="doorglowAccentSoft">#FFFFC7E3</item>
-    </style>
-
-    <style name="PlayerAccent.Purple">
-        <item name="doorglowAccent">#FFC3A2FF</item>
-        <item name="doorglowAccentSoft">#FFE2D3FF</item>
-    </style>
-
-    <style name="PlayerAccent.Blue">
-        <item name="doorglowAccent">#FF7CB6FF</item>
-        <item name="doorglowAccentSoft">#FFC2DCFF</item>
+    <style name="PlayerAccent.Silver">
+        <item name="doorglowAccent">#FFBDC7DB</item>
+        <item name="doorglowAccentSoft">#FFDEE3ED</item>
     </style>
 
     <style name="PlayerAccent.Teal">
-        <item name="doorglowAccent">#FF5FD3C3</item>
-        <item name="doorglowAccentSoft">#FFB3EDE5</item>
+        <item name="doorglowAccent">#FF3BBFCE</item>
+        <item name="doorglowAccentSoft">#FF9DDFE6</item>
     </style>
 
-    <style name="PlayerAccent.Green">
-        <item name="doorglowAccent">#FF97D97E</item>
-        <item name="doorglowAccentSoft">#FFCDEDC0</item>
+    <style name="PlayerAccent.Plum">
+        <item name="doorglowAccent">#FFCC90D5</item>
+        <item name="doorglowAccentSoft">#FFE6C8EA</item>
+    </style>
+
+    <style name="PlayerAccent.Mustard">
+        <item name="doorglowAccent">#FFDD962C</item>
+        <item name="doorglowAccentSoft">#FFEECB95</item>
+    </style>
+
+    <style name="PlayerAccent.Vivid">
+        <item name="doorglowAccent">#FFE873C7</item>
+        <item name="doorglowAccentSoft">#FFF3B9E3</item>
+    </style>
+
+    <style name="PlayerAccent.Red">
+        <item name="doorglowAccent">#FFFF0000</item>
+        <item name="doorglowAccentSoft">#FFFF8080</item>
     </style>
 </resources>
