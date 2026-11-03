@@ -312,6 +312,10 @@ class ScreenShots {
      */
     private fun playerShot(name: String, tv: Boolean = false, jumped: Boolean = false, scrub: Boolean = false) {
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        // O qualificador "television" não chega ao UiModeManager do Robolectric: sem isso o player
+        // da TV sairia como o de toque (uma linha, botão de girar).
+        if (tv) org.robolectric.Shadows.shadowOf(context.packageManager)
+            .setSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK, true)
         val v = videos[1]
         val intent = ytslim.player.PlayerActivity.intent(context, v.id, v.title)
         val activity = org.robolectric.Robolectric.buildActivity(ytslim.player.PlayerActivity::class.java, intent).setup().get()
@@ -361,6 +365,8 @@ class ScreenShots {
                 animate().cancel(); alpha = 1f; visibility = android.view.View.VISIBLE
             }
         }
+        // Sem rede, o título às vezes some quando o carregamento falha no meio da foto: fixa ele.
+        playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_title)?.text = v.title
         relayout(activity)
         val view = activity.window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
@@ -403,4 +409,8 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun playerTv() = playerShot("player-tv", tv = true)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvJumped() = playerShot("player-tv-jumped", tv = true, jumped = true)
 }
