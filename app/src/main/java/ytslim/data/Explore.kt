@@ -108,11 +108,12 @@ object ExploreRules {
     /**
      * Os vídeos que vão para a tela de um canal: [RECENT_PER_CHANNEL] dos recentes e
      * [OLDER_PER_CHANNEL] das prateleiras, sorteados; se um lado tiver poucos, o outro completa.
-     * Alternados: recente, antigo, recente, antigo.
+     * Alternados: recente, antigo, recente, antigo. Só entram os que passam por [keep] (os filtros
+     * de data e duração da aba): o sorteio é feito entre eles.
      */
-    fun pick(videos: ChannelVideos, filters: ContentFilters, random: Random): List<Video> {
+    fun pick(videos: ChannelVideos, filters: ContentFilters, random: Random, keep: (Video) -> Boolean = { true }): List<Video> {
         fun usable(list: List<Video>) = list.filter {
-            !it.isShorts && !it.isLive && !it.isUpcoming && it.percentWatched < WATCHED && !TopicRules.isExcluded(it, filters)
+            !it.isShorts && !it.isLive && !it.isUpcoming && it.percentWatched < WATCHED && !TopicRules.isExcluded(it, filters) && keep(it)
         }
         val recentPool = usable(videos.recent.take(RECENT_WINDOW)).shuffled(random)
         val recentIds = videos.recent.mapTo(HashSet()) { it.id }
@@ -139,6 +140,19 @@ object ExploreRules {
             perChannel.forEach { list -> list.getOrNull(i)?.takeIf { seen.add(it.id) }?.let(out::add) }
         }
         return out
+    }
+
+    /**
+     * A lista da tela: em cada sorteio, [pick] de cada canal e [mix] em rodadas, com a ordem dos
+     * canais embaralhada; um vídeo que já apareceu num sorteio anterior não se repete. A semente
+     * de cada sorteio fixa a escolha, então mudar um filtro refaz a lista sem ler nada de novo.
+     */
+    fun screen(draws: List<ExploreDraw>, filters: ContentFilters, keep: (Video) -> Boolean = { true }): List<Video> {
+        val seen = HashSet<String>()
+        return draws.flatMap { draw ->
+            val picks = draw.channels.mapIndexed { i, channel -> pick(channel, filters, Random(draw.seed + i + 1), keep) }
+            mix(picks.shuffled(Random(draw.seed)), seen).onEach { seen.add(it.id) }
+        }
     }
 
     /**
@@ -172,8 +186,11 @@ data class ExploreCache(
     val recent: List<String> = emptyList(),
 )
 
-/** Um sorteio da Explore: os vídeos e os canais de onde vieram. */
-class ExploreDraw(val videos: List<Video>, val channels: List<String>, val hasMore: Boolean)
+/**
+ * Um sorteio da Explore: os vídeos de cada canal sorteado (a escolha do que vai para a tela é de
+ * [ExploreRules.screen], com [seed]), os ids de todos os sorteados e se ainda há canais.
+ */
+class ExploreDraw(val channels: List<ChannelVideos>, val ids: List<String>, val hasMore: Boolean, val seed: Long)
 
 /**
  * A busca da Explore. Lê a página dos canais inscritos (um pedido por canal, guardado por
@@ -201,8 +218,8 @@ object ExploreRepository {
     }
 
     /**
-     * Um sorteio novo de canais, sem os que já estão na tela ([shown]). Lança um erro se não deu
-     * para ler as inscrições (sem login ou sem rede).
+     * Um sorteio novo de canais, sem os que já estão na tela ([shown]), com os vídeos de cada um.
+     * Lança um erro se não deu para ler as inscrições (sem login ou sem rede).
      */
     suspend fun draw(shown: Set<String> = emptySet(), random: Random = Random.Default): ExploreDraw {
         val subscribed = FeedRepository.subscribedChannels() ?: error("Couldn't read your subscriptions.")
@@ -233,12 +250,12 @@ object ExploreRepository {
                     }
                 }
             }.awaitAll()
-        }.filterNotNull().map { ExploreRules.pick(it, filters, random) }
+        }.filterNotNull()
         remember(chosen.map { it.id })
         val hasMore = candidates.size > shown.size + chosen.size
         Log.i(TAG, "explore: ${subscribed.size} subscriptions, ${load().sources.count { it.key in ids }} read, " +
-            "${candidates.size} candidates, ${chosen.size} drawn, ${videos.count { it.isNotEmpty() }} with videos, ${videos.sumOf { it.size }} videos")
-        return ExploreDraw(ExploreRules.mix(videos.shuffled(random)), chosen.map { it.id }, hasMore)
+            "${candidates.size} candidates, ${chosen.size} drawn, ${videos.size} with videos, ${videos.sumOf { it.recent.size + it.older.size }} videos")
+        return ExploreDraw(videos, chosen.map { it.id }, hasMore, random.nextLong())
     }
 
     /**

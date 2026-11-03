@@ -143,14 +143,14 @@ class ScreenShots {
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
     fun phoneAccent() {
         Look.accent = Accent.TEAL
-        phoneRecommendedShot("phone-accent-teal")
+        phoneExploreShot("phone-accent-teal")
     }
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvAccent() {
         Look.accent = Accent.PINK
-        tvRecommendedShot("tv-accent-pink")
+        tvExploreShot("tv-accent-pink")
     }
 
     @Test
@@ -170,13 +170,13 @@ class ScreenShots {
 
     @Test
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
-    fun phoneRecommended() = phoneRecommendedShot("phone-recommended")
+    fun phoneExplore() = phoneExploreShot("phone-explore")
 
-    private fun phoneRecommendedShot(name: String) = shot(name) {
+    private fun phoneExploreShot(name: String) = shot(name) {
         MobileUi.Theme {
-            MobileUi.Home(HomeTab.RECOMMENDED, {}, {}) {
+            MobileUi.Home(HomeTab.EXPLORE, {}, {}) {
                 MobileUi.VideoGrid(feed(videos.drop(6)), "", {}, {}, {}, header = {
-                    MobileUi.FilterRow(feedFilterChoices(SearchFilters()), onChange = {}, padding = PaddingValues())
+                    MobileUi.FilterRow(exploreFilterChoices(SearchFilters()), onChange = {}, padding = PaddingValues())
                 })
             }
         }
@@ -288,13 +288,13 @@ class ScreenShots {
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
-    fun tvRecommended() = tvRecommendedShot("tv-recommended")
+    fun tvExplore() = tvExploreShot("tv-explore")
 
-    private fun tvRecommendedShot(name: String) = shot(name) {
+    private fun tvExploreShot(name: String) = shot(name) {
         TvUi.Theme {
-            TvUi.Home(HomeTab.RECOMMENDED, {}, {}) {
+            TvUi.Home(HomeTab.EXPLORE, {}, {}) {
                 Column {
-                    TvUi.FilterButtons(feedFilterChoices(SearchFilters()), onChange = {})
+                    TvUi.FilterButtons(exploreFilterChoices(SearchFilters()), onChange = {})
                     Spacer(Modifier.height(16.dp))
                     TvUi.VideoGrid(feed(videos.drop(6)), "", {}, {}, {}, takeFocus = false, onFocusTaken = {})
                 }

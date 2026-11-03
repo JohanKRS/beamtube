@@ -202,8 +202,8 @@ import ytslim.ui.SignInViewModel
 import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
 import ytslim.ui.channelOf
+import ytslim.ui.exploreFilterChoices
 import ytslim.ui.externalLinkOptions
-import ytslim.ui.feedFilterChoices
 import ytslim.ui.formatDuration
 import ytslim.ui.metaAfterChannel
 import ytslim.ui.monogramOf
@@ -668,32 +668,26 @@ object MobileUi : Screens {
     @Composable
     override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
-        val filters by vm.filters.collectAsStateWithLifecycle()
-        val filterRow: @Composable () -> Unit = { FilterRow(feedFilterChoices(filters), onChange = vm::setFilters, padding = PaddingValues(0.dp)) }
-        Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton(header = filterRow) }) { content ->
-            VideoGrid(
-                content,
-                emptyText = stringResource(if (filters.isDefault) R.string.recommended_empty else R.string.recommended_filtered_empty),
-                onNearEnd = vm::loadMore,
-                onPlay = onPlay,
-                onOpenChannel = onOpenChannel,
-                // Os filtros rolam junto com a lista, no topo dela.
-                header = filterRow,
-            )
+        Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton() }) { content ->
+            VideoGrid(content, emptyText = stringResource(R.string.recommended_empty), onNearEnd = vm::loadMore, onPlay = onPlay, onOpenChannel = onOpenChannel)
         }
     }
 
     @Composable
     override fun Explore(vm: ExploreViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
+        val filters by vm.filters.collectAsStateWithLifecycle()
         val showIntro by vm.showIntro.collectAsStateWithLifecycle()
-        Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton() }) { content ->
+        val filterRow: @Composable () -> Unit = { FilterRow(exploreFilterChoices(filters), onChange = vm::setFilters, padding = PaddingValues(0.dp)) }
+        Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton(header = filterRow) }) { content ->
             VideoGrid(
                 content,
-                emptyText = stringResource(R.string.explore_empty),
+                emptyText = stringResource(if (filters.isDefault) R.string.explore_empty else R.string.explore_filtered_empty),
                 onNearEnd = vm::loadMore,
                 onPlay = onPlay,
                 onOpenChannel = onOpenChannel,
+                // Os filtros rolam junto com a lista, no topo dela.
+                header = filterRow,
             )
         }
         // Só na primeira vez (enquanto os primeiros vídeos carregam): o que é a Explore.

@@ -32,7 +32,6 @@
     <string name="video_menu_channel">Go to channel</string>
     <string name="list_empty">No videos here.</string>
     <string name="recommended_empty">Nothing to recommend right now. Topics you left out and blocked channels don\'t show up here.</string>
-    <string name="recommended_filtered_empty">No recommendations match these filters.</string>
     <string name="history_empty">Nothing in your history yet.</string>
     <string name="history_remove">Remove from history</string>
     <string name="history_removed">Removed from history</string>
@@ -202,4 +201,5 @@
     <string name="explore_intro">Videos from the channels your subscriptions feature, new and old. Pull down for a different mix.</string>
     <string name="explore_intro_tv">Videos from the channels your subscriptions feature, new and old. Hold OK on the tab for a different mix.</string>
     <string name="explore_empty">Nothing to show yet. Explore uses the channels your subscriptions feature on their pages.</string>
+    <string name="explore_filtered_empty">None of these channels has videos that match the filters.</string>
 </resources>

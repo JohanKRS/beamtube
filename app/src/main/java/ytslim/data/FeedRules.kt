@@ -72,27 +72,34 @@ object FeedMerge {
 }
 
 /**
- * Os filtros da busca aplicados a uma lista que já veio do YouTube (as Recomendações): data,
- * duração e ordem. O YouTube não filtra essas listas, então o app olha cada vídeo: a duração, o
- * tempo relativo ("3 days ago") e as visualizações da linha do vídeo.
+ * Os filtros da busca aplicados a vídeos que já vieram do YouTube (a Explore): data, duração e
+ * ordem. O YouTube não filtra essas listas, então o app olha cada vídeo: a duração, o tempo
+ * relativo ("3 days ago") e as visualizações da linha do vídeo.
  */
 object FeedFilter {
     fun apply(videos: List<Video>, filters: SearchFilters, nowMs: Long): List<Video> {
         if (filters.isDefault) return videos
+        return sort(videos.filter(matcher(filters, nowMs)), filters.sort)
+    }
+
+    /** Se um vídeo passa pela data e pela duração de [filters] (a ordem fica com [sort]). */
+    fun matcher(filters: SearchFilters, nowMs: Long): (Video) -> Boolean {
         val cutoff = filters.beforeYear?.let(::startOfYearMs)
-        val kept = videos.filter { video ->
-            if (!filters.duration.matches(video.durationMs)) return@filter false
-            if (filters.date == UploadDate.ANY && cutoff == null) return@filter true
-            val ago = agoMs(video) ?: return@filter false
+        return matches@{ video ->
+            if (!filters.duration.matches(video.durationMs)) return@matches false
+            if (filters.date == UploadDate.ANY && cutoff == null) return@matches true
+            val ago = agoMs(video) ?: return@matches false
             // "3 days ago" quer dizer de 3 a 4 dias: o tempo lido é o mínimo da idade do vídeo.
             val dateOk = filters.date.maxAgeMs?.let { ago < it } ?: true
             dateOk && (cutoff == null || nowMs - ago < cutoff)
         }
-        return when (filters.sort) {
-            SortBy.DATE -> kept.sortedBy { agoMs(it) ?: Long.MAX_VALUE }
-            SortBy.VIEWS -> kept.sortedByDescending { ViewCount.parse(it.info) ?: -1L }
-            SortBy.RELEVANCE, SortBy.RATING -> kept
-        }
+    }
+
+    /** Mais novos ou mais vistos primeiro; as outras ordens deixam a lista como veio. */
+    fun sort(videos: List<Video>, sort: SortBy): List<Video> = when (sort) {
+        SortBy.DATE -> videos.sortedBy { agoMs(it) ?: Long.MAX_VALUE }
+        SortBy.VIEWS -> videos.sortedByDescending { ViewCount.parse(it.info) ?: -1L }
+        SortBy.RELEVANCE, SortBy.RATING -> videos
     }
 
     private fun agoMs(video: Video): Long? = RelativeTime.agoMs(video.published) ?: RelativeTime.agoMs(video.info)

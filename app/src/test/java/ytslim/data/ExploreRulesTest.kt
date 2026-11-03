@@ -9,9 +9,16 @@ import kotlin.random.Random
 class ExploreRulesTest {
     private fun channel(id: String, name: String, handle: String? = null) = FeaturedChannel(id, name, handle)
 
-    private fun video(id: String, channel: String? = null, watched: Int = 0, shorts: Boolean = false) = Video(
+    private fun video(
+        id: String,
+        channel: String? = null,
+        watched: Int = 0,
+        shorts: Boolean = false,
+        durationMs: Long = 600_000,
+        published: String? = null,
+    ) = Video(
         id = id, title = "Video $id", channelName = channel, channelId = null, thumbnailUrl = null, info = null,
-        published = null, durationMs = 600_000, isLive = false, isUpcoming = false, isShorts = shorts, percentWatched = watched,
+        published = published, durationMs = durationMs, isLive = false, isUpcoming = false, isShorts = shorts, percentWatched = watched,
         playlistId = null, playlistIndex = 0,
     )
 
@@ -83,6 +90,40 @@ class ExploreRulesTest {
         val older = listOf(video("ok"), video("old"))
         val picked = ExploreRules.pick(ChannelVideos(c, recent, older), ContentFilters(), Random(1)).map { it.id }
         assertEquals(setOf("ok", "old"), picked.toSet())
+    }
+
+    @Test
+    fun theTabFiltersChooseAmongTheMatchingVideosOnly() {
+        val c = channel("x", "X")
+        // Só 3 dos 12 recentes e 1 das prateleiras passam de 20 minutos.
+        val recent = (1..12).map { video("r$it", durationMs = if (it % 4 == 0) 1_500_000 else 300_000) }
+        val older = (1..10).map { video("o$it", durationMs = if (it == 7) 2_400_000 else 300_000) }
+        val keep = FeedFilter.matcher(SearchFilters(duration = SearchDuration.OVER_20), nowMs = 0)
+        val picked = ExploreRules.pick(ChannelVideos(c, recent, older), ContentFilters(), Random(5), keep)
+        assertEquals(setOf("r4", "r8", "r12", "o7"), picked.map { it.id }.toSet())
+
+        // Recentes de dias, antigos de anos: "esta semana" só deixa os recentes.
+        val dated = ChannelVideos(c, (1..6).map { video("r$it", published = "$it days ago") }, (1..6).map { video("o$it", published = "$it years ago") })
+        val week = FeedFilter.matcher(SearchFilters(date = UploadDate.WEEK), System.currentTimeMillis())
+        val thisWeek = ExploreRules.pick(dated, ContentFilters(), Random(5), week)
+        assertEquals(4, thisWeek.size)
+        assertTrue(thisWeek.all { it.id.startsWith("r") })
+    }
+
+    @Test
+    fun theSameDrawGivesTheSameScreenAndRepeatsStayOut() {
+        val a = ChannelVideos(channel("a", "A"), (1..6).map { video("a$it") }, (1..6).map { video("ao$it") })
+        val b = ChannelVideos(channel("b", "B"), (1..6).map { video("b$it") }, (1..6).map { video("bo$it") })
+        val first = ExploreDraw(listOf(a, b), listOf("a", "b"), hasMore = true, seed = 42)
+        val screen = ExploreRules.screen(listOf(first), ContentFilters())
+        assertEquals(8, screen.size)
+        // A semente fixa a escolha: mudar um filtro e voltar dá a mesma lista.
+        assertEquals(screen, ExploreRules.screen(listOf(first), ContentFilters()))
+        // Um vídeo que já está na tela não volta num sorteio seguinte.
+        val again = ExploreDraw(listOf(a), listOf("a"), hasMore = false, seed = 42)
+        val both = ExploreRules.screen(listOf(first, again), ContentFilters())
+        assertEquals(both.size, both.map { it.id }.toSet().size)
+        assertEquals(screen, both.take(screen.size))
     }
 
     @Test
