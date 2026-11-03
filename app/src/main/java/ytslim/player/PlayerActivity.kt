@@ -71,6 +71,7 @@ import ytslim.data.Rating
 import ytslim.data.SettingsRepository
 import ytslim.data.Storyboard
 import ytslim.data.VideoLinks
+import ytslim.ui.Look
 
 /**
  * Tela do player, que é também a "página do vídeo": like/dislike e inscrição ficam nos
@@ -178,6 +179,8 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // A cor de destaque escolhida em Settings, para os drawables do player (values/accents.xml).
+        theme.applyStyle(Look.accent.playerStyle, true)
         super.onCreate(savedInstanceState)
         val target = resolveTarget(intent)
         if (target == null) {

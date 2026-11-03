@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- O botão de tocar/pausar: um círculo claro; âmbar com o foco (TV). -->
+<!-- O botão de tocar/pausar: um círculo claro; na cor de destaque com o foco (TV). -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <shape android:shape="oval">
-            <solid android:color="@color/launcher_night_glow" />
+            <solid android:color="@color/player_accent" />
         </shape>
     </item>
     <item android:state_pressed="true">

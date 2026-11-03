@@ -1,5 +1,8 @@
 package ytslim.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -8,7 +11,8 @@ import ytslim.R
 
 /**
  * A aparência do Doorglow (etapa 6, aprovada pelo Johan em 2026-11-02): um cinza bem escuro, que
- * não é preto, e a luz âmbar da porta só no que importa (aba ativa, progresso, foco, salvo).
+ * não é preto, e a luz da porta só no que importa (aba ativa, progresso, foco, salvo). A cor dessa
+ * luz é a de destaque escolhida em Settings ([accent], âmbar por padrão).
  */
 object Look {
     val Ground = Color(0xFF18191B)
@@ -16,8 +20,10 @@ object Look {
     val SurfaceHigh = Color(0xFF2C2D31)
     val Text = Color(0xFFF3EFE4)
     val Sub = Color(0xFFA7A8AD)
-    val Glow = Color(0xFFFFC861)
-    val GlowSoft = Color(0xFFFFE3A3)
+    /** A cor de destaque ([Accent]); trocar aqui redesenha as telas abertas. */
+    var accent by mutableStateOf(Accent.DEFAULT)
+    val Glow: Color get() = Color(accent.glow)
+    val GlowSoft: Color get() = Color(accent.soft)
     val OnGlow = Color(0xFF18191B)
     val Hairline = Color(0x12F3EFE4)
     val Outline = Color(0x29F3EFE4)

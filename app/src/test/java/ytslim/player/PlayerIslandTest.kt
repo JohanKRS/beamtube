@@ -24,7 +24,7 @@ class PlayerIslandTest {
     /** Os controles com tudo que pode aparecer na ilha, medidos numa tela de [widthDp]. */
     private fun controls(widthDp: Int, tv: Boolean = false): View {
         val view = LayoutInflater.from(context).inflate(R.layout.player_controls, null)
-        listOf(R.id.player_captions, R.id.player_quality_button, R.id.player_rotate)
+        listOf(R.id.player_captions, R.id.player_quality_button, R.id.player_rotate, R.id.player_actions, R.id.player_save)
             .forEach { view.findViewById<View>(it).visibility = View.VISIBLE }
         PlayerIsland(view, tv).fit(widthDp)
         val density = context.resources.displayMetrics.density
@@ -90,11 +90,33 @@ class PlayerIslandTest {
         ArrayList<View>().also { view.addFocusables(it, View.FOCUS_DOWN, View.FOCUSABLES_ALL) }
             .forEach { it.isFocusableInTouchMode = true }
         val below = FocusFinder.getInstance().findNextFocus(view, bar, View.FOCUS_DOWN)
-        assertEquals(R.id.player_button_row, (below.parent as View).id)
+        // Na linha de baixo: um botão dela, ou uma das ações que desceram para ela.
+        assertTrue((below.parent as View).id in listOf(R.id.player_button_row, R.id.player_actions))
         val sleep = view.findViewById<View>(R.id.player_sleep)
         assertEquals(bar, FocusFinder.getInstance().findNextFocus(view, sleep, View.FOCUS_UP))
         // E entre os botões, direita anda de um para o outro.
         val quality = view.findViewById<View>(R.id.player_quality_button)
         assertEquals(R.id.player_rotate, FocusFinder.getInstance().findNextFocus(view, quality, View.FOCUS_RIGHT).id)
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television")
+    fun onTheTvTheActionsSitInTheBottomBar() {
+        val view = controls(960, tv = true) as ViewGroup
+        val row = view.findViewById<ViewGroup>(R.id.player_button_row)
+        val actions = view.findViewById<View>(R.id.player_actions)
+        // Logo depois do tocar/pausar, sem a pílula, e fora do canto de cima.
+        assertEquals(row, actions.parent)
+        assertEquals(1, row.indexOfChild(actions))
+        assertEquals(null, actions.background)
+        assertFalse(view.findViewById<ViewGroup>(R.id.player_top).indexOfChild(actions) >= 0)
+        // As ações ficam à esquerda; legenda, resolução e lua continuam à direita.
+        assertTrue(actions.left + view.findViewById<View>(R.id.player_subscribe).right < view.findViewById<View>(R.id.player_captions).left)
+        ArrayList<View>().also { view.addFocusables(it, View.FOCUS_DOWN, View.FOCUSABLES_ALL) }
+            .forEach { it.isFocusableInTouchMode = true }
+        val play = view.findViewById<View>(R.id.exo_play_pause)
+        assertEquals(R.id.player_like, FocusFinder.getInstance().findNextFocus(view, play, View.FOCUS_RIGHT).id)
+        val like = view.findViewById<View>(R.id.player_like)
+        assertEquals(view.findViewById<View>(R.id.exo_progress), FocusFinder.getInstance().findNextFocus(view, like, View.FOCUS_UP))
     }
 }

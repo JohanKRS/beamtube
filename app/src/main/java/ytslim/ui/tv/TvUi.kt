@@ -105,7 +105,6 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
-import androidx.tv.material3.Glow
 import androidx.tv.material3.Icon
 import androidx.tv.material3.IconButton
 import androidx.tv.material3.IconButtonDefaults
@@ -138,6 +137,8 @@ import ytslim.data.Video
 import ytslim.ui.AppIconPreview
 import ytslim.ui.ChannelViewModel
 import ytslim.ui.ExploreViewModel
+import ytslim.ui.Accent
+import ytslim.ui.Accents
 import ytslim.ui.DoorGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
@@ -177,10 +178,11 @@ import ytslim.ui.toggleSaved
 private val LocalInitialFocus = compositionLocalOf<MutableState<Boolean>> { mutableStateOf(false) }
 
 /**
- * As cores do Doorglow na TV. O foco é a luz da porta: botões e linhas focados ficam creme-âmbar com
- * texto escuro, e os cards ganham um contorno e um brilho quentes.
+ * As cores do Doorglow na TV. O foco é a luz da porta: botões e linhas focados ficam na cor de
+ * destaque com texto escuro, e os cards ganham um contorno claro. Refeitas quando a cor de
+ * destaque muda ([Look.accent]).
  */
-private val Colors = darkColorScheme(
+private fun colors() = darkColorScheme(
     primary = Look.Glow,
     onPrimary = Look.OnGlow,
     primaryContainer = Look.SurfaceHigh,
@@ -246,7 +248,7 @@ object TvUi : Screens {
 
     @Composable
     override fun Theme(content: @Composable () -> Unit) {
-        MaterialTheme(colorScheme = Colors, typography = Type) {
+        MaterialTheme(colorScheme = remember(Look.accent) { colors() }, typography = Type) {
             Surface(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(0.dp)) { content() }
         }
     }
@@ -863,6 +865,24 @@ object TvUi : Screens {
                             headlineContent = { Text(stringResource(icon.label)) },
                             leadingContent = { AppIconPreview(icon) },
                             trailingContent = { RadioButton(selected = appIcon == icon, onClick = null) },
+                        )
+                    }
+                },
+            )
+
+            // A cor de destaque, como a do ícone (pedido do Johan, 2026-11-03).
+            group(
+                "accent",
+                R.string.settings_accent,
+                hint = R.string.settings_accent_hint,
+                rows = Accent.entries.map { option ->
+                    row(option.name) {
+                        ListItem(
+                            selected = false,
+                            onClick = { Accents.select(option) },
+                            headlineContent = { Text(stringResource(option.label)) },
+                            leadingContent = { Box(Modifier.size(24.dp).background(Color(option.glow), CircleShape)) },
+                            trailingContent = { RadioButton(selected = Look.accent == option, onClick = null) },
                         )
                     }
                 },
@@ -1552,8 +1572,9 @@ object TvUi : Screens {
     }
 
     /**
-     * Card com o foco da TV: cresce 6%, ganha um contorno creme e um brilho âmbar. Com [onLongClick],
-     * o OK curto e o longo são medidos pelo app ([OkHold]), e não pelo Card.
+     * Card com o foco da TV: cresce 6% e ganha um contorno claro, sem brilho em volta (pedido do
+     * Johan, 2026-11-03: brilho só no ícone do canto; e a sombra borrada pesava nas TVs de 32
+     * bits). Com [onLongClick], o OK curto e o longo são medidos pelo app ([OkHold]), e não pelo Card.
      */
     @Composable
     private fun GlowCard(onClick: () -> Unit, onLongClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
@@ -1566,9 +1587,6 @@ object TvUi : Screens {
             colors = CardDefaults.colors(containerColor = Look.Surface),
             scale = CardDefaults.scale(focusedScale = 1.06f),
             border = CardDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Look.GlowSoft), shape = CardShape)),
-            // Brilho mais curto que os 18 dp de antes: a sombra borrada é redesenhada a cada troca de
-            // foco, e nas TVs de 32 bits isso pesava (2026-11-03, thread de desempenho).
-            glow = CardDefaults.glow(focusedGlow = Glow(elevationColor = Look.Glow.copy(alpha = 0.5f), elevation = 12.dp)),
             interactionSource = interaction,
         ) { content() }
     }

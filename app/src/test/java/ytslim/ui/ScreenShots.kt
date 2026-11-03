@@ -21,6 +21,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -125,6 +126,33 @@ class ScreenShots {
 
     private fun feed(list: List<Video> = videos) = VideoListContent(list, hasMore = true, loadingMore = false)
 
+    /** A cor de destaque é global ([Look.accent]): cada foto começa e termina no âmbar. */
+    @After
+    fun resetAccent() {
+        Look.accent = Accent.DEFAULT
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneAccent() {
+        Look.accent = Accent.TEAL
+        phoneRecommendedShot("phone-accent-teal")
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvAccent() {
+        Look.accent = Accent.PINK
+        tvRecommendedShot("tv-accent-pink")
+    }
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneAccent() {
+        Look.accent = Accent.RED
+        playerShot("player-phone-accent-red")
+    }
+
     @Test
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
     fun phoneSubscriptions() = shot("phone-subscriptions") {
@@ -135,7 +163,9 @@ class ScreenShots {
 
     @Test
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
-    fun phoneRecommended() = shot("phone-recommended") {
+    fun phoneRecommended() = phoneRecommendedShot("phone-recommended")
+
+    private fun phoneRecommendedShot(name: String) = shot(name) {
         MobileUi.Theme {
             MobileUi.Home(HomeTab.RECOMMENDED, {}, {}) {
                 MobileUi.VideoGrid(feed(videos.drop(6)), "", {}, {}, {}, header = {
@@ -217,7 +247,9 @@ class ScreenShots {
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
-    fun tvRecommended() = shot("tv-recommended") {
+    fun tvRecommended() = tvRecommendedShot("tv-recommended")
+
+    private fun tvRecommendedShot(name: String) = shot(name) {
         TvUi.Theme {
             TvUi.Home(HomeTab.RECOMMENDED, {}, {}) {
                 Column {
@@ -246,7 +278,7 @@ class ScreenShots {
     }
 
     @Test
-    @Config(qualifiers = "w411dp-h1800dp-xxhdpi")
+    @Config(qualifiers = "w411dp-h2200dp-xxhdpi")
     fun phoneSettingsLong() = shot("phone-settings-long") {
         MobileUi.Theme {
             MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}) }

@@ -175,6 +175,8 @@ import ytslim.data.Video
 import ytslim.ui.AppIconPreview
 import ytslim.ui.ChannelViewModel
 import ytslim.ui.ExploreViewModel
+import ytslim.ui.Accent
+import ytslim.ui.Accents
 import ytslim.ui.DoorGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
@@ -258,7 +260,8 @@ private val StartGlass = glassStyle(GlassEdge.Start)
 @OptIn(ExperimentalHazeApi::class)
 private val LightGlass: HazeEffectScope.() -> Unit = { inputScale = HazeInputScale.Auto }
 
-private val Colors = darkColorScheme(
+/** As cores do tema, refeitas quando a cor de destaque muda ([Look.accent]). */
+private fun colors() = darkColorScheme(
     primary = Look.Glow,
     onPrimary = Look.OnGlow,
     primaryContainer = Look.SurfaceHigh,
@@ -323,7 +326,7 @@ object MobileUi : Screens {
 
     @Composable
     override fun Theme(content: @Composable () -> Unit) {
-        MaterialTheme(colorScheme = Colors, typography = Type) {
+        MaterialTheme(colorScheme = remember(Look.accent) { colors() }, typography = Type) {
             // Sem Scaffold, quem dá a cor do texto é isto (senão o texto sai preto).
             CompositionLocalProvider(LocalContentColor provides Look.Text, content = content)
         }
@@ -1106,6 +1109,34 @@ object MobileUi : Screens {
                     }
                     Text(
                         stringResource(appIcon.label),
+                        style = Meta,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 14.dp),
+                    )
+                }
+            }
+
+            item(key = "accent") {
+                // As cores de destaque do mesmo jeito que as do ícone: bolinhas lado a lado, a
+                // escolhida com um anel claro e o nome embaixo (pedido do Johan, 2026-11-03).
+                val accent = Look.accent
+                SettingsGroup(stringResource(R.string.settings_accent), hint = stringResource(R.string.settings_accent_hint)) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Accent.entries.forEach { option ->
+                            val selected = accent == option
+                            Box(
+                                Modifier.size(44.dp).clip(CircleShape)
+                                    .border(2.dp, if (selected) Look.Text else Color.Transparent, CircleShape)
+                                    .selectable(selected = selected, role = Role.RadioButton) { Accents.select(option) },
+                                contentAlignment = Alignment.Center,
+                            ) { Box(Modifier.size(30.dp).background(Color(option.glow), CircleShape)) }
+                        }
+                    }
+                    Text(
+                        stringResource(accent.label),
                         style = Meta,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 14.dp),

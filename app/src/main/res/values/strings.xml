@@ -125,6 +125,15 @@
     <string name="unblock">Unblock</string>
     <string name="settings_app_icon">App icon</string>
     <string name="settings_app_icon_hint">The new icon can take a few seconds to show up. Some launchers remove the home screen shortcut when it changes; add Doorglow again from the app list.</string>
+    <string name="settings_accent">Highlight color</string>
+    <string name="settings_accent_hint">The active tab, progress, focus and the buttons that are on, in the app and in the player.</string>
+    <string name="accent_amber">Amber</string>
+    <string name="accent_red">Red</string>
+    <string name="accent_pink">Pink</string>
+    <string name="accent_purple">Purple</string>
+    <string name="accent_blue">Blue</string>
+    <string name="accent_teal">Teal</string>
+    <string name="accent_green">Green</string>
     <string name="icon_night">Night blue</string>
     <string name="icon_black">Black</string>
     <string name="icon_teal">Teal</string>

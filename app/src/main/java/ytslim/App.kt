@@ -13,6 +13,7 @@ import ytslim.data.ListCache
 import ytslim.data.PlaylistSubscriptions
 import ytslim.data.SettingsRepository
 import ytslim.player.ScreenOffService
+import ytslim.ui.Accents
 
 class App : Application() {
     override fun onCreate() {
@@ -24,6 +25,7 @@ class App : Application() {
         FeedCache.init(this)
         ListCache.init(this)
         AppIcons.init(this)
+        Accents.init(this)
         AppScope.launch { SettingsRepository.dropOldExplore() }
         if (!isTv()) removeScreenOffService()
     }

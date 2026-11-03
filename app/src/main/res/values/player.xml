@@ -5,7 +5,6 @@
   botões do vídeo. Poucos botões, com foco bem visível para o D-pad da TV.
 -->
 <resources>
-    <color name="player_accent">@color/launcher_night_glow</color>
     <color name="player_icon">#F3EFE4</color>
     <color name="player_text_secondary">#C9C6BD</color>
     <color name="player_on_light">#18191B</color>

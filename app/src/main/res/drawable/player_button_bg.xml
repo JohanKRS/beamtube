@@ -4,8 +4,8 @@
     <item android:state_focused="true">
         <shape android:shape="rectangle">
             <corners android:radius="24dp" />
-            <solid android:color="#4DFFC861" />
-            <stroke android:width="2dp" android:color="@color/launcher_night_glow" />
+            <solid android:color="@color/player_accent_30" />
+            <stroke android:width="2dp" android:color="@color/player_accent" />
         </shape>
     </item>
     <item android:state_pressed="true">
@@ -18,7 +18,7 @@
     <item android:state_activated="true">
         <shape android:shape="rectangle">
             <corners android:radius="24dp" />
-            <solid android:color="#2EFFC861" />
+            <solid android:color="@color/player_accent_18" />
         </shape>
     </item>
     <item android:drawable="@android:color/transparent" />
