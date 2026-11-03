@@ -79,7 +79,7 @@ class SearchFiltersTest {
 
     @Test
     fun feedChoicesLeaveOutTypeAndRating() {
-        val feed = feedFilterChoices(SearchFilters(sort = SortBy.VIEWS), currentYear = 2026)
+        val feed = exploreFilterChoices(SearchFilters(sort = SortBy.VIEWS), currentYear = 2026)
         assertEquals(3, feed.size)
         val sort = feed[2]
         assertFalse(sort.isDefault)

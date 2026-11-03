@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +22,6 @@ import kotlinx.coroutines.withContext
 import ytslim.data.BlockedChannel
 import ytslim.data.ChannelRepository
 import ytslim.data.ContentFilters
-import ytslim.data.FeedFilter
 import ytslim.data.LibraryRepository
 import ytslim.data.Playlist
 import ytslim.data.SearchDuration
@@ -37,9 +37,9 @@ import ytslim.data.VideoPage
 
 /**
  * Recomendações da conta, com os filtros do Doorglow: sem Shorts, sem lives, sem canais bloqueados
- * e sem tópicos excluídos; tópicos preferidos sobem (ver [TopicRules.recommend]). Por cima, os
- * filtros da busca que cabem numa lista pronta (data, duração e ordem), aplicados pelo app
- * ([FeedFilter]): eles valem até o app fechar.
+ * e sem tópicos excluídos; tópicos preferidos sobem (ver [TopicRules.recommend]). Os filtros de
+ * data, duração e ordem saíram daqui para a Explore (pedido do Johan, 2026-11-03: as
+ * Recomendações vêm poucas por vez).
  */
 class RecommendedViewModel : ViewModel(), Refreshable {
     private sealed interface Raw {
@@ -51,21 +51,17 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     private val raw = MutableStateFlow<Raw>(Raw.Loading)
     private val settings = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
 
-    private val _filters = MutableStateFlow(SearchFilters())
-    val filters: StateFlow<SearchFilters> = _filters.asStateFlow()
-
     // Os filtros olham o título de cada vídeo: fora da thread da tela, para a rolagem não engasgar.
-    val state: StateFlow<UiState<VideoListContent>> = combine(raw, settings, _filters, ::content)
+    val state: StateFlow<UiState<VideoListContent>> = combine(raw, settings, ::content)
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
 
-    private fun shown(pages: List<List<Video>>, settings: Settings, filters: SearchFilters): List<Video> =
-        FeedFilter.apply(TopicRules.recommend(pages, settings.filters), filters, System.currentTimeMillis())
+    private fun shown(pages: List<List<Video>>, settings: Settings): List<Video> = TopicRules.recommend(pages, settings.filters)
 
-    private fun content(raw: Raw, settings: Settings, filters: SearchFilters): UiState<VideoListContent> = when (raw) {
+    private fun content(raw: Raw, settings: Settings): UiState<VideoListContent> = when (raw) {
         Raw.Loading -> UiState.Loading
         is Raw.Error -> UiState.Error(raw.message)
-        is Raw.Loaded -> UiState.Ready(VideoListContent(shown(raw.pages, settings, filters), raw.lastPage.hasMore, raw.loadingMore))
+        is Raw.Loaded -> UiState.Ready(VideoListContent(shown(raw.pages, settings), raw.lastPage.hasMore, raw.loadingMore))
     }
 
     private var job: Job? = null
@@ -79,18 +75,6 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     fun reload() = load(quiet = false)
 
     override fun refresh() = load(quiet = raw.value is Raw.Loaded)
-
-    fun setFilters(filters: SearchFilters) {
-        if (filters == _filters.value) return
-        _filters.value = filters
-        // Uma busca de páginas em andamento recomeça com o limite dos filtros novos.
-        val loaded = raw.value as? Raw.Loaded
-        if (loaded != null && loaded.loadingMore && !_refreshing.value) {
-            job?.cancel()
-            raw.value = loaded.copy(loadingMore = false)
-        }
-        fill(extra = 0)
-    }
 
     private fun load(quiet: Boolean) {
         job?.cancel()
@@ -107,10 +91,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     /** Fim da lista na tela: busca a próxima página (e mais, se os filtros deixarem poucos vídeos). */
     fun loadMore() = fill(extra = MIN_NEW)
 
-    /**
-     * Busca páginas até a tela ter pelo menos [MIN_ON_SCREEN] vídeos (e [extra] a mais que agora),
-     * num limite de páginas. Com filtros, o limite é maior: muitas páginas ficam quase vazias.
-     */
+    /** Busca páginas até a tela ter pelo menos [MIN_ON_SCREEN] vídeos (e [extra] a mais que agora), até [MAX_PAGES]. */
     private fun fill(extra: Int) {
         val start = raw.value as? Raw.Loaded ?: return
         if (start.loadingMore || _refreshing.value || !start.lastPage.hasMore) return
@@ -119,9 +100,10 @@ class RecommendedViewModel : ViewModel(), Refreshable {
             var current = start
             var pages = 0
             val target = maxOf(MIN_ON_SCREEN, count(current) + extra)
-            val limit = if (_filters.value.isDefault) MAX_PAGES else MAX_PAGES_FILTERED
-            while (current.lastPage.hasMore && pages < limit && count(current) < target) {
+            while (current.lastPage.hasMore && pages < MAX_PAGES && count(current) < target) {
                 val next = runCatching { LibraryRepository.more(current.lastPage) }.getOrNull()
+                // Um recarregar cancelou esta busca: não escreve por cima dele.
+                ensureActive()
                 current = Raw.Loaded(current.pages + listOf(next?.videos.orEmpty()), next ?: VideoPage(emptyList(), null), loadingMore = true)
                 raw.value = current
                 pages++
@@ -131,13 +113,12 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     }
 
     private suspend fun count(loaded: Raw.Loaded): Int =
-        withContext(Dispatchers.Default) { shown(loaded.pages, settings.value, _filters.value).size }
+        withContext(Dispatchers.Default) { shown(loaded.pages, settings.value).size }
 
     private companion object {
         const val MIN_ON_SCREEN = 12
         const val MIN_NEW = 6
         const val MAX_PAGES = 5
-        const val MAX_PAGES_FILTERED = 15
     }
 }
 

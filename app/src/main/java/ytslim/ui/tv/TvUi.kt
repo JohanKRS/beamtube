@@ -164,8 +164,8 @@ import ytslim.ui.SignInViewModel
 import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
 import ytslim.ui.channelOf
+import ytslim.ui.exploreFilterChoices
 import ytslim.ui.externalLinkOptions
-import ytslim.ui.feedFilterChoices
 import ytslim.ui.formatDuration
 import ytslim.ui.searchFilterChoices
 import ytslim.ui.subtitleOf
@@ -428,23 +428,23 @@ object TvUi : Screens {
     @Composable
     override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
-        val filters by vm.filters.collectAsStateWithLifecycle()
-        Column(Modifier.fillMaxSize()) {
-            FilterButtons(feedFilterChoices(filters), onChange = vm::setFilters)
-            Spacer(Modifier.height(16.dp))
-            Loadable(state, onRetry = vm::reload) { content ->
-                val empty = stringResource(if (filters.isDefault) R.string.recommended_empty else R.string.recommended_filtered_empty)
-                VideoGrid(content, empty, vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
-            }
+        Loadable(state, onRetry = vm::reload) { content ->
+            VideoGrid(content, stringResource(R.string.recommended_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
         }
     }
 
     @Composable
     override fun Explore(vm: ExploreViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
+        val filters by vm.filters.collectAsStateWithLifecycle()
         val showIntro by vm.showIntro.collectAsStateWithLifecycle()
-        Loadable(state, onRetry = vm::reload) { content ->
-            VideoGrid(content, stringResource(R.string.explore_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
+        Column(Modifier.fillMaxSize()) {
+            FilterButtons(exploreFilterChoices(filters), onChange = vm::setFilters)
+            Spacer(Modifier.height(16.dp))
+            Loadable(state, onRetry = vm::reload) { content ->
+                val empty = stringResource(if (filters.isDefault) R.string.explore_empty else R.string.explore_filtered_empty)
+                VideoGrid(content, empty, vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
+            }
         }
         // Só na primeira vez (enquanto os primeiros vídeos carregam): o que é a Explore.
         if (showIntro) ExploreIntro(onDismiss = vm::dismissIntro)

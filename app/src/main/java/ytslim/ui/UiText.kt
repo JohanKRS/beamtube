@@ -27,7 +27,7 @@ val externalLinkOptions = listOf(
     ExternalLinks.ASK to R.string.settings_links_ask,
 )
 
-/** Um filtro na tela (busca e Recomendações): o nome e as opções, cada uma já com os filtros que ela aplica. */
+/** Um filtro na tela (busca e Explore): o nome e as opções, cada uma já com os filtros que ela aplica. */
 class SearchFilterChoice(@StringRes val label: Int, val options: List<Option>) {
     /** [arg] completa o texto da opção ("Before %1$d"). */
     class Option(@StringRes val label: Int, val filters: SearchFilters, val selected: Boolean, val arg: Int? = null)
@@ -115,10 +115,10 @@ fun searchFilterChoices(filters: SearchFilters, currentYear: Int = thisYear()): 
 )
 
 /**
- * Os filtros das Recomendações: data, duração e ordem. O tipo não se aplica (só há vídeos), e a
+ * Os filtros da Explore: data, duração e ordem. O tipo não se aplica (só há vídeos), e a
  * nota não vem nas listas do YouTube.
  */
-fun feedFilterChoices(filters: SearchFilters, currentYear: Int = thisYear()): List<SearchFilterChoice> = listOf(
+fun exploreFilterChoices(filters: SearchFilters, currentYear: Int = thisYear()): List<SearchFilterChoice> = listOf(
     dateChoice(filters, currentYear),
     durationChoice(filters),
     choice(
