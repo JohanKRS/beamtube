@@ -651,6 +651,7 @@ object MobileUi : Screens {
     @Composable
     override fun Explore(vm: ExploreViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
+        val showIntro by vm.showIntro.collectAsStateWithLifecycle()
         Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
             VideoGrid(
                 content,
@@ -658,9 +659,15 @@ object MobileUi : Screens {
                 onNearEnd = vm::loadMore,
                 onPlay = onPlay,
                 onOpenChannel = onOpenChannel,
-                header = {
-                    Text(stringResource(R.string.explore_hint), style = MaterialTheme.typography.bodySmall, color = Look.Sub)
-                },
+            )
+        }
+        // Só na primeira vez (enquanto os primeiros vídeos carregam): o que é a Explore.
+        if (showIntro) {
+            AlertDialog(
+                onDismissRequest = vm::dismissIntro,
+                title = { Text(stringResource(R.string.tab_explore)) },
+                text = { Text(stringResource(R.string.explore_intro)) },
+                confirmButton = { TextButton(onClick = vm::dismissIntro) { Text(stringResource(R.string.got_it)) } },
             )
         }
     }

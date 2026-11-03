@@ -149,6 +149,7 @@ Pedido do Johan (2026-11-02): os filtros das Recomendações só filtram o que o
 - Os pedidos vão com a conta logada (o motor põe o login em todo pedido), como abrir a página de um canal no app. Sem login (ou sem as inscrições), a aba mostra o erro.
 - Conferido contra o YouTube em 2026-11-02, com 8 canais de exemplo: 41 canais candidatos, e cada sorteio de 10 canais com 40 vídeos levou 2 a 3 s.
 - Descartado: as seções prontas do YouTube (Gaming, News, Sports, Live, Podcasts), que trazem conteúdo popular e pouco controle.
+- **O texto que explica a aba** (pedido do Johan, 2026-11-03): não fica mais fixo no topo. Aparece como um aviso só na primeira vez que a aba abre, com "Got it" para fechar (no celular e no tablet, tocar fora também fecha; na TV, o foco já começa no botão). Depois disso não volta; a marca fica nas configurações do aparelho (`explore_intro_seen`).
 
 ## Inscrição em playlists
 
@@ -198,6 +199,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
+   - *Próxima versão (ainda sem número), pedidos do Johan em 2026-11-03, juntando vários antes do build; o Johan avisa quando gerar*: o texto da Explore vira um aviso que aparece só na primeira vez.
    - *Versão 0.5.6 (2026-11-03), achados do Johan na TV, aguardando o teste no aparelho* (ver "Como testar a 0.5.6"): a ilha do player em duas linhas na TV (os botões depois da barra não pegavam o foco) e o brilho do modo dormir mantido até fechar o app.
    - *Versão 0.5.5 (2026-11-03), pedidos do Johan testando a 0.5.4, aguardando o teste no aparelho* (ver "Como testar a 0.5.5"): Undo ao tirar vídeos do Histórico e das playlists, reordenar sem o modo (alça em cada vídeo, cada movimento gravado na hora), a seta para o topo, o toque longo desligado dentro do Watch later, e as playlists e o Histórico guardados no aparelho e carregando à frente.
    - *Versão 0.5.4 (2026-11-03), ajustes depois de o Johan testar a 0.5.3, aguardando o teste no aparelho* (ver "Como testar a 0.5.4"): 3 colunas no tablet de 14,6" em pé, a atualização das listas sem os cartões voando e o ícone e o banner da TV refinados.

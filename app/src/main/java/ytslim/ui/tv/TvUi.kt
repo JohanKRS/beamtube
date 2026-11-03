@@ -427,12 +427,27 @@ object TvUi : Screens {
     @Composable
     override fun Explore(vm: ExploreViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
-        Column(Modifier.fillMaxSize()) {
-            Hint(stringResource(R.string.explore_hint_tv))
-            Spacer(Modifier.height(16.dp))
-            Loadable(state, onRetry = vm::reload) { content ->
-                VideoGrid(content, stringResource(R.string.explore_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
+        val showIntro by vm.showIntro.collectAsStateWithLifecycle()
+        Loadable(state, onRetry = vm::reload) { content ->
+            VideoGrid(content, stringResource(R.string.explore_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
+        }
+        // Só na primeira vez (enquanto os primeiros vídeos carregam): o que é a Explore.
+        if (showIntro) ExploreIntro(onDismiss = vm::dismissIntro)
+    }
+
+    @Composable
+    private fun ExploreIntro(onDismiss: () -> Unit) {
+        val button = remember { FocusRequester() }
+        Dialog(onDismissRequest = onDismiss) {
+            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(560.dp)) {
+                Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(stringResource(R.string.tab_explore), style = MaterialTheme.typography.headlineSmall)
+                    Text(stringResource(R.string.explore_intro_tv), style = MaterialTheme.typography.bodyLarge)
+                    Button(onClick = onDismiss, modifier = Modifier.focusRequester(button)) { Text(stringResource(R.string.got_it)) }
+                }
             }
+            // Dentro do diálogo: a janela dele já existe quando o foco é pedido.
+            LaunchedEffect(Unit) { runCatching { button.requestFocus() } }
         }
     }
 

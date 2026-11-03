@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ytslim.data.AppScope
@@ -48,6 +49,18 @@ class ExploreViewModel : ViewModel(), Refreshable {
     private val _refreshing = MutableStateFlow(false)
     override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
     private var job: Job? = null
+
+    /**
+     * Mostrar o aviso que explica a Explore (pedido do Johan, 2026-11-03: só na primeira vez, em
+     * vez do texto fixo em cima da lista). Começa false para não piscar para quem já viu.
+     */
+    val showIntro: StateFlow<Boolean> = SettingsRepository.exploreIntroSeen.map { !it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** Fechou o aviso: ele não aparece mais. */
+    fun dismissIntro() {
+        AppScope.launch { SettingsRepository.setExploreIntroSeen() }
+    }
 
     init {
         load(quiet = false)

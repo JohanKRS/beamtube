@@ -192,7 +192,8 @@
     <string name="ext_ask_no_history">Watch without saving to history</string>
     <string name="ext_ask_save_history">Watch and save to my history</string>
     <!-- Explore -->
-    <string name="explore_hint">Videos from the channels your subscriptions feature, new and old. Pull down for a different mix.</string>
-    <string name="explore_hint_tv">Videos from the channels your subscriptions feature, new and old. Hold OK on the tab for a different mix.</string>
+    <string name="got_it">Got it</string>
+    <string name="explore_intro">Videos from the channels your subscriptions feature, new and old. Pull down for a different mix.</string>
+    <string name="explore_intro_tv">Videos from the channels your subscriptions feature, new and old. Hold OK on the tab for a different mix.</string>
     <string name="explore_empty">Nothing to show yet. Explore uses the channels your subscriptions feature on their pages.</string>
 </resources>
