@@ -65,7 +65,10 @@ android {
             resValue("string", "app_name", "$appName (debug)")
         }
         release {
-            isMinifyEnabled = false
+            // R8: otimiza o Compose, o Media3 e o resto, e tira o que não é usado (ex.: os milhares de
+            // ícones do material-icons-extended). O motor fica inteiro (proguard-rules.pro).
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Sem a chave das releases (ex.: build local de teste), assina com a de debug desta máquina:
             // instala num aparelho limpo, mas não atualiza por cima da versão das releases.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
@@ -142,8 +145,11 @@ dependencies {
     implementation(libs.haze)
 
     implementation(libs.coil.compose)
-    implementation(libs.coil.network.ktor)
-    implementation(libs.ktor.client.android)
+    // Miniaturas pelo OkHttp 3 do motor, em HTTP/2 (ui/ImageHttp.kt).
+    implementation(libs.coil.network.core)
+
+    // Diz no log se o Android já compilou o app com o perfil (src/main/baseline-prof.txt).
+    implementation(libs.androidx.profileinstaller)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.rx2)

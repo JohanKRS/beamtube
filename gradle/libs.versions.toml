@@ -17,7 +17,7 @@ retrofit-engine = "2.5.0"
 zxing = "3.5.3"
 # Vidro fosco (desfoque do que passa por baixo das barras). A 1.7.3 e a 2.x já pedem o Compose 1.12.
 haze = "1.7.2"
-ktor = "3.3.3"
+profileinstaller = "1.4.1"
 datastore = "1.2.1"
 coreKtx = "1.17.0"
 serialization = "1.10.0"
@@ -51,9 +51,10 @@ retrofit-engine = { module = "com.squareup.retrofit2:retrofit", version.ref = "r
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
-# O motor fixa o OkHttp 3, então as imagens usam o Ktor (HttpURLConnection).
-coil-network-ktor = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
-ktor-client-android = { module = "io.ktor:ktor-client-android", version.ref = "ktor" }
+# O motor fixa o OkHttp 3, e o coil-network-okhttp pede o 4: as imagens usam um adaptador próprio
+# sobre o OkHttp 3 (ui/ImageHttp.kt), com o núcleo de rede do Coil.
+coil-network-core = { module = "io.coil-kt.coil3:coil-network-core", version.ref = "coil" }
+androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-rx2 = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-rx2", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }

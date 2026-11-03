@@ -3,6 +3,7 @@ package ytslim.player
 import ytslim.R
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
@@ -17,7 +18,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
@@ -36,8 +37,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AudioRules
 import ytslim.data.AuthRepository
 import ytslim.data.Caption
@@ -58,6 +62,7 @@ import ytslim.data.SubtitleRules
 import ytslim.data.VideoActions
 import ytslim.data.VideoState
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Dono do ExoPlayer. Busca os streams pelo motor e aplica as regras do player:
@@ -72,7 +77,8 @@ class PlaybackController(
     /** O teto de qualidade do aparelho ([QualityRules.top]): 4K na TV, 1080p no celular e no tablet. */
     private val top: Int = QualityRules.MAX_HEIGHT,
 ) {
-    private val res = context.applicationContext.resources
+    private val app = context.applicationContext
+    private val res = app.resources
 
     sealed interface State {
         data object Loading : State
@@ -114,6 +120,9 @@ class PlaybackController(
     val notices: StateFlow<String?> = _notices.asStateFlow()
 
     val player: ExoPlayer = ExoPlayer.Builder(context)
+        // A regra de qualidade já na primeira escolha do Media3 ([QualitySelector]).
+        .setTrackSelector(QualitySelector(context, ::describeTrack, ::chooseAuto))
+        .setLoadControl(LoadRules.create(tv = top > QualityRules.TOUCH_HEIGHT))
         .setAudioAttributes(
             AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
             /* handleAudioFocus = */ true,
@@ -132,10 +141,10 @@ class PlaybackController(
     private var playingHeight: Int? = null
 
     /** A resolução escolhida à mão para este vídeo (null = Auto). Vale só para o vídeo atual. */
-    private var manualHeight: Int? = null
+    @Volatile private var manualHeight: Int? = null
 
     /** O teto deste vídeo: cai quando ele para várias vezes para carregar (a rede não dá conta). */
-    private var videoCeiling = top
+    @Volatile private var videoCeiling = top
 
     /** Depois de descer por causa da rede, tenta voltar ao topo ([scheduleClimb]). */
     private var climbJob: Job? = null
@@ -154,6 +163,18 @@ class PlaybackController(
     private var loadJob: Job? = null
     private var extrasJob: Job? = null
     private var nextJob: Job? = null
+    private var aheadJob: Job? = null
+
+    /** O primeiro quadro do vídeo atual já apareceu (ou ele falhou): os extras esperam por isto. */
+    private val started = MutableStateFlow(false)
+
+    /** Para o log do tempo até o primeiro quadro: quando o vídeo foi pedido, e em quantos ms ficou pronto. */
+    private var requestedAt = 0L
+    private var readyInMs = -1L
+    private var firstFrameLogged = false
+
+    /** A qualidade do início foi trocada pelo app depois da escolha do Media3 (deveria ser raro agora). */
+    private var switchedAtStart = false
     private var heatmap: List<HeatSegment> = emptyList()
 
     /** O vídeo aberto agora. */
@@ -172,12 +193,32 @@ class PlaybackController(
      * o progresso para o histórico do YouTube.
      * @param title o título conhecido antes de carregar (o do card).
      */
-    fun open(videoId: String, startPositionMs: Long = 0, saveHistory: Boolean = true, title: String? = null) {
+    fun open(
+        videoId: String,
+        startPositionMs: Long = 0,
+        saveHistory: Boolean = true,
+        title: String? = null,
+        /** Quando o card foi tocado ([SystemClock.elapsedRealtime]); 0 = agora. Só para o log de tempos. */
+        requestedAtMs: Long = 0L,
+    ) {
         nextJob?.cancel()
-        start(videoId, startPositionMs, saveHistory, title, fromQueue = false)
+        start(videoId, startPositionMs, saveHistory, title, fromQueue = false, requestedAtMs)
     }
 
-    private fun start(videoId: String, startPositionMs: Long, saveHistory: Boolean, title: String?, fromQueue: Boolean) {
+    private fun start(
+        videoId: String,
+        startPositionMs: Long,
+        saveHistory: Boolean,
+        title: String?,
+        fromQueue: Boolean,
+        requestedAtMs: Long = 0L,
+    ) {
+        requestedAt = requestedAtMs.takeIf { it > 0 } ?: SystemClock.elapsedRealtime()
+        readyInMs = -1L
+        firstFrameLogged = false
+        switchedAtStart = false
+        started.value = false
+        aheadJob?.cancel()
         this.videoId = videoId
         this.saveHistory = saveHistory
         this.titleHint = title?.takeIf { it.isNotBlank() }
@@ -211,6 +252,7 @@ class PlaybackController(
 
     /** Mostra o erro. Um vídeo da sequência que não toca (apagado, privado) é pulado. */
     private fun fail(message: String) {
+        started.value = true
         _state.value = State.Failed(message)
         if (fromQueue) playNext(counts = false, delayMs = FAILED_PAUSE_MS)
     }
@@ -221,6 +263,7 @@ class PlaybackController(
         loadJob = scope.launch {
             val result = runCatching { PlaybackRepository.load(videoId) }
                 .getOrElse { PlaybackResult.Unplayable(it.message) }
+            if (readyInMs < 0) readyInMs = SystemClock.elapsedRealtime() - requestedAt
             when (result) {
                 is PlaybackResult.Unplayable -> fail(result.reason ?: res.getString(R.string.player_unplayable))
                 is PlaybackResult.Ready -> play(result, startPositionMs)
@@ -232,6 +275,9 @@ class PlaybackController(
     private fun loadExtras(videoId: String) {
         extrasJob?.cancel()
         extrasJob = scope.launch {
+            // Os extras esperam o primeiro quadro (no máximo uns segundos): ler essas páginas grandes junto
+            // com o vídeo disputava a rede e o processador com ele, e o começo atrasava (mais na TV).
+            withTimeoutOrNull(EXTRAS_WAIT_MS) { started.first { it } }
             launch {
                 val markers = HeatmapRepository.load(videoId)
                 heatmap = markers.heat
@@ -274,14 +320,33 @@ class PlaybackController(
         player.prepare()
         _controls.update { it.copy(captionsAvailable = caption != null, captionsOn = captionsOn) }
         _state.value = State.Playing(result.info)
+        if (!result.info.isLive) prefetchNextNearEnd()
+    }
+
+    /**
+     * Na sequência de uma playlist, o próximo vídeo é pedido ao motor perto do fim do atual: quando
+     * este acaba, o próximo já está resolvido e só falta carregar.
+     */
+    private fun prefetchNextNearEnd() {
+        aheadJob?.cancel()
+        if (!PlayQueue.active.value) return
+        aheadJob = scope.launch {
+            while (isActive) {
+                delay(AHEAD_CHECK_MS)
+                val duration = player.duration
+                if (duration == C.TIME_UNSET || duration <= 0) continue
+                if (duration - player.currentPosition > AHEAD_MS) continue
+                PlayQueue.peek()?.let {
+                    Log.i(TAG, "resolving the next video in the sequence (${it.id})")
+                    PlaybackRepository.prefetch(it.id)
+                }
+                return@launch
+            }
+        }
     }
 
     private fun buildSource(result: PlaybackResult.Ready, caption: Caption?): MediaSource {
-        val http: DataSource.Factory = DefaultHttpDataSource.Factory()
-            .setUserAgent(result.userAgent)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
+        val http: DataSource.Factory = MediaHttp.factory(app, result.userAgent)
         val item = MediaItem.Builder().setMediaId(result.info.videoId).build()
         val main = when (val stream = result.stream) {
             is Stream.DashManifest -> {
@@ -395,10 +460,19 @@ class PlaybackController(
         extrasJob?.cancel()
         nextJob?.cancel()
         climbJob?.cancel()
+        aheadJob?.cancel()
         player.release()
     }
 
     private inner class PlayerListener : Player.Listener {
+        override fun onRenderedFirstFrame() {
+            started.value = true
+            if (firstFrameLogged) return
+            firstFrameLogged = true
+            val total = SystemClock.elapsedRealtime() - requestedAt
+            Log.i(TAG, "first frame of $videoId in $total ms (stream ready in $readyInMs ms, ${playingHeight ?: _quality.value.playing}p, quality switched at start: $switchedAtStart)")
+        }
+
         override fun onPlaybackStateChanged(playbackState: Int) {
             watchRebuffering(playbackState)
             when (playbackState) {
@@ -521,6 +595,7 @@ class PlaybackController(
         } else {
             Log.i(TAG, "playing ${described[video.indexOf(target)]}")
             if (target.selected) return
+            if (!firstFrameLogged) switchedAtStart = true
             parameters.setOverrideForType(TrackSelectionOverride(tracks.groups[target.group].mediaTrackGroup, target.index))
         }
         expectBuffering = true
@@ -536,24 +611,36 @@ class PlaybackController(
             for (i in 0 until group.length) {
                 val format = group.getTrackFormat(i)
                 val support = group.getTrackSupport(i)
-                val track = VideoTrack(
-                    group = g,
-                    index = i,
-                    height = minOf(format.width, format.height).takeIf { format.width > 0 } ?: format.height,
-                    frameRate = format.frameRate,
-                    bitrate = format.bitrate,
-                    handled = support == C.FORMAT_HANDLED,
-                    exceeds = support == C.FORMAT_EXCEEDS_CAPABILITIES,
-                    hardware = hasHardwareDecoder(format.sampleMimeType),
-                    hdr = isHdr(format),
-                    selected = group.isTrackSelected(i),
-                )
+                val track = describeTrack(format, support).copy(group = g, index = i, selected = group.isTrackSelected(i))
                 video += track
                 described += "${format.width}x${format.height}@${format.frameRate} ${format.codecs} " +
                     "${Util.getFormatSupportString(support)}${if (track.hardware) " hw" else ""}${if (track.selected) " SELECTED" else ""}"
             }
         }
         return video to described
+    }
+
+    /** Uma faixa de vídeo como [QualityRules] a vê ([support] é o C.FORMAT_* do decodificador). */
+    private fun describeTrack(format: Format, support: Int) = VideoTrack(
+        group = 0,
+        index = 0,
+        height = minOf(format.width, format.height).takeIf { format.width > 0 } ?: format.height,
+        frameRate = format.frameRate,
+        bitrate = format.bitrate,
+        handled = support == C.FORMAT_HANDLED,
+        exceeds = support == C.FORMAT_EXCEEDS_CAPABILITIES,
+        hardware = hasHardwareDecoder(format.sampleMimeType),
+        hdr = isHdr(format),
+        selected = false,
+    )
+
+    /**
+     * A escolha do Auto (ou da resolução à mão) para o [QualitySelector], na thread do player: a mesma
+     * regra do [pickQuality], já na primeira escolha do vídeo.
+     */
+    private fun chooseAuto(tracks: List<VideoTrack>): VideoTrack? {
+        manualHeight?.let { height -> QualityRules.manual(tracks, height)?.let { return it } }
+        return QualityRules.best(tracks, minOf(sessionCeiling, videoCeiling))
     }
 
     /** A resolução (o lado menor do quadro) da faixa de vídeo tocando. */
@@ -656,14 +743,37 @@ class PlaybackController(
         const val CLIMB_BACK_MS = 120_000L
 
         /** O teto até o app fechar: começa em 4K e cai quando o decodificador do aparelho não dá conta. */
-        var sessionCeiling = QualityRules.MAX_HEIGHT
+        @Volatile var sessionCeiling = QualityRules.MAX_HEIGHT
 
-        /** Codec -> o decodificador principal é de hardware? */
-        val hardwareDecoders = HashMap<String, Boolean>()
+        /** Codec -> o decodificador principal é de hardware? (lido também na thread do player) */
+        val hardwareDecoders = ConcurrentHashMap<String, Boolean>()
+
+        /** Quanto os extras (gráfico, like, Save) esperam o primeiro quadro antes de ir mesmo assim. */
+        const val EXTRAS_WAIT_MS = 4_000L
+
+        /** Na sequência, o próximo vídeo é resolvido quando faltam [AHEAD_MS] (conferido a cada [AHEAD_CHECK_MS]). */
+        const val AHEAD_MS = 40_000L
+        const val AHEAD_CHECK_MS = 5_000L
 
         /** Quanto o erro de um vídeo da sequência fica na tela antes de ir para o próximo. */
         const val FAILED_PAUSE_MS = 3_000L
     }
+}
+
+/**
+ * Quanto o player guarda de vídeo. No celular e no tablet, os últimos 15 s já vistos ficam guardados:
+ * voltar 10 s com dois toques é instantâneo, sem baixar de novo (em 1080p são uns 8 MB). Na TV, o 4K
+ * ocupa até ~130 MB nos 50 s à frente que o Media3 guarda; o teto de 80 MB (uns 25 s de 4K, minutos
+ * em 1080p) deixa memória para o resto do app numa TV com pouca RAM.
+ */
+@OptIn(UnstableApi::class)
+internal object LoadRules {
+    const val TOUCH_BACK_BUFFER_MS = 15_000
+    const val TV_TARGET_BYTES = 80 * 1024 * 1024
+
+    fun create(tv: Boolean): DefaultLoadControl = DefaultLoadControl.Builder().apply {
+        if (tv) setTargetBufferBytes(TV_TARGET_BYTES) else setBackBuffer(TOUCH_BACK_BUFFER_MS, /* retainBackBufferFromKeyframe = */ true)
+    }.build()
 }
 
 /** Parâmetros de seleção de faixas aplicados no início de cada vídeo. */

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -121,7 +122,9 @@ class FeedViewModel : ViewModel(), Refreshable {
     private val extras = MutableStateFlow<List<Timed>>(emptyList())
     private val settings = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
 
+    // Os filtros (canais bloqueados, tópicos) rodam fora da thread da tela, como nas Recomendações.
     val state: StateFlow<UiState<VideoListContent>> = combine(raw, extras, settings, ::content)
+        .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
 
     private fun content(raw: Raw, extras: List<Timed>, settings: Settings): UiState<VideoListContent> = when (raw) {

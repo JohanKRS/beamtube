@@ -123,6 +123,9 @@ class PlayerActivity : ComponentActivity() {
     private var saveHistory = true
     private var external = false
 
+    /** Quando o card foi tocado (para o log do tempo até o primeiro quadro); 0 = agora. */
+    private var requestedAtMs = 0L
+
     /** Brilho do vídeo no modo dormir, em %. Vale até fechar o app ([sessionBrightness]). */
     private var brightness = 100
 
@@ -191,6 +194,7 @@ class PlayerActivity : ComponentActivity() {
             return
         }
         external = target.external
+        if (savedInstanceState == null) requestedAtMs = intent.getLongExtra(EXTRA_REQUESTED_AT, 0L)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -253,7 +257,8 @@ class PlayerActivity : ComponentActivity() {
 
     private fun start(videoId: String, startMs: Long, saveHistory: Boolean, title: String?) {
         this.saveHistory = saveHistory
-        controller.open(videoId, startMs, saveHistory, title)
+        controller.open(videoId, startMs, saveHistory, title, requestedAtMs = requestedAtMs)
+        requestedAtMs = 0L
     }
 
     private fun ask(onChoice: (saveHistory: Boolean) -> Unit) {
@@ -976,6 +981,7 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         private const val EXTRA_VIDEO_ID = "video_id"
         private const val EXTRA_TITLE = "title"
+        private const val EXTRA_REQUESTED_AT = "requested_at"
         private const val KEY_POSITION = "position"
         private const val KEY_VIDEO = "video"
         private const val KEY_TITLE = "video_title"
@@ -1011,5 +1017,6 @@ class PlayerActivity : ComponentActivity() {
             Intent(context, PlayerActivity::class.java)
                 .putExtra(EXTRA_VIDEO_ID, videoId)
                 .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_REQUESTED_AT, SystemClock.elapsedRealtime())
     }
 }

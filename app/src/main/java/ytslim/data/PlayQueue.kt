@@ -85,6 +85,15 @@ object PlayQueue {
         return upcoming.removeFirstOrNull()
     }
 
+    /**
+     * O vídeo que [next] daria agora, sem avançar a sequência nem buscar páginas: para resolver o
+     * próximo antes de o atual acabar. null se não há (ou o limite do painel chegou a zero).
+     */
+    fun peek(): Video? {
+        if (!_active.value || _left.value == 0) return null
+        return upcoming.firstOrNull()
+    }
+
     /** Agendados ainda não têm o que tocar. */
     private fun playable(video: Video) = !video.isUpcoming
 }

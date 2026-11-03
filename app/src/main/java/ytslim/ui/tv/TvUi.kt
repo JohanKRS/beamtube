@@ -39,6 +39,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1318,8 +1319,10 @@ object TvUi : Screens {
     ) {
         val firstFocus = remember { FocusRequester() }
         val saved by SavedVideos.ids.collectAsStateWithLifecycle()
-        PrefetchThumbnails(content.videos)
+        val grid = rememberLazyGridState()
+        PrefetchThumbnails(content.videos, grid)
         LazyVerticalGrid(
+            state = grid,
             columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
             verticalArrangement = Arrangement.spacedBy(GridGapY),
