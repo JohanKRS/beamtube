@@ -10,6 +10,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +59,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -65,6 +68,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -324,8 +328,8 @@ object TvUi : Screens {
     override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, onReload: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
         val initialFocus = rememberSaveable { mutableStateOf(true) }
         var tabsFocused by remember { mutableStateOf(false) }
-        // Segurar OK numa aba recarrega a lista dela, quando o OK é solto. O Tab segue recebendo as
-        // teclas (o clique dele só escolhe a aba, que já está escolhida).
+        // Segurar OK numa aba recarrega a lista dela, quando o OK é solto depois de [OkHold.HOLD_MS].
+        // O Tab segue recebendo as teclas (o clique dele só escolhe a aba, que já está escolhida).
         var heldTab by remember { mutableStateOf<HomeTab?>(null) }
         val selectedTab = remember { FocusRequester() }
         // Voltar, de dentro do conteúdo, sobe para as abas; nas abas, sai do app.
@@ -356,11 +360,12 @@ object TvUi : Screens {
                         ),
                         modifier = (if (item == tab) Modifier.focusRequester(selectedTab) else Modifier)
                             .onPreviewKeyEvent { event ->
-                                if (event.nativeKeyEvent.keyCode in OkKeys) {
-                                    if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount > 0) {
+                                val key = event.nativeKeyEvent
+                                if (key.keyCode in OkKeys) {
+                                    if (event.type == KeyEventType.KeyDown && key.repeatCount == 0) {
                                         heldTab = item
                                     } else if (event.type == KeyEventType.KeyUp) {
-                                        if (heldTab == item) onReload(item)
+                                        if (heldTab == item && key.eventTime - key.downTime >= OkHold.HOLD_MS) onReload(item)
                                         heldTab = null
                                     }
                                 }
@@ -1457,20 +1462,58 @@ object TvUi : Screens {
         }
     }
 
-    /** Card com o foco da TV: cresce 6%, ganha um contorno creme e um brilho âmbar. */
+    /**
+     * Card com o foco da TV: cresce 6%, ganha um contorno creme e um brilho âmbar. Com [onLongClick],
+     * o OK curto e o longo são medidos pelo app ([OkHold]), e não pelo Card.
+     */
     @Composable
     private fun GlowCard(onClick: () -> Unit, onLongClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
+        val interaction = remember { MutableInteractionSource() }
+        val hold = onLongClick?.let { rememberOkHold(interaction, onClick, it) }
         Card(
             onClick = onClick,
-            onLongClick = onLongClick,
-            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).then(if (hold != null) Modifier.okHold(hold) else Modifier),
             shape = CardDefaults.shape(CardShape),
             colors = CardDefaults.colors(containerColor = Look.Surface),
             scale = CardDefaults.scale(focusedScale = 1.06f),
             border = CardDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Look.GlowSoft), shape = CardShape)),
             glow = CardDefaults.glow(focusedGlow = Glow(elevationColor = Look.Glow.copy(alpha = 0.45f), elevation = 18.dp)),
+            interactionSource = interaction,
         ) { content() }
     }
+
+    /** O [OkHold] de um card, com o "apertado" passado para o [interaction] dele. */
+    @Composable
+    private fun rememberOkHold(interaction: MutableInteractionSource, onClick: () -> Unit, onLongClick: () -> Unit): OkHold {
+        val scope = rememberCoroutineScope()
+        val click by rememberUpdatedState(onClick)
+        val longClick by rememberUpdatedState(onLongClick)
+        return remember(interaction, scope) {
+            var press: PressInteraction.Press? = null
+            OkHold(
+                scope,
+                onPress = { down ->
+                    press?.let { interaction.tryEmit(PressInteraction.Release(it)) }
+                    press = if (down) PressInteraction.Press(Offset.Zero).also { interaction.tryEmit(it) } else null
+                },
+                onClick = { click() },
+                onLongClick = { longClick() },
+            )
+        }
+    }
+
+    /** Todas as teclas de OK vão para o [hold], antes do Card; o foco saindo cancela o OK apertado. */
+    private fun Modifier.okHold(hold: OkHold): Modifier =
+        onFocusChanged { if (!it.hasFocus) hold.cancel() }
+            .onPreviewKeyEvent { event ->
+                val key = event.nativeKeyEvent
+                if (key.keyCode !in OkKeys) return@onPreviewKeyEvent false
+                when (event.type) {
+                    KeyEventType.KeyDown -> if (key.repeatCount == 0) hold.down()
+                    KeyEventType.KeyUp -> hold.up()
+                }
+                true
+            }
 
     @Composable
     private fun Badge(text: String, color: Color, modifier: Modifier) {
