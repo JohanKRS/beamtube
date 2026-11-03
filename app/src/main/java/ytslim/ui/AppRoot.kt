@@ -150,9 +150,9 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
             val notice by Notices.current.collectAsStateWithLifecycle()
             ui.NoticePill(notice)
             LaunchedEffect(notice?.id) {
-                val id = notice?.id ?: return@LaunchedEffect
-                delay(2600)
-                Notices.dismiss(id)
+                val shown = notice ?: return@LaunchedEffect
+                delay(if (shown.action != null) Notices.UNDO_MS else Notices.SHOW_MS)
+                Notices.dismiss(shown.id)
             }
         }
     }

@@ -51,7 +51,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -67,8 +66,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Explore
@@ -76,7 +75,6 @@ import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Subscriptions
-import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -182,9 +180,9 @@ import ytslim.ui.LightSlit
 import ytslim.ui.ListMotion
 import ytslim.ui.Look
 import ytslim.ui.Notice
+import ytslim.ui.NoticeAction
 import ytslim.ui.Notices
 import ytslim.ui.PlaylistViewModel
-import ytslim.ui.PlaylistViewModel.Reorder
 import ytslim.ui.PlaylistsViewModel
 import ytslim.ui.PrefetchThumbnails
 import ytslim.ui.RecommendedViewModel
@@ -211,7 +209,6 @@ import ytslim.ui.toggleSaved
 private val TopBarHeight = 56.dp
 
 /** A chave do aviso no topo da lista de reordenar (os vídeos usam o próprio ID). */
-private const val REORDER_HINT = "reorder-hint"
 private val BottomBarHeight = 60.dp
 private val RailWidth = 80.dp
 
@@ -315,17 +312,32 @@ object MobileUi : Screens {
                 enter = fadeIn() + slideInVertically { it / 2 },
                 exit = fadeOut() + slideOutVertically { it / 2 },
             ) {
-                Text(
-                    shown?.text.orEmpty(),
-                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
-                    color = Look.Text,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 24.dp)
+                val action = shown?.action
+                Row(
+                    Modifier.padding(horizontal = 24.dp)
                         .shadow(16.dp, RoundedCornerShape(22.dp), ambientColor = Color.Black, spotColor = Color.Black)
                         .background(Look.Pill, RoundedCornerShape(22.dp))
                         .border(1.dp, Look.Outline, RoundedCornerShape(22.dp))
-                        .padding(horizontal = 18.dp, vertical = 12.dp),
-                )
+                        .padding(start = 18.dp, end = if (action != null) 6.dp else 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        shown?.text.orEmpty(),
+                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
+                        color = Look.Text,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(vertical = 12.dp).weight(1f, fill = false),
+                    )
+                    if (action != null) {
+                        // "Undo": desfaz e a pílula some na hora.
+                        TextButton(onClick = {
+                            action.run()
+                            shown?.let { Notices.dismiss(it.id) }
+                        }) {
+                            Text(action.label, style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp), color = Look.Glow)
+                        }
+                    }
+                }
             }
         }
     }
@@ -658,8 +670,8 @@ object MobileUi : Screens {
         val state by vm.state.collectAsStateWithLifecycle()
         val res = LocalContext.current.resources
         val remove = { video: Video ->
-            vm.remove(video) { Notices.show(res.getString(R.string.history_remove_failed, it)) }
-            Notices.show(res.getString(R.string.history_removed))
+            val undo = vm.remove(video) { Notices.show(res.getString(R.string.history_remove_failed, it)) }
+            Notices.show(res.getString(R.string.history_removed), NoticeAction(res.getString(R.string.undo), undo))
         }
         // O mesmo visual das playlists (pedido do Johan): miniatura ao lado do título.
         Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
@@ -1122,137 +1134,41 @@ object MobileUi : Screens {
     ) {
         val state by vm.state.collectAsStateWithLifecycle()
         val subscription by vm.subscription.collectAsStateWithLifecycle()
-        val reorder by vm.reorder.collectAsStateWithLifecycle()
-        val removable by vm.removable.collectAsStateWithLifecycle()
+        val editable by vm.editable.collectAsStateWithLifecycle()
         val saveTarget by SavedVideos.target.collectAsStateWithLifecycle()
         val res = LocalContext.current.resources
         val loadedTitle = (state as? UiState.Ready)?.data?.title
         val shownTitle = title.ifBlank { loadedTitle ?: stringResource(R.string.playlist_default_title) }
-        val editing = reorder as? Reorder.Editing
-        BackHandler(enabled = editing != null) { vm.cancelReorder() }
 
-        DetailFrame(
-            title = shownTitle,
-            navigation = {
-                if (editing != null) {
-                    IconButton(onClick = vm::cancelReorder, enabled = !editing.saving) {
-                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cancel))
-                    }
-                } else {
-                    BackButton(onBack)
-                }
-            },
-            actions = {
-                when (val r = reorder) {
-                    Reorder.Unavailable -> Unit
-                    is Reorder.Available ->
-                        if (r.preparing) CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp))
-                        else IconButton(onClick = vm::startReorder, enabled = state is UiState.Ready) {
-                            Icon(Icons.Outlined.SwapVert, contentDescription = stringResource(R.string.reorder))
+        DetailFrame(title = shownTitle, navigation = { BackButton(onBack) }) {
+            Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
+                val shown = subscription as? PlaylistViewModel.Subscription.Shown
+                VideoRows(
+                    content = content,
+                    onNearEnd = vm::loadMore,
+                    onPlay = onPlay,
+                    onOpenChannel = onOpenChannel,
+                    // Na própria playlist do botão Save, o marcador estaria em todos os vídeos.
+                    showSaved = vm.playlistId != saveTarget.playlistId,
+                    header = shown?.let { { SubscribeHeader(it) { vm.toggleSubscription(shownTitle) } } },
+                    onRemove = if (editable) {
+                        { video ->
+                            val undo = vm.remove(video) { Notices.show(res.getString(R.string.playlist_remove_failed, it)) }
+                            Notices.show(res.getString(R.string.playlist_removed, shownTitle), NoticeAction(res.getString(R.string.undo), undo))
                         }
-                    is Reorder.Editing -> TextButton(onClick = vm::saveOrder, enabled = !r.saving) {
-                        Text(stringResource(if (r.saving) R.string.reorder_saving else R.string.reorder_save))
-                    }
-                }
-            },
-        ) {
-            if (editing != null) {
-                ReorderList(editing, onMove = vm::move)
-            } else {
-                // Enquanto o modo de reordenar carrega a playlist inteira, puxar para atualizar fica desligado.
-                val preparing = (reorder as? Reorder.Available)?.preparing == true
-                Loadable(state, onRetry = vm::reload, refresh = vm.takeUnless { preparing }) { content ->
-                    val shown = subscription as? PlaylistViewModel.Subscription.Shown
-                    val loadFailed = (reorder as? Reorder.Available)?.loadFailed == true
-                    VideoRows(
-                        content = content,
-                        onNearEnd = vm::loadMore,
-                        onPlay = onPlay,
-                        onOpenChannel = onOpenChannel,
-                        // Na própria playlist do botão Save, o marcador estaria em todos os vídeos.
-                        showSaved = vm.playlistId != saveTarget.playlistId,
-                        header = when {
-                            shown != null -> {
-                                { SubscribeHeader(shown) { vm.toggleSubscription(shownTitle) } }
-                            }
-                            loadFailed -> {
-                                { Text(stringResource(R.string.reorder_load_failed), color = MaterialTheme.colorScheme.error) }
-                            }
-                            else -> null
-                        },
-                        onRemove = if (removable) {
-                            { video ->
-                                vm.remove(video) { Notices.show(res.getString(R.string.playlist_remove_failed, it)) }
-                                Notices.show(res.getString(R.string.playlist_removed, shownTitle))
-                            }
-                        } else {
-                            null
-                        },
-                    )
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun ReorderList(editing: Reorder.Editing, onMove: (Int, Int) -> Unit) {
-        val list = rememberLazyListState()
-        val drag = rememberDragReorderState(list, editing.videos.map { it.id }, onMove)
-        LazyColumn(
-            Modifier.fillMaxSize().dragReorderOnLongPress(drag, enabled = !editing.saving),
-            state = list,
-            contentPadding = barsPlus(start = 0.dp, top = 8.dp, end = 0.dp),
-        ) {
-            item(key = REORDER_HINT) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    Hint(stringResource(R.string.reorder_hint_touch), Modifier)
-                    editing.error?.let {
-                        Text(stringResource(R.string.reorder_failed, it), color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            }
-            itemsIndexed(editing.videos, key = { _, video -> video.id }) { index, video ->
-                val dragging = drag.draggingKey == video.id
-                val lifted = if (dragging) {
-                    Modifier
-                        .zIndex(1f)
-                        .graphicsLayer { translationY = drag.offset }
-                        .shadow(12.dp, RoundedCornerShape(12.dp))
-                        .background(Look.Surface, RoundedCornerShape(12.dp))
-                } else {
-                    Modifier.animateItem()
-                }
-                Row(
-                    lifted.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "${index + 1}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Look.Sub,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.width(28.dp),
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Thumbnail(video.thumbnailUrl, Modifier.width(104.dp), corner = 8.dp)
-                    Text(
-                        video.title,
-                        style = RowTitle,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                    )
-                    Box(
-                        Modifier.size(48.dp).dragReorderHandle(drag, video.id, enabled = !editing.saving),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Filled.DragHandle,
-                            contentDescription = stringResource(R.string.reorder_drag),
-                            tint = if (dragging) Look.Glow else Look.Sub,
-                        )
-                    }
-                }
+                    } else {
+                        null
+                    },
+                    // Nas suas playlists, cada vídeo tem uma alça (arrastar muda a ordem na hora) e uma seta para o topo.
+                    // A lista guardada no aparelho pode estar velha: a alça e a seta aparecem com a da conta.
+                    onMove = if (editable && !content.cached) vm::move else null,
+                    onDrop = { vm.drop { Notices.show(res.getString(R.string.reorder_failed, it)) } },
+                    onMoveToTop = { video ->
+                        if (vm.moveToTop(video) { Notices.show(res.getString(R.string.reorder_failed, it)) }) {
+                            Notices.show(res.getString(R.string.moved_to_top))
+                        }
+                    },
+                )
             }
         }
     }
@@ -1373,26 +1289,39 @@ object MobileUi : Screens {
     }
 
     /** Chama [onNearEnd] quando a rolagem chega perto do fim (para carregar a próxima página). */
+    /**
+     * Pede a próxima página quando faltam [ahead] itens para o fim. Cada página que chega muda
+     * [count] e pede de novo, então a lista vai carregando à frente enquanto rola. [ready] muda
+     * quando a lista da conta troca a guardada no aparelho.
+     */
     @Composable
-    private fun NearEnd(grid: LazyGridState, count: Int, onNearEnd: () -> Unit) {
-        val nearEnd by remember {
+    private fun NearEnd(grid: LazyGridState, count: Int, onNearEnd: () -> Unit, ahead: Int = 6, ready: Boolean = true) {
+        val nearEnd by remember(ahead) {
             derivedStateOf {
                 val last = grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                last >= grid.layoutInfo.totalItemsCount - 6
+                last >= grid.layoutInfo.totalItemsCount - ahead
             }
         }
-        LaunchedEffect(nearEnd, count) { if (nearEnd) onNearEnd() }
+        LaunchedEffect(nearEnd, count, ready) { if (nearEnd) onNearEnd() }
     }
 
-    /** O que os cards precisam além do vídeo: quais estão no Watch later e as fotos dos canais. */
-    private class CardState(val saved: Set<String>, val photos: Map<String, String>, val showSaved: Boolean, val onLongPress: (Video) -> Unit)
+    /**
+     * O que os cards precisam além do vídeo: quais estão no Watch later, as fotos dos canais e o
+     * toque longo (salvar). [onLongPress] é null dentro da própria playlist do botão Save.
+     */
+    private class CardState(val saved: Set<String>, val photos: Map<String, String>, val showSaved: Boolean, val onLongPress: ((Video) -> Unit)?)
 
+    /**
+     * @param showSaved false na própria playlist do botão Save: lá o marcador estaria em todos os
+     * vídeos, e segurar a miniatura não faz nada (pedido do Johan, 2026-11-03: confundia com o
+     * deslizar, que é o jeito de tirar da playlist).
+     */
     @Composable
     private fun rememberCardState(showSaved: Boolean = true): CardState {
         val saved by SavedVideos.ids.collectAsStateWithLifecycle()
         val photos by ChannelPhotos.photos.collectAsStateWithLifecycle()
         val res = LocalContext.current.resources
-        return CardState(saved, photos, showSaved) { toggleSaved(res, it) }
+        return CardState(saved, photos, showSaved, if (showSaved) { video -> toggleSaved(res, video) } else null)
     }
 
     @Composable
@@ -1422,7 +1351,7 @@ object MobileUi : Screens {
                     Text(emptyText, textAlign = TextAlign.Center, color = Look.Sub, modifier = Modifier.fillMaxWidth().padding(32.dp))
                 }
             }
-            items(content.videos, key = { it.id + it.playlistIndex }) { video ->
+            items(content.videos, key = { it.rowKey }) { video ->
                 VideoCard(video, cards, onPlay, onOpenChannel, listMotion(motion))
             }
             listEnd(content, onNearEnd)
@@ -1458,12 +1387,20 @@ object MobileUi : Screens {
         onRemove: ((Video) -> Unit)? = null,
         emptyText: String = stringResource(R.string.list_empty),
         removeLabel: String = stringResource(R.string.playlist_remove),
+        onMove: ((Int, Int) -> Unit)? = null,
+        onDrop: () -> Unit = {},
+        onMoveToTop: (Video) -> Unit = {},
     ) {
         val grid = rememberLazyGridState()
-        NearEnd(grid, content.videos.size, onNearEnd)
+        // Playlists e Histórico (pedido do Johan, 2026-11-03): as páginas vêm bem antes do fim, para
+        // rolar sem esperar.
+        NearEnd(grid, content.videos.size, onNearEnd, ahead = ROWS_AHEAD, ready = !content.cached)
         PrefetchThumbnails(content.videos)
         val cards = rememberCardState(showSaved)
-        val motion = rememberListMotion(content.videos)
+        val keys = remember(content.videos) { content.videos.map { it.rowKey } }
+        val drag = if (onMove != null) rememberDragReorderState(grid, keys, onMove, onDrop) else null
+        // Enquanto um vídeo é arrastado, os outros deslizam para abrir espaço.
+        val motion = rememberListMotion(content.videos) || drag?.draggingKey != null
         LazyVerticalGrid(
             state = grid,
             columns = GridCells.Adaptive(minSize = 520.dp),
@@ -1477,15 +1414,65 @@ object MobileUi : Screens {
                     Text(emptyText, textAlign = TextAlign.Center, color = Look.Sub, modifier = Modifier.fillMaxWidth().padding(32.dp))
                 }
             }
-            items(content.videos, key = { it.id + it.playlistIndex }) { video ->
+            items(content.videos, key = { it.rowKey }) { video ->
+                val key = video.rowKey
+                val lifted = drag != null && drag.draggingKey == key
                 SwipeToRemove(
                     enabled = onRemove != null,
                     label = removeLabel,
                     corner = 10.dp,
                     onRemove = { onRemove?.invoke(video) },
-                    modifier = listMotion(motion),
+                    modifier = if (lifted) {
+                        Modifier
+                            .zIndex(1f)
+                            .graphicsLayer {
+                                translationX = drag.offset.x
+                                translationY = drag.offset.y
+                            }
+                            .shadow(12.dp, RoundedCornerShape(10.dp))
+                    } else {
+                        listMotion(motion)
+                    },
                 ) {
-                    VideoRow(video, cards, onPlay, onOpenChannel)
+                    VideoRow(
+                        video,
+                        cards,
+                        onPlay,
+                        onOpenChannel,
+                        handle = drag?.let { state ->
+                            {
+                                // Discretos, um em cima do outro: a seta leva ao topo; a alça arrasta.
+                                Column(Modifier.width(40.dp)) {
+                                    if (key != keys.firstOrNull()) {
+                                        Box(
+                                            Modifier.size(width = 40.dp, height = 42.dp).clip(RoundedCornerShape(8.dp))
+                                                .clickable { onMoveToTop(video) },
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.VerticalAlignTop,
+                                                contentDescription = stringResource(R.string.move_to_top),
+                                                tint = Look.Sub,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    } else {
+                                        Spacer(Modifier.height(42.dp))
+                                    }
+                                    Box(
+                                        Modifier.size(width = 40.dp, height = 42.dp).dragReorderHandle(state, key),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.DragHandle,
+                                            contentDescription = stringResource(R.string.reorder_drag),
+                                            tint = if (lifted) Look.Glow else Look.Sub,
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                    )
                 }
             }
             listEnd(content, onNearEnd)
@@ -1507,8 +1494,8 @@ object MobileUi : Screens {
         Column(
             modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Look.Ground).combinedClickable(
                 onClickLabel = video.title,
-                onLongClickLabel = stringResource(R.string.video_toggle_save),
-                onLongClick = { cards.onLongPress(video) },
+                onLongClickLabel = cards.onLongPress?.let { stringResource(R.string.video_toggle_save) },
+                onLongClick = cards.onLongPress?.let { press -> { press(video) } },
                 onClick = { onPlay(video) },
             ),
         ) {
@@ -1520,12 +1507,18 @@ object MobileUi : Screens {
     }
 
     @Composable
-    private fun VideoRow(video: Video, cards: CardState, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
+    private fun VideoRow(
+        video: Video,
+        cards: CardState,
+        onPlay: (Video) -> Unit,
+        onOpenChannel: (Channel) -> Unit,
+        handle: (@Composable RowScope.() -> Unit)? = null,
+    ) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Look.Ground).combinedClickable(
                 onClickLabel = video.title,
-                onLongClickLabel = stringResource(R.string.video_toggle_save),
-                onLongClick = { cards.onLongPress(video) },
+                onLongClickLabel = cards.onLongPress?.let { stringResource(R.string.video_toggle_save) },
+                onLongClick = cards.onLongPress?.let { press -> { press(video) } },
                 onClick = { onPlay(video) },
             ),
             verticalAlignment = Alignment.Top,
@@ -1535,6 +1528,7 @@ object MobileUi : Screens {
                 Text(video.title, style = RowTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 MetaRow(video, cards.photos[video.channelId], onOpenChannel)
             }
+            handle?.invoke(this)
         }
     }
 
@@ -1765,7 +1759,7 @@ object MobileUi : Screens {
 /** Se os cartões podem deslizar nesta troca da lista ([ListMotion]): só quando vídeos saem ou chegam no fim. */
 @Composable
 private fun rememberListMotion(videos: List<Video>): Boolean {
-    val keys = remember(videos) { videos.map { it.id + it.playlistIndex } }
+    val keys = remember(videos) { videos.map { it.rowKey } }
     val shown = remember { arrayOf(keys) }
     val motion = ListMotion.animates(shown[0], keys)
     SideEffect { shown[0] = keys }
@@ -1803,3 +1797,9 @@ private data class VideoColumns(val portrait: Boolean) : GridCells {
         return List(count) { cells / count + if (it < cells % count) 1 else 0 }
     }
 }
+
+/** A chave de um vídeo nas listas (um vídeo pode aparecer duas vezes numa playlist). */
+private val Video.rowKey: String get() = id + playlistIndex
+
+/** Nas listas em linhas, quantos vídeos à frente a próxima página já é pedida. */
+private const val ROWS_AHEAD = 50

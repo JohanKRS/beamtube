@@ -57,7 +57,8 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - **Cards de vídeo:** a miniatura com a duração e o progresso; embaixo, o título, o avatar e o nome do canal (abrem o canal) e o resto da linha (visualizações e data). Canal sem foto (em que o usuário não é inscrito) mostra a inicial num círculo colorido.
 - **Sem o @ do canal** (0.4.2, pedido do Johan): o YouTube manda o @ junto com o nome nos cartões da TV ("Veritasium • @veritasium") e na linha dos canais da busca; o app tira o @ das listas, do player e da busca (`Handles`).
 - **Menu do OK longo na TV** (0.4.2, pedido do Johan): o menu aparece assim que o toque longo é reconhecido, com o OK ainda apertado. Ele só pega o foco quando o OK é solto, para o "soltar" não escolher a primeira opção sozinho.
-- **Tirar vídeos das listas** (0.4.2, pedido do Johan): no Histórico e nas playlists do próprio usuário (inclui Watch later), **deslizar o vídeo para a esquerda** tira ele da lista, com um aviso. Só para a esquerda, para não brigar com o deslizar entre abas (o Histórico é a última aba). Na TV, é uma opção no menu do OK longo ("Remove from history" ou "Remove from this playlist"). O vídeo some na hora e a conta muda logo depois; se a conta recusar, aparece "Couldn't…" e a lista recarrega.
+- **Tirar vídeos das listas** (0.4.2, pedido do Johan): no Histórico e nas playlists do próprio usuário (inclui Watch later), **deslizar o vídeo para a esquerda** tira ele da lista, com um aviso. Só para a esquerda, para não brigar com o deslizar entre abas (o Histórico é a última aba). Na TV, é uma opção no menu do OK longo ("Remove from history" ou "Remove from this playlist"). O vídeo some na hora; se a conta recusar, aparece "Couldn't…" e a lista recarrega.
+  - **Desfazer** (0.5.5, pedido do Johan): no celular e no tablet, o aviso ganha um botão **"Undo"** e fica 5 segundos na tela. A conta só muda quando o prazo passa (`PendingEdit`), então desfazer devolve o vídeo exatamente ao lugar de antes, sem pedido nenhum ao YouTube (o histórico nem teria como receber o vídeo de volta). Sair da tela não cancela a mudança. Na TV, sem Undo (o aviso não pega o foco); a conta muda depois do mesmo prazo.
   - Histórico: o menu de cada cartão do YouTube traz o pedido "Remove from watch history" (um `feedbackToken`), que o motor manda pelo mesmo caminho do "Not interested". **Só dá para validar no aparelho**, com o login.
 
 ## Filtragem
@@ -122,12 +123,15 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - **Salvar pelas listas** (etapa 6): no celular e no tablet, segurar o dedo numa miniatura põe o vídeo na playlist do botão Save, ou tira se já estiver, com um aviso embaixo ("Saved to…"/"Removed from…"). Na TV, segurar o OK abre um menu com duas opções: "Save to…"/"Remove from…" e "Go to channel".
   - **Resposta na hora** (0.4.1, o Johan achou lento na 0.4.0): o marcador e o aviso mudam no toque, e a conta é atualizada logo depois (`SavedVideos.toggle`). Tocar de novo antes de a conta responder só muda o que o usuário quer; no fim a conta fica como o último toque, sem pedido repetido. Se a conta recusar, o marcador volta e aparece "Couldn't…". O botão Save do player usa o mesmo caminho.
   - Um marcador discreto (âmbar) na miniatura mostra os vídeos que já estão nessa playlist. Ele não aparece dentro da própria playlist.
+  - **Dentro da própria playlist do Save, segurar a miniatura não faz nada** (0.5.5, pedido do Johan: confundia, porque lá o toque longo tirava o vídeo da playlist). Para tirar, é só deslizar para a esquerda. Nas outras playlists suas, segurar continua salvando no Watch later.
   - O app guarda a lista dos vídeos da playlist do Save (até 10 páginas), lida ao abrir e ao trocar a playlist em Settings. Na hora de salvar ou tirar, ele confere na conta se o vídeo está lá, então o marcador pode estar desatualizado numa playlist enorme, mas o toque faz sempre a coisa certa.
-- **Reordenar vídeos dentro das playlists do usuário**, principalmente o Assistir mais tarde. As mudanças vão para a conta, então aparecem em todos os aparelhos. O botão "Reorder" só aparece nas playlists do próprio usuário.
-  - O app carrega a playlist inteira antes de abrir o modo (até umas 5000 vídeos), para que "mover para o fim" seja o fim de verdade. Nada vai para a conta até tocar "Save order".
-  - No celular e no tablet (0.4.2; as setas da 0.4.0 não funcionaram para o Johan): **arrastar o vídeo pela alça**, ou segurar o vídeo e arrastar; perto da borda a lista rola sozinha. Na TV: o modo "mover", em que OK pega o vídeo, cima e baixo levam ele pela lista e OK solta. "Voltar" solta o vídeo pego, e de novo cancela.
-  - O MediaServiceCore já tem adicionar, remover, criar e renomear, mas **não tem mover**. O app manda os movimentos para o endpoint interno `browse/edit_playlist` (ação `ACTION_MOVE_VIDEO_BEFORE`, como o ytmusicapi), com o mínimo de movimentos (`ReorderPlan`).
-  - Cada movimento usa o `setVideoId` do vídeo (a posição dele na playlist), que o app lê pedindo a playlist ao YouTube (cliente de TV e, se faltar, WEB). Uma playlist pública não mostra o `setVideoId` sem ser do dono, então **essa parte só dá para validar no aparelho**, com o login.
+- **Listas que abrem na hora e rolam sem esperar** (0.5.5, pedido do Johan: o Watch later dele tem mais de 700 vídeos e travava no fim de cada página). As playlists e o Histórico ficam guardados no aparelho (os primeiros 300 vídeos, por até 14 dias; `ListCache`): abrem com a lista da última vez, e a da conta chega por trás, com o indicador de atualizar. No celular e no tablet, a próxima página é pedida quando faltam 50 vídeos para o fim, e cada página que chega pede a seguinte, então a lista carrega à frente enquanto rola. Mover e a seta para o topo esperam a lista da conta (um instante), porque a guardada pode estar velha. Sair da conta apaga as listas guardadas.
+- **Reordenar vídeos dentro das playlists do usuário**, principalmente o Assistir mais tarde. As mudanças vão para a conta, então aparecem em todos os aparelhos. Só nas playlists do próprio usuário.
+  - **Sem modo de reordenar** (0.5.5, pedido do Johan: o botão carregava a playlist inteira antes, e com 700 vídeos demorava muito). No celular e no tablet, cada vídeo das suas playlists tem, à direita, **uma alça** (arrastar muda a ordem; perto da borda a lista rola sozinha e carrega mais) e **uma seta discreta para o topo**, sem texto, que leva o vídeo para o primeiro lugar com um toque (aviso "Moved to the top"). Segurar o vídeo continua sendo o salvar com um toque.
+  - **Cada vídeo solto vai para a conta na hora**, com um movimento só ("pôr antes de" quem ficou logo depois dele). Não precisa da playlist inteira: solto no fim do que já carregou, o app carrega a próxima página para saber quem vem depois. Os movimentos vão um por vez, na ordem em que foram feitos. Se a conta recusar, aparece "Couldn't move it" e a lista volta a ser a da conta.
+  - Na TV: o botão "Reorder" liga o modo mover (sem carregar nada antes), em que OK pega o vídeo, cima e baixo levam ele pela lista e OK solta, já gravando. "Voltar" solta o vídeo pego, e de novo sai do modo; "Done" também sai.
+  - O MediaServiceCore já tem adicionar, remover, criar e renomear, mas **não tem mover**. O app manda o movimento para o endpoint interno `browse/edit_playlist` (ação `ACTION_MOVE_VIDEO_BEFORE`, como o ytmusicapi).
+  - Cada movimento usa o `setVideoId` do vídeo (a posição dele na playlist), que o app lê pedindo a playlist ao YouTube (cliente de TV e, se faltar, WEB). Os já lidos ficam guardados enquanto o app está aberto (eles não mudam quando os vídeos mudam de lugar), então uma playlist grande só é lida no primeiro movimento; se um movimento falhar, o app lê de novo e tenta mais uma vez. Uma playlist pública não mostra o `setVideoId` sem ser do dono, então **essa parte só dá para validar no aparelho**, com o login.
 
 ## Explore
 
@@ -193,6 +197,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
+   - *Versão 0.5.5 (2026-11-03), pedidos do Johan testando a 0.5.4, aguardando o teste no aparelho* (ver "Como testar a 0.5.5"): Undo ao tirar vídeos do Histórico e das playlists, reordenar sem o modo (alça em cada vídeo, cada movimento gravado na hora), a seta para o topo, o toque longo desligado dentro do Watch later, e as playlists e o Histórico guardados no aparelho e carregando à frente.
    - *Versão 0.5.4 (2026-11-03), ajustes depois de o Johan testar a 0.5.3, aguardando o teste no aparelho* (ver "Como testar a 0.5.4"): 3 colunas no tablet de 14,6" em pé, a atualização das listas sem os cartões voando e o ícone e o banner da TV refinados.
    - *Versão 0.5.3 (2026-11-02), correções depois de o Johan testar a 0.5.2; o Johan aprovou a Explore em 2026-11-03* (ver "Como testar a 0.5.3"): a Explore vazia (a lista de canais inscritos vinha sem ids; achado pelos logs do celular, via ADB pelo PC) e as Inscrições guardadas no aparelho para o app abrir na hora.
    - *Versão 0.5.2 (2026-11-02), a Explore pelos canais que os canais inscritos destacam, pedida pelo Johan depois de testar a 0.5.1.* No aparelho, a aba veio vazia (corrigido na 0.5.3). A leitura dos destaques e dos vídeos foi conferida contra o YouTube.
@@ -208,6 +213,17 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 0.5.5
+
+1. Histórico: deslizar um vídeo para a esquerda. O aviso "Removed from history" aparece com "Undo"; tocar em Undo devolve o vídeo ao mesmo lugar, e no app do YouTube ele continua no histórico. Sem tocar, depois de uns 5 segundos ele sai da conta.
+2. Watch later (ou uma playlist sua): o mesmo com "Removed from…" e Undo.
+3. Watch later: abrir e arrastar um vídeo pela alça (à direita) para outro lugar, sem tocar em botão nenhum antes. Conferir no app do YouTube em alguns segundos. Arrastar vários seguidos também.
+4. Watch later: tocar na seta de um vídeo lá embaixo. Ele vai para o primeiro lugar, com o aviso "Moved to the top"; conferir no app do YouTube.
+5. Watch later: segurar a miniatura não faz nada (nem aviso). Em outra playlist sua, segurar ainda salva no Watch later.
+6. Watch later: rolar rápido até bem embaixo. Os vídeos já estão lá antes de chegar no fim, sem parar para carregar a cada página.
+7. Fechar o app e abrir o Watch later (ou o Histórico) de novo: a lista aparece na hora, com o indicador de atualizar por um instante no topo. A alça e a seta aparecem quando ele some.
+8. TV: na playlist, "Reorder" abre o modo mover na hora (sem "Loading the whole playlist"); OK pega, cima e baixo movem, OK solta e já grava. "Done" sai.
 
 ## Como testar a 0.5.4
 
@@ -256,7 +272,7 @@ Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) 
 
 1. Listas e busca: nenhum "@canal" aparece (nos cards, no player e nos canais da busca).
 2. Celular ou tablet: a lua no player não tem mais "When done". Na TV continua.
-3. Celular: Watch later > ícone de setas > arrastar um vídeo pela alça (as três linhas à direita) ou segurar e arrastar. "Save order" e conferir no app do YouTube.
+3. *(Até a 0.5.4; a 0.5.5 tirou o modo de reordenar.)* Celular: Watch later > ícone de setas > arrastar um vídeo pela alça (as três linhas à direita) ou segurar e arrastar. "Save order" e conferir no app do YouTube.
 4. Histórico: deslizar um vídeo para a esquerda. Ele some com o aviso "Removed from history"; conferir no app do YouTube. Na TV: segurar OK no vídeo > "Remove from history".
 5. Watch later (ou uma playlist sua): deslizar um vídeo para a esquerda tira ele da playlist. Numa playlist de outro canal, deslizar não faz nada. Na TV: OK longo > "Remove from this playlist".
 6. Deslizar para o lado nas abas troca de aba; no Histórico, deslizar um vídeo para a direita volta para Playlists.
@@ -299,7 +315,7 @@ Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) 
 4. Canal: na página do canal, as abas Videos e Playlists. Tocar "Block channel" e ver o canal sumir da busca e das Recomendações; desbloquear em Settings > Blocked channels.
 5. Histórico: aba "History".
 6. Salvar: no player, o marcador ao lado de "Subscribe" põe o vídeo no Watch later (confira no app do YouTube). Em Settings > Save button dá para trocar a playlist.
-7. Reordenar: abrir o Watch later (ou uma playlist sua), tocar no ícone de setas (celular) ou "Reorder" (TV), mudar a ordem e tocar "Save order". Conferir no app do YouTube. Na TV: OK pega, cima e baixo movem, OK solta.
+7. *(Até a 0.5.4; a 0.5.5 tirou o modo de reordenar.)* Reordenar: abrir o Watch later (ou uma playlist sua), tocar no ícone de setas (celular) ou "Reorder" (TV), mudar a ordem e tocar "Save order". Conferir no app do YouTube. Na TV: OK pega, cima e baixo movem, OK solta.
 8. Tópicos: em Settings, editar um tópico (nome e palavras separadas por vírgula), criar um novo e remover outro, e ver o efeito nas Recomendações.
 9. TV: o login mostra o QR code ao lado do código (para testar, é preciso sair da conta em Settings).
 10. Player: o nome do canal na barra de cima abre a página do canal.

@@ -9,15 +9,30 @@ import ytslim.data.Channel
 import ytslim.data.SavedVideos
 import ytslim.data.Video
 
-/** Um aviso curto em cima da tela (a pílula de vidro), como "Saved to Watch later". */
-data class Notice(val text: String, val id: Long)
+/**
+ * Um aviso curto em cima da tela (a pílula de vidro), como "Saved to Watch later". Com [action], a
+ * pílula ganha um botão (o "Undo") e fica [Notices.UNDO_MS] na tela.
+ */
+data class Notice(val text: String, val id: Long, val action: NoticeAction? = null)
+
+/** O botão da pílula: [label] e o que ele faz. */
+class NoticeAction(val label: String, val run: () -> Unit)
 
 object Notices {
+    /**
+     * Quanto tempo dá para desfazer (pedido do Johan, 2026-11-03): a pílula com "Undo" fica esse
+     * tempo na tela, e a conta só muda quando ele passa ([PendingEdit]).
+     */
+    const val UNDO_MS = 5_000L
+
+    /** Quanto tempo um aviso sem botão fica na tela. */
+    const val SHOW_MS = 2_600L
+
     private val _current = MutableStateFlow<Notice?>(null)
     val current: StateFlow<Notice?> = _current.asStateFlow()
 
-    fun show(text: String) {
-        _current.value = Notice(text, System.nanoTime())
+    fun show(text: String, action: NoticeAction? = null) {
+        _current.value = Notice(text, System.nanoTime(), action)
     }
 
     /** Some com o aviso [id], se ele ainda for o da tela. */

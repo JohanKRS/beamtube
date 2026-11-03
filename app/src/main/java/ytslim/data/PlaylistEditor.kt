@@ -2,6 +2,7 @@ package ytslim.data
 
 import com.liskovsoft.googlecommon.common.helpers.DefaultHeaders
 import com.liskovsoft.youtubeapi.common.helpers.PostDataHelper
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -20,13 +21,13 @@ import kotlinx.serialization.json.Json as KJson
 /** Uma playlist do próprio usuário (inclui "Assistir mais tarde"), para o botão "Save". */
 data class OwnPlaylist(val id: String, val title: String)
 
-/** Salvar com um toque e reordenar vídeos nas playlists do usuário. */
+/** Salvar com um toque e mudar vídeos de lugar nas playlists do usuário. */
 object PlaylistEditor {
     /** Qualquer vídeo serve: a lista de "salvar em" traz as playlists do próprio usuário. */
     private const val PROBE_VIDEO = "jNQXAC9IVRw"
 
-    /** Páginas lidas para achar a posição dos vídeos ao reordenar. */
-    private const val MAX_PAGES = 30
+    /** Páginas lidas para achar a posição dos vídeos ao mover (playlists de milhares de vídeos). */
+    private const val MAX_PAGES = 100
 
     suspend fun ownPlaylists(): List<OwnPlaylist> =
         io { Engine.mediaItems.getPlaylistsInfo(PROBE_VIDEO) }.orEmpty()
@@ -43,104 +44,69 @@ object PlaylistEditor {
     }
 
     /**
-     * Leva a playlist da ordem [original] para [final] (IDs dos vídeos), com o mínimo de movimentos.
-     * O motor não tem "mover": o app pede ao YouTube a posição de cada vídeo na playlist (o
-     * setVideoId) e manda os movimentos para o mesmo endpoint que o motor usa para adicionar.
+     * Põe [videoId] logo antes de [successor] na playlist (null = no fim). O motor não tem "mover":
+     * o app pede ao YouTube a posição de cada vídeo na playlist (o setVideoId) e manda o movimento
+     * para o mesmo endpoint que o motor usa para adicionar.
      */
-    suspend fun reorder(playlistId: String, original: List<String>, final: List<String>) {
-        val moves = ReorderPlan.moves(original, final)
-        if (moves.isEmpty()) return
-        val needed = moves.flatMapTo(HashSet()) { listOfNotNull(it.videoId, it.successor) }
-        val ids = setVideoIds(playlistId, needed)
-        check(ids.keys.containsAll(needed)) { "YouTube didn't say where these videos are in the playlist" }
-        val actions = buildJsonArray {
-            moves.forEach { move ->
-                add(
-                    buildJsonObject {
-                        put("action", "ACTION_MOVE_VIDEO_BEFORE")
-                        put("setVideoId", ids.getValue(move.videoId))
-                        move.successor?.let { put("movedSetVideoIdSuccessor", ids.getValue(it)) }
-                    },
-                )
+    suspend fun move(playlistId: String, videoId: String, successor: String?) {
+        val needed = setOfNotNull(videoId, successor)
+        try {
+            sendMove(playlistId, videoId, successor, setVideoIds(playlistId, needed, fresh = false))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // Um vídeo tirado e posto de novo ganha outro setVideoId: lê a playlist de novo e tenta mais uma vez.
+            sendMove(playlistId, videoId, successor, setVideoIds(playlistId, needed, fresh = true))
+        }
+    }
+
+    private suspend fun sendMove(playlistId: String, videoId: String, successor: String?, ids: Map<String, String>) {
+        val action = buildJsonObject {
+            put("action", "ACTION_MOVE_VIDEO_BEFORE")
+            put("setVideoId", ids[videoId] ?: error("YouTube didn't say where this video is in the playlist"))
+            if (successor != null) {
+                put("movedSetVideoIdSuccessor", ids[successor] ?: error("YouTube didn't say where the next video is in the playlist"))
             }
         }
+        val actions = buildJsonArray { add(action) }
         val result = Innertube.post("browse/edit_playlist", PostDataHelper.createQueryTV("\"playlistId\":${JsonPrimitive(playlistId)},\"actions\":$actions"))
         val status = (result as? JsonObject)?.get("status")?.jsonPrimitive?.contentOrNull
         check(status == null || status == "STATUS_SUCCEEDED") { "YouTube didn't accept the new order ($status)" }
     }
 
-    /** setVideoId de cada vídeo: primeiro pelo cliente de TV (o do login), depois pelo WEB. */
-    private suspend fun setVideoIds(playlistId: String, needed: Set<String>): Map<String, String> {
-        val found = HashMap<String, String>()
+    /**
+     * setVideoId já lidos, por playlist. Eles não mudam quando os vídeos mudam de lugar, então uma
+     * playlist grande é lida uma vez só, no primeiro movimento.
+     */
+    private val known = HashMap<String, HashMap<String, String>>()
+
+    /**
+     * setVideoId de cada vídeo de [needed]: do que já foi lido ou, se faltar (ou com [fresh]),
+     * pedindo a playlist ao YouTube, primeiro pelo cliente de TV (o do login) e depois pelo WEB.
+     */
+    private suspend fun setVideoIds(playlistId: String, needed: Set<String>, fresh: Boolean): Map<String, String> {
+        val found = synchronized(known) {
+            if (fresh) known.remove(playlistId)
+            HashMap(known[playlistId].orEmpty())
+        }
+        if (!found.keys.containsAll(needed)) scan(playlistId, needed, found)
+        synchronized(known) { known.getOrPut(playlistId) { HashMap() }.putAll(found) }
+        return found
+    }
+
+    private suspend fun scan(playlistId: String, needed: Set<String>, found: MutableMap<String, String>) {
         for (query in listOf<(String) -> String>(PostDataHelper::createQueryTV, PostDataHelper::createQueryWeb)) {
             var body = query("\"browseId\":${JsonPrimitive("VL$playlistId")}")
             for (page in 1..MAX_PAGES) {
                 val parsed = PlaylistItemIds.parse(runCatching { Innertube.post("browse", body) }.getOrNull() ?: break)
                 parsed.setVideoIds.forEach { (video, set) -> found.putIfAbsent(video, set) }
-                if (found.keys.containsAll(needed)) return found
+                if (found.keys.containsAll(needed)) return
                 // Esse cliente não traz a posição dos vídeos: tenta o próximo.
                 if (page == 1 && parsed.setVideoIds.isEmpty()) break
                 val token = parsed.continuation ?: break
                 body = query("\"continuation\":${JsonPrimitive(token)}")
             }
         }
-        return found
-    }
-}
-
-/** Um movimento: pôr [videoId] logo antes de [successor] (null = no fim). */
-data class Move(val videoId: String, val successor: String?)
-
-/**
- * Os movimentos para ir de uma ordem a outra. Os vídeos da maior subsequência que já está na ordem
- * certa ficam parados; cada um dos outros vai para antes do vizinho que fica depois dele.
- */
-object ReorderPlan {
-    fun moves(original: List<String>, final: List<String>): List<Move> {
-        require(original.size == final.size && original.toSet() == final.toSet() && original.toSet().size == original.size) {
-            "the new order must have the same videos"
-        }
-        val position = original.withIndex().associate { it.value to it.index }
-        val keep = longestIncreasing(final.map { position.getValue(it) }).map { final[it] }.toHashSet()
-        val current = original.toMutableList()
-        val moves = mutableListOf<Move>()
-        // Da direita para a esquerda: quem fica depois de cada vídeo já está no lugar.
-        for (i in final.indices.reversed()) {
-            val id = final[i]
-            if (id in keep) continue
-            current.remove(id)
-            val successor = final.getOrNull(i + 1)
-            if (successor == null) current.add(id) else current.add(current.indexOf(successor), id)
-            moves += Move(id, successor)
-        }
-        check(current == final)
-        return moves
-    }
-
-    /** Índices (em [values]) de uma maior subsequência crescente. */
-    private fun longestIncreasing(values: List<Int>): List<Int> {
-        if (values.isEmpty()) return emptyList()
-        val tails = IntArray(values.size)
-        val previous = IntArray(values.size) { -1 }
-        var length = 0
-        for (i in values.indices) {
-            var lo = 0
-            var hi = length
-            while (lo < hi) {
-                val mid = (lo + hi) / 2
-                if (values[tails[mid]] < values[i]) lo = mid + 1 else hi = mid
-            }
-            if (lo > 0) previous[i] = tails[lo - 1]
-            tails[lo] = i
-            if (lo == length) length++
-        }
-        val result = ArrayList<Int>(length)
-        var k = tails[length - 1]
-        while (k >= 0) {
-            result += k
-            k = previous[k]
-        }
-        return result.reversed()
     }
 }
 
