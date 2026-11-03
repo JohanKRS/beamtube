@@ -23,11 +23,17 @@ object Look {
     val Outline = Color(0x29F3EFE4)
     val Error = Color(0xFFF2A49A)
 
-    /** Vidro das barras: o fundo a 62%, com o desfoque do que passa por baixo. */
-    val Glass = Color(0x9E18191B)
+    /**
+     * Vidro das barras, com o desfoque do que passa por baixo: um degradê do fundo, mais opaco na
+     * borda da tela (94%) e menos junto da lista (76%). Pedido do Johan, 2026-11-03 (antes, 62%
+     * por igual).
+     */
+    val GlassEdge = Color(0xF018191B)
+    val GlassInner = Color(0xC218191B)
 
     /** Sem desfoque (Android 11 ou mais antigo), a barra fica quase opaca para o texto continuar legível. */
-    val GlassFallback = Color(0xF018191B)
+    val GlassFallbackEdge = Color(0xFA18191B)
+    val GlassFallbackInner = Color(0xEB18191B)
 
     /** Avisos e menus flutuantes. */
     val Pill = Color(0xF22E2F33)

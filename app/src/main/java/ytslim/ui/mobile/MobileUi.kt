@@ -124,6 +124,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -218,14 +219,30 @@ private val RailWidth = 80.dp
  */
 private val LocalBars = compositionLocalOf { PaddingValues(0.dp) }
 
-/** Vidro fosco: o fundo a 62% com o desfoque do que passa por baixo (Android 12+; antes, quase opaco). */
-private val GlassStyle = HazeStyle(
-    backgroundColor = Look.Ground,
-    tints = listOf(HazeTint(Look.Glass)),
-    blurRadius = 24.dp,
-    noiseFactor = 0f,
-    fallbackTint = HazeTint(Look.GlassFallback),
-)
+/** De que borda da tela a barra de vidro sai: ali ela é mais opaca, e menos junto da lista. */
+private enum class GlassEdge { Top, Bottom, Start }
+
+/** Vidro fosco com o desfoque do que passa por baixo (Android 12+; antes, quase opaco), em degradê (ver [Look.GlassEdge]). */
+private fun glassStyle(edge: GlassEdge): HazeStyle {
+    fun fade(outer: Color, inner: Color): HazeTint = HazeTint(
+        when (edge) {
+            GlassEdge.Top -> Brush.verticalGradient(listOf(outer, inner))
+            GlassEdge.Bottom -> Brush.verticalGradient(listOf(inner, outer))
+            GlassEdge.Start -> Brush.horizontalGradient(listOf(outer, inner))
+        },
+    )
+    return HazeStyle(
+        backgroundColor = Look.Ground,
+        tints = listOf(fade(Look.GlassEdge, Look.GlassInner)),
+        blurRadius = 24.dp,
+        noiseFactor = 0f,
+        fallbackTint = fade(Look.GlassFallbackEdge, Look.GlassFallbackInner),
+    )
+}
+
+private val TopGlass = glassStyle(GlassEdge.Top)
+private val BottomGlass = glassStyle(GlassEdge.Bottom)
+private val StartGlass = glassStyle(GlassEdge.Start)
 
 private val Colors = darkColorScheme(
     primary = Look.Glow,
@@ -515,7 +532,7 @@ object MobileUi : Screens {
     /** Barra de cima de vidro: passa por trás da barra de status. */
     @Composable
     private fun TopBar(haze: HazeState, system: SystemInsets, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-        Box(modifier.fillMaxWidth().height(system.top + TopBarHeight).hazeEffect(haze, GlassStyle)) {
+        Box(modifier.fillMaxWidth().height(system.top + TopBarHeight).hazeEffect(haze, TopGlass)) {
             Row(
                 Modifier.fillMaxSize().padding(top = system.top, start = 4.dp, end = system.end + 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -528,7 +545,7 @@ object MobileUi : Screens {
     /** Barra de abas de vidro, só com ícones: vai até o fim da tela, por trás da barra de gestos. */
     @Composable
     private fun BottomNav(haze: HazeState, system: SystemInsets, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
-        Box(modifier.fillMaxWidth().height(system.bottom + BottomBarHeight).hazeEffect(haze, GlassStyle)) {
+        Box(modifier.fillMaxWidth().height(system.bottom + BottomBarHeight).hazeEffect(haze, BottomGlass)) {
             Hairline(Modifier.align(Alignment.TopStart).fillMaxWidth().height(1.dp))
             Row(
                 Modifier.align(Alignment.TopCenter).widthIn(max = 520.dp).fillMaxWidth().height(BottomBarHeight)
@@ -553,7 +570,7 @@ object MobileUi : Screens {
     /** Trilho de vidro à esquerda, na tela deitada: vai de cima a baixo, por trás das barras do sistema. */
     @Composable
     private fun Rail(haze: HazeState, system: SystemInsets, items: List<TabInfo>, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
-        Box(modifier.fillMaxHeight().width(RailWidth + system.start).hazeEffect(haze, GlassStyle)) {
+        Box(modifier.fillMaxHeight().width(RailWidth + system.start).hazeEffect(haze, StartGlass)) {
             Column(
                 Modifier.fillMaxHeight().padding(start = system.start, top = system.top + 20.dp, bottom = system.bottom + 16.dp).width(RailWidth),
                 horizontalAlignment = Alignment.CenterHorizontally,

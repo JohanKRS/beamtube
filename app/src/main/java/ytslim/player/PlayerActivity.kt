@@ -706,7 +706,7 @@ class PlayerActivity : ComponentActivity() {
 
         // O aviso dos toques no vídeo (celular e tablet), por cima do escurecer.
         seekBadge = TextView(this).apply {
-            setBackgroundResource(R.drawable.player_pill_bg)
+            setBackgroundResource(R.drawable.player_badge_bg)
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.figtree_semibold)
