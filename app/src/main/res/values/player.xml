@@ -18,7 +18,6 @@
     -->
     <dimen name="player_edge">20dp</dimen>
     <dimen name="player_edge_top">12dp</dimen>
-    <dimen name="player_edge_bottom">12dp</dimen>
     <dimen name="player_title_size">15sp</dimen>
     <integer name="player_title_lines">1</integer>
     <dimen name="player_row_height">48dp</dimen>
@@ -28,6 +27,13 @@
     <dimen name="player_pill_button_size">32dp</dimen>
     <dimen name="player_pill_button_padding">7dp</dimen>
     <dimen name="player_subscribe_height">28dp</dimen>
+    <!--
+      A barra de baixo vai de borda a borda (2026-11-03); o conteúdo dela fica a esta distância
+      das laterais e da borda de baixo.
+    -->
+    <dimen name="player_bar_side">14dp</dimen>
+    <dimen name="player_bar_bottom">4dp</dimen>
+    <dimen name="player_actions_gap">12dp</dimen>
     <!-- A barra de tempo: a ChapterTimeBar usa as mesmas medidas para pôr a fresta dos capítulos. -->
     <dimen name="player_bar_height">3dp</dimen>
     <dimen name="player_scrubber_dragged">18dp</dimen>
@@ -61,6 +67,8 @@
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_gravity">end</item>
+        <item name="android:layout_marginStart">@dimen/player_edge</item>
+        <item name="android:layout_marginEnd">@dimen/player_edge</item>
         <item name="android:layout_marginBottom">10dp</item>
         <item name="android:background">@drawable/player_panel_bg</item>
         <item name="android:orientation">vertical</item>

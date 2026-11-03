@@ -6,7 +6,6 @@
 <resources>
     <dimen name="player_edge">48dp</dimen>
     <dimen name="player_edge_top">27dp</dimen>
-    <dimen name="player_edge_bottom">27dp</dimen>
     <dimen name="player_title_size">18sp</dimen>
     <integer name="player_title_lines">2</integer>
     <dimen name="player_row_height">52dp</dimen>
@@ -16,6 +15,10 @@
     <dimen name="player_pill_button_size">36dp</dimen>
     <dimen name="player_pill_button_padding">8dp</dimen>
     <dimen name="player_subscribe_height">32dp</dimen>
+    <dimen name="player_bar_side">48dp</dimen>
+    <dimen name="player_bar_bottom">16dp</dimen>
+    <!-- Entre o tocar e as ações (like, dislike, Save, Subscribe) que descem para a barra de baixo. -->
+    <dimen name="player_actions_gap">16dp</dimen>
     <dimen name="player_chapter_gap">3dp</dimen>
     <dimen name="player_preview_width">216dp</dimen>
     <dimen name="player_preview_height">117dp</dimen>

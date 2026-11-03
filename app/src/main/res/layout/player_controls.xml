@@ -2,11 +2,12 @@
 <!--
   Controles do player (opção A, escolhida pelo Johan em 2026-11-02).
   Em cima: título, canal (abre a página dele) e, à direita, uma pílula de vidro com like, dislike,
-  Save e Subscribe. Embaixo: uma ilha de vidro com tocar/pausar, tempo, barra, legenda,
-  resolução, girar a tela (só no celular e no tablet) e o modo dormir (lua); no celular em pé e
-  na TV ela vira duas linhas (PlayerIsland). Os tamanhos ficam em values/player.xml (compactos
-  desde 2026-11-03, um pouco maiores na TV). Os painéis da resolução e do modo dormir abrem acima
-  da ilha, à direita; as opções deles o PlayerActivity cria.
+  Save e Subscribe (na TV elas descem para a barra de baixo, PlayerIsland). Embaixo: uma barra de
+  vidro de borda a borda, sem cantos (pedido do Johan, 2026-11-03), com tocar/pausar, tempo,
+  barra, legenda, resolução, girar a tela (só no celular e no tablet) e o modo dormir (lua); no
+  celular em pé e na TV ela vira duas linhas (PlayerIsland). Os tamanhos ficam em
+  values/player.xml (compactos desde 2026-11-03, um pouco maiores na TV). Os painéis da resolução
+  e do modo dormir abrem acima da barra, à direita; as opções deles o PlayerActivity cria.
   Os capítulos (2026-11-03): uma fresta na barra onde cada um começa (ChapterTimeBar) e o nome do
   atual logo acima da ilha. Ao arrastar a barra, um cartão acima dela mostra a miniatura daquele
   ponto, o nome do capítulo e o tempo (PlayerActivity.showPreview).
@@ -144,10 +145,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:orientation="vertical"
-        android:paddingStart="@dimen/player_edge"
-        android:paddingEnd="@dimen/player_edge"
-        android:paddingBottom="@dimen/player_edge_bottom">
+        android:orientation="vertical">
 
         <LinearLayout
             android:id="@+id/player_quality_panel"
@@ -227,8 +225,8 @@
             android:id="@+id/player_chapter"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="14dp"
-            android:layout_marginEnd="14dp"
+            android:layout_marginStart="@dimen/player_bar_side"
+            android:layout_marginEnd="@dimen/player_bar_side"
             android:layout_marginBottom="6dp"
             android:ellipsize="end"
             android:fontFamily="@font/figtree_semibold"
@@ -240,8 +238,8 @@
             android:visibility="gone" />
 
         <!--
-          A ilha. Numa tela estreita (o celular em pé) e na TV o PlayerIsland passa o tempo e a
-          barra para a linha de cima (player_bar_row).
+          A barra de baixo, de borda a borda. Numa tela estreita (o celular em pé) e na TV o
+          PlayerIsland passa o tempo e a barra para a linha de cima (player_bar_row).
         -->
         <LinearLayout
             android:id="@+id/player_island"
@@ -249,8 +247,9 @@
             android:layout_height="wrap_content"
             android:background="@drawable/player_island_bg"
             android:orientation="vertical"
-            android:paddingStart="6dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="@dimen/player_bar_side"
+            android:paddingEnd="@dimen/player_bar_side"
+            android:paddingBottom="@dimen/player_bar_bottom">
 
             <LinearLayout
                 android:id="@+id/player_bar_row"
