@@ -8,21 +8,26 @@ import ytslim.R
 
 /**
  * A cor de destaque do Doorglow: a aba ativa, o progresso, o foco da TV, os botões ligados e a
- * barra do player. Escolhida em Settings, como a cor do ícone (pedido do Johan, 2026-11-03); o
- * âmbar da porta é o padrão. Todas são claras o bastante para o texto escuro em cima delas
- * ([Look.OnGlow]) e para aparecer no cinza do fundo.
+ * barra do player. Escolhida em Settings, como a cor do ícone (pedido do Johan, 2026-11-03).
+ *
+ * São as cores do ícone, na mesma ordem ([ytslim.data.AppIcon]); onde o ícone é escuro demais para
+ * aparecer no cinza do fundo, um tom próximo e mais claro (pedido do Johan, 2026-11-03): o âmbar é a
+ * luz da porta do ícone azul-noite (o padrão), o prata faz par com o preto, e o verde-azulado, a
+ * ameixa e a mostarda são o fundo do ícone clareado. O "vivo" é o meio do degradê do ícone, e o
+ * vermelho é o do YouTube. Todas aparecem no fundo e aceitam o texto escuro em cima
+ * ([Look.OnGlow]), com contraste de pelo menos 4,4:1.
  *
  * [glow] é a cor cheia; [soft], a versão clara (contorno do foco na TV, ícones ligados).
  * [playerStyle] é o tema que o player (Views) aplica para os drawables dele usarem a mesma cor.
  */
 enum class Accent(@StringRes val label: Int, val glow: Long, val soft: Long, @StyleRes val playerStyle: Int) {
     AMBER(R.string.accent_amber, 0xFFFFC861, 0xFFFFE3A3, R.style.PlayerAccent_Amber),
-    RED(R.string.accent_red, 0xFFFF6B5F, 0xFFFFB4AC, R.style.PlayerAccent_Red),
-    PINK(R.string.accent_pink, 0xFFFF8CC6, 0xFFFFC7E3, R.style.PlayerAccent_Pink),
-    PURPLE(R.string.accent_purple, 0xFFC3A2FF, 0xFFE2D3FF, R.style.PlayerAccent_Purple),
-    BLUE(R.string.accent_blue, 0xFF7CB6FF, 0xFFC2DCFF, R.style.PlayerAccent_Blue),
-    TEAL(R.string.accent_teal, 0xFF5FD3C3, 0xFFB3EDE5, R.style.PlayerAccent_Teal),
-    GREEN(R.string.accent_green, 0xFF97D97E, 0xFFCDEDC0, R.style.PlayerAccent_Green),
+    SILVER(R.string.accent_silver, 0xFFBDC7DB, 0xFFDEE3ED, R.style.PlayerAccent_Silver),
+    TEAL(R.string.accent_teal, 0xFF3BBFCE, 0xFF9DDFE6, R.style.PlayerAccent_Teal),
+    PLUM(R.string.accent_plum, 0xFFCC90D5, 0xFFE6C8EA, R.style.PlayerAccent_Plum),
+    MUSTARD(R.string.accent_mustard, 0xFFDD962C, 0xFFEECB95, R.style.PlayerAccent_Mustard),
+    VIVID(R.string.accent_vivid, 0xFFE873C7, 0xFFF3B9E3, R.style.PlayerAccent_Vivid),
+    RED(R.string.accent_red, 0xFFFF0000, 0xFFFF8080, R.style.PlayerAccent_Red),
     ;
 
     companion object {

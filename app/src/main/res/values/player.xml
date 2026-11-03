@@ -8,6 +8,8 @@
     <color name="player_icon">#F3EFE4</color>
     <color name="player_text_secondary">#C9C6BD</color>
     <color name="player_on_light">#18191B</color>
+    <!-- O ponto do botão LIVE no ponto ao vivo: o vermelho do YouTube. -->
+    <color name="player_live">#FF0000</color>
 
     <!--
       Margens da tela, o título e os tamanhos dos botões. Compactos desde 2026-11-03 (pedido do
@@ -33,6 +35,11 @@
     <dimen name="player_bar_side">14dp</dimen>
     <dimen name="player_bar_bottom">4dp</dimen>
     <dimen name="player_actions_gap">12dp</dimen>
+    <!--
+      A margem da legenda até a borda de baixo, só para não encostar (pedido do Johan, 2026-11-03).
+      Com os controles abertos, a legenda fica a essa mesma distância acima da barra (CaptionLift).
+    -->
+    <dimen name="player_captions_bottom">8dp</dimen>
     <!-- A barra de tempo: a ChapterTimeBar usa as mesmas medidas para pôr a fresta dos capítulos. -->
     <dimen name="player_bar_height">3dp</dimen>
     <dimen name="player_scrubber_dragged">18dp</dimen>

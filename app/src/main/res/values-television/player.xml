@@ -19,6 +19,7 @@
     <dimen name="player_bar_bottom">16dp</dimen>
     <!-- Entre o tocar e as ações (like, dislike, Save, Subscribe) que descem para a barra de baixo. -->
     <dimen name="player_actions_gap">16dp</dimen>
+    <dimen name="player_captions_bottom">16dp</dimen>
     <dimen name="player_chapter_gap">3dp</dimen>
     <dimen name="player_preview_width">216dp</dimen>
     <dimen name="player_preview_height">117dp</dimen>

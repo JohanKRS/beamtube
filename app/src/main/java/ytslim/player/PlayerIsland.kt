@@ -16,6 +16,8 @@ import ytslim.R
  * foco. Com a barra em cima, baixo leva aos botões e cima volta para a barra. Como sobra espaço
  * na linha dos botões, like, dislike, Save e Subscribe descem para ela, logo depois do tocar
  * (pedido do Johan, 2026-11-03), e o canto de cima fica só com o título.
+ *
+ * Numa live, o botão LIVE (player_live) toma o lugar do tempo e da duração ([PlayerActivity]).
  */
 class PlayerIsland(root: View, private val tv: Boolean) {
     private val barRow: LinearLayout = root.findViewById(R.id.player_bar_row)
@@ -24,6 +26,7 @@ class PlayerIsland(root: View, private val tv: Boolean) {
     private val spacer: View = root.findViewById(R.id.player_island_spacer)
     private val time: List<View> = listOf(R.id.exo_position, R.id.exo_progress, R.id.exo_duration)
         .map { root.findViewById<View>(it) }
+    private val live: View = root.findViewById(R.id.player_live)
 
     init {
         if (tv) bringActionsDown(root.findViewById(R.id.player_actions))
@@ -52,6 +55,10 @@ class PlayerIsland(root: View, private val tv: Boolean) {
         time.forEach { (it.parent as? ViewGroup)?.removeView(it) }
         // Numa linha só, o tempo vem logo depois do tocar/pausar.
         if (two) time.forEach { barRow.addView(it) } else time.forEachIndexed { i, view -> buttonRow.addView(view, 1 + i) }
+        // O botão LIVE: logo depois do tempo numa linha só; com duas, na linha dos botões depois do
+        // tocar, onde o foco da TV chega (na linha da barra, direita avança o vídeo).
+        (live.parent as? ViewGroup)?.removeView(live)
+        buttonRow.addView(live, if (two) 1 else 1 + time.size)
         barRow.visibility = if (two) View.VISIBLE else View.GONE
         divider.visibility = if (two) View.GONE else View.VISIBLE
         spacer.visibility = if (two) View.VISIBLE else View.GONE

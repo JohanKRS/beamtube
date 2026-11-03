@@ -149,8 +149,8 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvAccent() {
-        Look.accent = Accent.PINK
-        tvRecommendedShot("tv-accent-pink")
+        Look.accent = Accent.PLUM
+        tvRecommendedShot("tv-accent-plum")
     }
 
     @Test
@@ -383,7 +383,15 @@ class ScreenShots {
      * O player de verdade (PlayerActivity) com os controles abertos e uma miniatura no lugar do
      * vídeo. Sem login, a pílula de cima (like, Save, Subscribe) aparece à mão.
      */
-    private fun playerShot(name: String, tv: Boolean = false, jumped: Boolean = false, scrub: Boolean = false) {
+    private fun playerShot(
+        name: String,
+        tv: Boolean = false,
+        jumped: Boolean = false,
+        scrub: Boolean = false,
+        captions: Boolean = false,
+        hidden: Boolean = false,
+        live: Boolean = false,
+    ) {
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         // O qualificador "television" não chega ao UiModeManager do Robolectric: sem isso o player
         // da TV sairia como o de toque (uma linha, botão de girar).
@@ -438,6 +446,31 @@ class ScreenShots {
                 animate().cancel(); alpha = 1f; visibility = android.view.View.VISIBLE
             }
         }
+        if (live) {
+            // O que o renderLive faz numa live atrás do ponto ao vivo (aqui não há live tocando).
+            playerView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_position).visibility = android.view.View.GONE
+            playerView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_duration).visibility = android.view.View.GONE
+            playerView.findViewById<android.view.View>(ytslim.R.id.player_chapter).visibility = android.view.View.GONE
+            playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_live).apply {
+                visibility = android.view.View.VISIBLE
+                compoundDrawableTintList = android.content.res.ColorStateList.valueOf(context.getColor(ytslim.R.color.player_live))
+            }
+            bar.setChapters(emptyList())
+        }
+        if (hidden) {
+            playerView.hideController()
+            // O fade dos controles e a descida da legenda.
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(2))
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1))
+        }
+        if (captions) {
+            // Duas linhas como as da legenda automática do YouTube: cada uma com a sua linha, de baixo para cima.
+            val cues = listOf("the grid has to balance supply and demand" to -2f, "every second of every day" to -1f).map { (text, line) ->
+                androidx.media3.common.text.Cue.Builder().setText(text).setLine(line, androidx.media3.common.text.Cue.LINE_TYPE_NUMBER).build()
+            }
+            (ytslim.player.PlayerActivity::class.java.getDeclaredField("captionsView").apply { isAccessible = true }.get(activity) as androidx.media3.ui.SubtitleView)
+                .setCues(ytslim.player.CaptionRules.centered(cues))
+        }
         // Sem rede, o título às vezes some quando o carregamento falha no meio da foto: fixa ele.
         playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_title)?.text = v.title
         relayout(activity)
@@ -486,4 +519,28 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun playerTvJumped() = playerShot("player-tv-jumped", tv = true, jumped = true)
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneLive() = playerShot("player-phone-live", live = true)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvLive() = playerShot("player-tv-live", tv = true, live = true)
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneCaptions() = playerShot("player-phone-captions", captions = true)
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneCaptionsHidden() = playerShot("player-phone-captions-hidden", captions = true, hidden = true)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvCaptions() = playerShot("player-tv-captions", tv = true, captions = true)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvCaptionsHidden() = playerShot("player-tv-captions-hidden", tv = true, captions = true, hidden = true)
 }
