@@ -141,7 +141,6 @@ import ytslim.ui.Look
 import ytslim.ui.Notice
 import ytslim.ui.Notices
 import ytslim.ui.PlaylistViewModel
-import ytslim.ui.PlaylistViewModel.Reorder
 import ytslim.ui.PlaylistsViewModel
 import ytslim.ui.PrefetchThumbnails
 import ytslim.ui.QrCode
@@ -896,14 +895,21 @@ object TvUi : Screens {
     ) {
         val state by vm.state.collectAsStateWithLifecycle()
         val subscription by vm.subscription.collectAsStateWithLifecycle()
-        val reorder by vm.reorder.collectAsStateWithLifecycle()
+        val editable by vm.editable.collectAsStateWithLifecycle()
+        val res = LocalContext.current.resources
         val loadedTitle = (state as? UiState.Ready)?.data?.title
         val shownTitle = title.ifBlank { loadedTitle ?: stringResource(R.string.playlist_default_title) }
-        val editing = reorder as? Reorder.Editing
+        // O modo mover: OK pega e solta em vez de abrir o vídeo. Cada vídeo solto vai para a conta na hora.
+        var arranging by rememberSaveable { mutableStateOf(false) }
         // Posição do vídeo "pego" no modo mover (null = nenhum).
         var held by remember { mutableStateOf<Int?>(null) }
-        LaunchedEffect(editing == null) { if (editing == null) held = null }
-        BackHandler(enabled = editing != null) { if (held != null) held = null else vm.cancelReorder() }
+        val drop = {
+            if (held != null) {
+                held = null
+                vm.drop { Notices.show(res.getString(R.string.reorder_failed, it)) }
+            }
+        }
+        BackHandler(enabled = arranging) { if (held != null) drop() else arranging = false }
 
         Column(Modifier.fillMaxSize().padding(screenPadding)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -929,28 +935,20 @@ object TvUi : Screens {
                         Button(onClick = toggle, enabled = !shown.busy) { Text(label) }
                     }
                 }
-                when (val r = reorder) {
-                    Reorder.Unavailable -> Unit
-                    is Reorder.Available -> {
-                        Spacer(Modifier.width(24.dp))
-                        OutlinedButton(onClick = vm::startReorder, enabled = !r.preparing && state is UiState.Ready) {
-                            Text(stringResource(if (r.preparing) R.string.reorder_preparing else R.string.reorder))
-                        }
-                    }
-                    is Reorder.Editing -> {
-                        Spacer(Modifier.width(24.dp))
-                        Button(onClick = vm::saveOrder, enabled = !r.saving) {
-                            Text(stringResource(if (r.saving) R.string.reorder_saving else R.string.reorder_save))
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        OutlinedButton(onClick = vm::cancelReorder, enabled = !r.saving) { Text(stringResource(R.string.cancel)) }
+                if (editable) {
+                    Spacer(Modifier.width(24.dp))
+                    if (arranging) {
+                        Button(onClick = {
+                            drop()
+                            arranging = false
+                        }) { Text(stringResource(R.string.reorder_done)) }
+                    } else {
+                        OutlinedButton(onClick = { arranging = true }, enabled = state is UiState.Ready) { Text(stringResource(R.string.reorder)) }
                     }
                 }
             }
             val note: Pair<String, Boolean>? = when {
-                editing?.error != null -> stringResource(R.string.reorder_failed, editing.error) to true
-                editing != null -> stringResource(R.string.reorder_hint_tv) to false
-                (reorder as? Reorder.Available)?.loadFailed == true -> stringResource(R.string.reorder_load_failed) to true
+                arranging -> stringResource(R.string.reorder_hint_tv) to false
                 else -> (subscription as? PlaylistViewModel.Subscription.Shown)?.let { shown ->
                     shown.error?.let { stringResource(R.string.action_failed, it) to true }
                         ?: (stringResource(if (shown.subscribed) R.string.playlist_subscribed_hint_tv else R.string.playlist_subscribe_hint) to false)
@@ -965,13 +963,18 @@ object TvUi : Screens {
                 )
             }
             Spacer(Modifier.height(24.dp))
-            if (editing != null) {
-                ReorderList(editing, held = held, onHold = { held = it }, onMove = vm::move)
-            } else {
-                val saveTarget by SavedVideos.target.collectAsStateWithLifecycle()
-                val removable by vm.removable.collectAsStateWithLifecycle()
-                val res = LocalContext.current.resources
-                Loadable(state, onRetry = vm::reload) { content ->
+            val saveTarget by SavedVideos.target.collectAsStateWithLifecycle()
+            Loadable(state, onRetry = vm::reload) { content ->
+                if (arranging) {
+                    ReorderList(
+                        content.videos,
+                        held = held,
+                        onHold = { held = it },
+                        onDrop = drop,
+                        onMove = vm::move,
+                        onNearEnd = vm::loadMore,
+                    )
+                } else {
                     VideoGrid(
                         content = content,
                         emptyText = stringResource(R.string.list_empty),
@@ -982,7 +985,7 @@ object TvUi : Screens {
                         onFocusTaken = {},
                         // Na própria playlist do botão Save, o marcador estaria em todos os vídeos.
                         showSaved = vm.playlistId != saveTarget.playlistId,
-                        onRemove = if (removable) {
+                        onRemove = if (editable) {
                             { video ->
                                 vm.remove(video) { Notices.show(res.getString(R.string.playlist_remove_failed, it)) }
                                 Notices.show(res.getString(R.string.playlist_removed, shownTitle))
@@ -998,11 +1001,18 @@ object TvUi : Screens {
     }
 
     /**
-     * O modo mover: OK pega o vídeo, cima e baixo levam ele pela lista, OK de novo solta.
-     * A ordem só vai para a conta no "Save order".
+     * O modo mover: OK pega o vídeo, cima e baixo levam ele pela lista, OK de novo solta (e a
+     * posição nova vai para a conta). Chegando no fim do que carregou, a próxima página vem.
      */
     @Composable
-    private fun ReorderList(editing: Reorder.Editing, held: Int?, onHold: (Int?) -> Unit, onMove: (Int, Int) -> Unit) {
+    private fun ReorderList(
+        videos: List<Video>,
+        held: Int?,
+        onHold: (Int) -> Unit,
+        onDrop: () -> Unit,
+        onMove: (Int, Int) -> Unit,
+        onNearEnd: () -> Unit,
+    ) {
         val list = rememberLazyListState()
         val scope = rememberCoroutineScope()
         val first = remember { FocusRequester() }
@@ -1012,11 +1022,16 @@ object TvUi : Screens {
             verticalArrangement = Arrangement.spacedBy(4.dp),
             contentPadding = PaddingValues(bottom = 48.dp),
         ) {
-            itemsIndexed(editing.videos, key = { _, video -> video.id }) { index, video ->
+            itemsIndexed(videos, key = { _, video -> video.id + video.playlistIndex }) { index, video ->
                 val isHeld = held == index
+                if (index >= videos.size - 5) LaunchedEffect(videos.size) { onNearEnd() }
                 ListItem(
                     selected = isHeld,
-                    onClick = { if (!editing.saving) onHold(if (isHeld) null else index) },
+                    onClick = {
+                        // Pegar outro vídeo solta o que estava pego.
+                        onDrop()
+                        if (!isHeld) onHold(index)
+                    },
                     headlineContent = { Text(video.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = video.channelName?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
                     leadingContent = {
@@ -1046,7 +1061,7 @@ object TvUi : Screens {
                                 Key.DirectionDown -> index + 1
                                 else -> return@onPreviewKeyEvent false
                             }
-                            if (to in editing.videos.indices) {
+                            if (to in videos.indices) {
                                 onMove(index, to)
                                 onHold(to)
                                 // O vídeo pego anda com o foco; a lista rola quando ele chega na borda.

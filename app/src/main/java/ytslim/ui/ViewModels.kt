@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import ytslim.data.AppIcon
 import ytslim.data.AppScope
 import ytslim.data.AppIcons
@@ -244,8 +246,14 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
     private var loadJob: Job? = null
     private var moreJob: Job? = null
 
+    /** Vídeos tirados da tela que a conta ainda não tirou (dentro do prazo do Undo): não voltam ao recarregar. */
+    private val removing = HashSet<String>()
+
     /** A última página carregada, para continuar a lista além do que está na tela. */
     protected val loadedPage: VideoPage? get() = lastPage
+
+    /** Os vídeos na tela, ou null enquanto a lista não carregou. */
+    protected val shown: VideoListContent? get() = (_state.value as? UiState.Ready)?.data
 
     init {
         reload()
@@ -264,7 +272,8 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
             _state.value = runCatching { firstPage() }.fold(
                 { page ->
                     lastPage = page
-                    UiState.Ready(VideoListContent(page.videos, page.hasMore, loadingMore = false, title = page.title))
+                    val videos = page.videos.filterNot { it.id in removing }
+                    UiState.Ready(VideoListContent(videos, page.hasMore, loadingMore = false, title = page.title))
                 },
                 { UiState.Error(it.toMessage()) },
             )
@@ -272,65 +281,88 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
         }
     }
 
-    /** Tira [video] da lista na tela (a conta muda logo depois). */
-    protected fun hide(video: Video) {
-        val current = (_state.value as? UiState.Ready)?.data ?: return
-        _state.value = UiState.Ready(current.copy(videos = current.videos.filterNot { it.id == video.id && it.playlistIndex == video.playlistIndex }))
-    }
-
-    /** Mostra os vídeos já carregados numa nova ordem (depois de reordenar a playlist). */
-    protected fun showOrder(reordered: List<Video>) {
-        val current = (_state.value as? UiState.Ready)?.data ?: return
-        val moved = reordered.mapTo(HashSet()) { it.id }
-        _state.value = UiState.Ready(current.copy(videos = reordered + current.videos.filter { it.id !in moved }))
+    private fun setVideos(videos: List<Video>) {
+        val current = shown ?: return
+        _state.value = UiState.Ready(current.copy(videos = videos))
     }
 
     /**
-     * Carrega as páginas que faltam (até [maxPages]). true se a lista ficou completa.
-     * Reordenar precisa da playlist inteira: "mover para o fim" é o fim de verdade.
+     * Tira [video] da tela na hora e só manda [commit] para a conta depois de [Notices.UNDO_MS].
+     * Devolve o "Undo": chamado a tempo, o vídeo volta ao mesmo lugar e a conta não muda. Se a
+     * conta recusar, [onError] avisa e a lista volta a ser a da conta. Roda no [AppScope]: sair da
+     * tela não cancela a mudança.
      */
-    protected suspend fun loadAll(maxPages: Int): Boolean {
-        moreJob?.join()
-        repeat(maxPages) {
-            val current = (_state.value as? UiState.Ready)?.data ?: return false
-            val page = lastPage ?: return false
-            if (!page.hasMore) return true
-            val next = runCatching { LibraryRepository.more(page) }.getOrElse { return false }
-            lastPage = next
-            val known = current.videos.mapTo(HashSet()) { it.id }
-            val added = next.videos.filter { known.add(it.id) }
-            _state.value = UiState.Ready(current.copy(videos = current.videos + added, hasMore = next.hasMore, loadingMore = false))
+    protected fun removeLater(video: Video, onError: (String) -> Unit, commit: suspend () -> Unit): () -> Unit {
+        val videos = shown?.videos ?: return {}
+        val index = videos.indexOfFirst { it.sameEntry(video) }
+        if (index < 0) return {}
+        removing += video.id
+        setVideos(videos.filterIndexed { i, _ -> i != index })
+        val edit = PendingEdit(AppScope, Notices.UNDO_MS) {
+            val result = runCatching { commit() }
+            removing -= video.id
+            result.onFailure {
+                onError(it.toMessage())
+                refresh()
+            }
         }
-        return lastPage?.hasMore == false
+        return undo@{
+            if (!edit.undo()) return@undo
+            removing -= video.id
+            val now = shown?.videos ?: return@undo
+            if (now.none { it.sameEntry(video) }) setVideos(ListEdits.putBack(now, video, index))
+        }
+    }
+
+    /** Leva o vídeo da posição [from] para [to], só na tela. */
+    protected fun moveShown(from: Int, to: Int) {
+        val videos = shown?.videos ?: return
+        setVideos(ListEdits.moved(videos, from, to))
+    }
+
+    /** Carrega a próxima página e espera. true se carregou (ou se não havia mais). */
+    protected suspend fun loadNext(): Boolean {
+        moreJob?.join()
+        val page = lastPage ?: return false
+        if (!page.hasMore) return true
+        val next = runCatching { LibraryRepository.more(page) }.getOrElse { return false }
+        append(next)
+        return true
     }
 
     fun loadMore() {
-        val current = (_state.value as? UiState.Ready)?.data ?: return
+        val current = shown ?: return
         val page = lastPage ?: return
         if (!page.hasMore || moreJob?.isActive == true || _refreshing.value) return
         _state.value = UiState.Ready(current.copy(loadingMore = true))
         moreJob = viewModelScope.launch {
-            val next = runCatching { LibraryRepository.more(page) }.getOrNull()
-            lastPage = next ?: VideoPage(emptyList(), null)
-            val known = current.videos.mapTo(HashSet()) { it.id }
-            val added = next?.videos.orEmpty().filter { known.add(it.id) }
-            _state.value = UiState.Ready(
-                current.copy(videos = current.videos + added, hasMore = next?.hasMore == true, loadingMore = false),
-            )
+            append(runCatching { LibraryRepository.more(page) }.getOrNull() ?: VideoPage(emptyList(), null))
         }
+    }
+
+    /** Junta [next] ao que está na tela agora (que pode ter mudado enquanto a página carregava). */
+    private fun append(next: VideoPage) {
+        lastPage = next
+        val current = shown ?: return
+        val known = current.videos.mapTo(HashSet()) { it.id }
+        val added = next.videos.filter { it.id !in removing && known.add(it.id) }
+        _state.value = UiState.Ready(current.copy(videos = current.videos + added, hasMore = next.hasMore, loadingMore = false))
     }
 }
 
+/** O mesmo item da lista (um vídeo pode aparecer duas vezes numa playlist). */
+private fun Video.sameEntry(other: Video) = id == other.id && playlistIndex == other.playlistIndex
+
 /**
  * Página de uma playlist: os vídeos; se for de outro canal, o botão de inscrição; se for do
- * usuário (inclui Assistir mais tarde), o modo de reordenar.
+ * usuário (inclui Assistir mais tarde), tirar vídeos e mudar a ordem.
  */
 class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ LibraryRepository.playlistVideos(playlist) }) {
     val playlistId: String? get() = playlist.playlistId
 
     /** Abrir [video] daqui começa a sequência: os vídeos seguintes da playlist tocam depois dele. */
     fun queueFrom(video: Video) {
-        val videos = (state.value as? UiState.Ready)?.data?.videos
+        val videos = shown?.videos
         if (videos == null) PlayQueue.clear() else PlayQueue.start(videos, video.id, loadedPage)
     }
 
@@ -339,37 +371,21 @@ class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ L
         data class Shown(val subscribed: Boolean, val busy: Boolean = false, val error: String? = null) : Subscription
     }
 
-    sealed interface Reorder {
-        data object Unavailable : Reorder
-
-        /**
-         * Dá para reordenar. [preparing]: carregando o resto da playlist antes de editar.
-         * [loadFailed]: a playlist não carregou inteira, então o modo não abriu.
-         */
-        data class Available(val preparing: Boolean = false, val loadFailed: Boolean = false) : Reorder
-
-        /** Editando: [videos] na nova ordem; a conta só muda em "Save order". */
-        data class Editing(val videos: List<Video>, val saving: Boolean = false, val error: String? = null) : Reorder
-    }
-
     private val _subscription = MutableStateFlow<Subscription>(Subscription.Hidden)
     val subscription: StateFlow<Subscription> = _subscription.asStateFlow()
 
-    private val _reorder = MutableStateFlow<Reorder>(Reorder.Unavailable)
-    val reorder: StateFlow<Reorder> = _reorder.asStateFlow()
-    private var originalOrder: List<Video> = emptyList()
+    private val _editable = MutableStateFlow(false)
+    /** Playlist do próprio usuário (inclui Watch later): dá para tirar vídeos dela e mudar a ordem. */
+    val editable: StateFlow<Boolean> = _editable.asStateFlow()
 
-    private val _removable = MutableStateFlow(false)
-    /** Playlist do próprio usuário (inclui Watch later): dá para tirar vídeos dela. */
-    val removable: StateFlow<Boolean> = _removable.asStateFlow()
+    /** O vídeo sendo arrastado e quem vinha logo depois dele antes de arrastar. */
+    private var dragged: Video? = null
+    private var successorBefore: String? = null
 
     init {
         viewModelScope.launch {
             val own = PlaylistSubscriptions.ownPlaylistIds()
-            if (own != null && playlist.playlistId in own) {
-                _reorder.value = Reorder.Available()
-                _removable.value = true
-            }
+            if (own != null && playlist.playlistId in own) _editable.value = true
             _subscription.value = when (val status = PlaylistSubscriptions.status(playlist.playlistId)) {
                 PlaylistSubscriptions.Status.NotApplicable -> Subscription.Hidden
                 is PlaylistSubscriptions.Status.Foreign -> Subscription.Shown(status.subscribed)
@@ -378,79 +394,98 @@ class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ L
     }
 
     /**
-     * Tira [video] da playlist: some da tela na hora e a conta muda logo depois. Na playlist do
-     * botão Save, passa pelo [SavedVideos] (para o marcador dos cards acompanhar). Se a conta não
-     * mudar, [onError] avisa e a lista volta a ser a da conta.
+     * Tira [video] da playlist: some da tela na hora, e a conta muda quando o prazo do Undo passa
+     * (devolve o Undo). Na playlist do botão Save, passa pelo [SavedVideos] (para o marcador dos
+     * cards acompanhar). Se a conta não mudar, [onError] avisa e a lista volta a ser a da conta.
      */
-    fun remove(video: Video, onError: (String) -> Unit) {
-        val id = playlist.playlistId ?: return
-        if (!_removable.value || _reorder.value is Reorder.Editing) return
-        hide(video)
-        val failed = { error: Throwable ->
-            onError(error.toMessage())
-            refresh()
-        }
-        if (id == SavedVideos.target.value.playlistId) {
-            SavedVideos.toggle(video.id, current = true) { failed(it) }
-            return
-        }
-        viewModelScope.launch {
-            runCatching { PlaylistEditor.setSaved(video.id, id, saved = false) }.onFailure { failed(it) }
-        }
-    }
-
-    /** Entra no modo de reordenar, com a playlist inteira carregada. */
-    fun startReorder() {
-        val available = _reorder.value as? Reorder.Available ?: return
-        if (available.preparing) return
-        _reorder.value = Reorder.Available(preparing = true)
-        viewModelScope.launch {
-            val complete = loadAll(MAX_REORDER_PAGES)
-            val videos = (state.value as? UiState.Ready)?.data?.videos
-            if (!complete || videos == null) {
-                _reorder.value = Reorder.Available(loadFailed = true)
-                return@launch
+    fun remove(video: Video, onError: (String) -> Unit): () -> Unit {
+        val id = playlist.playlistId ?: return {}
+        if (!_editable.value) return {}
+        return removeLater(video, onError) {
+            if (id == SavedVideos.target.value.playlistId) {
+                SavedVideos.toggle(video.id, current = true) { error ->
+                    onError(error.toMessage())
+                    refresh()
+                }
+            } else {
+                PlaylistEditor.setSaved(video.id, id, saved = false)
             }
-            // Um vídeo repetido na playlist não tem como ser movido pelo ID: fica de fora do modo.
-            originalOrder = videos.distinctBy { it.id }
-            _reorder.value = Reorder.Editing(originalOrder)
         }
     }
 
-    /** Move o vídeo da posição [from] para [to] (na lista em edição). */
+    /**
+     * Arrastando: leva o vídeo da posição [from] para [to], só na tela. A conta muda ao soltar
+     * ([drop]), com um movimento só, sem precisar da playlist inteira (pedido do Johan, 2026-11-03).
+     */
     fun move(from: Int, to: Int) {
-        val editing = _reorder.value as? Reorder.Editing ?: return
-        if (editing.saving || from !in editing.videos.indices || to !in editing.videos.indices || from == to) return
-        val list = editing.videos.toMutableList()
-        list.add(to, list.removeAt(from))
-        _reorder.value = editing.copy(videos = list, error = null)
+        if (!_editable.value) return
+        val videos = shown?.videos ?: return
+        if (from !in videos.indices || to !in videos.indices || from == to) return
+        val video = videos[from]
+        if (dragged?.sameEntry(video) != true) {
+            dragged = video
+            successorBefore = videos.getOrNull(from + 1)?.id
+        }
+        moveShown(from, to)
     }
 
-    fun cancelReorder() {
-        if ((_reorder.value as? Reorder.Editing)?.saving == true) return
-        _reorder.value = Reorder.Available()
-    }
-
-    fun saveOrder() {
-        val editing = _reorder.value as? Reorder.Editing ?: return
+    /**
+     * Soltou o vídeo arrastado: a posição nova vai para a conta ("pôr antes de" quem ficou logo
+     * depois dele). Os movimentos vão um por vez, na ordem em que foram feitos.
+     */
+    fun drop(onError: (String) -> Unit) {
+        val video = dragged ?: return
+        dragged = null
         val id = playlist.playlistId ?: return
-        if (editing.saving) return
-        if (editing.videos == originalOrder) return cancelReorder()
-        _reorder.value = editing.copy(saving = true, error = null)
-        viewModelScope.launch {
-            runCatching { PlaylistEditor.reorder(id, originalOrder.map { it.id }, editing.videos.map { it.id }) }.fold(
-                {
-                    showOrder(editing.videos)
-                    _reorder.value = Reorder.Available()
-                },
-                { _reorder.value = editing.copy(saving = false, error = it.toMessage()) },
-            )
+        val content = shown ?: return
+        val index = content.videos.indexOfFirst { it.sameEntry(video) }
+        if (index < 0) return
+        // Solto no fim do que já carregou: quem vem depois está na próxima página.
+        val atLoadedEnd = index == content.videos.lastIndex && content.hasMore
+        val successor = content.videos.getOrNull(index + 1)?.id
+        if (!atLoadedEnd && successor == successorBefore) return
+        send(id, video, onError) {
+            if (!atLoadedEnd) {
+                successor
+            } else {
+                check(loadNext()) { "couldn't load the rest of the playlist" }
+                val videos = shown?.videos.orEmpty()
+                videos.getOrNull(videos.indexOfFirst { it.sameEntry(video) } + 1)?.id
+            }
+        }
+    }
+
+    /**
+     * Leva [video] para o topo da playlist (pedido do Johan, 2026-11-03: sem rolar a lista toda
+     * arrastando). O topo já está carregado, então é um movimento só. true se mudou algo.
+     */
+    fun moveToTop(video: Video, onError: (String) -> Unit): Boolean {
+        val id = playlist.playlistId ?: return false
+        if (!_editable.value) return false
+        val videos = shown?.videos ?: return false
+        val index = videos.indexOfFirst { it.sameEntry(video) }
+        if (index <= 0) return false
+        val first = videos[0].id
+        moveShown(index, 0)
+        send(id, video, onError) { first }
+        return true
+    }
+
+    /** Manda para a conta "pôr [video] antes de [successor]", depois dos movimentos anteriores. */
+    private fun send(playlistId: String, video: Video, onError: (String) -> Unit, successor: suspend () -> String?) {
+        AppScope.launch {
+            edits.withLock {
+                runCatching { PlaylistEditor.move(playlistId, video.id, successor()) }.onFailure {
+                    onError(it.toMessage())
+                    refresh()
+                }
+            }
         }
     }
 
     private companion object {
-        /** Até uns 5000 vídeos (100 por página). */
-        const val MAX_REORDER_PAGES = 50
+        /** Os movimentos (de qualquer playlist) vão para a conta um por vez, na ordem. */
+        val edits = Mutex()
     }
 
     fun toggleSubscription(title: String?) {

@@ -1,92 +1,92 @@
 package ytslim.ui.mobile
 
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.lazy.LazyListItemInfo
-import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridItemInfo
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
 import kotlinx.coroutines.channels.Channel
 
 /**
- * Arrastar para reordenar uma [androidx.compose.foundation.lazy.LazyColumn] (o modo de reordenar
- * playlists no celular e no tablet). Segurar um vídeo, ou arrastar pela alça, pega o vídeo; ele
- * segue o dedo, os outros abrem espaço, e perto da borda a lista rola sozinha.
+ * Arrastar para mudar a ordem numa [androidx.compose.foundation.lazy.grid.LazyVerticalGrid] (as
+ * playlists do usuário no celular e no tablet). Arrastar pela alça pega o vídeo; ele segue o
+ * dedo, os outros abrem espaço, e perto da borda a lista rola sozinha. Ao soltar, [onDrop] manda
+ * a posição nova para a conta (pedido do Johan, 2026-11-03: sem um modo de reordenar antes).
  *
- * Os itens que se movem têm como chave o ID do vídeo ([keys]); os outros itens (o aviso no topo)
- * ficam parados.
+ * Os itens que se movem têm como chave a mesma de [keys], na ordem da lista; os outros itens (o
+ * fim da lista) ficam parados.
  */
 @Stable
 class DragReorderState internal constructor(
-    private val list: LazyListState,
-    private val keys: State<List<String>>,
+    private val grid: LazyGridState,
+    private val keys: State<List<Any>>,
     private val onMove: State<(Int, Int) -> Unit>,
+    private val onDrop: State<() -> Unit>,
 ) {
     /** O vídeo pego, ou null. */
-    var draggingKey by mutableStateOf<String?>(null)
+    var draggingKey by mutableStateOf<Any?>(null)
         private set
 
-    private var dragged by mutableFloatStateOf(0f)
-    private var initialOffset by mutableIntStateOf(0)
+    private var dragged by mutableStateOf(Offset.Zero)
+    private var initialOffset by mutableStateOf(IntOffset.Zero)
 
     internal val scroll = Channel<Float>(Channel.CONFLATED)
 
-    private val draggingItem: LazyListItemInfo?
-        get() = draggingKey?.let { key -> list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key } }
+    private val draggingItem: LazyGridItemInfo?
+        get() = draggingKey?.let { key -> grid.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key } }
 
-    /** Quanto o vídeo pego está deslocado do lugar dele na lista (para o graphicsLayer). */
-    val offset: Float
-        get() = draggingItem?.let { initialOffset + dragged - it.offset } ?: 0f
+    /** Quanto o vídeo pego está deslocado do lugar dele na grade (para o graphicsLayer). */
+    val offset: Offset
+        get() = draggingItem?.let {
+            Offset(initialOffset.x + dragged.x - it.offset.x, initialOffset.y + dragged.y - it.offset.y)
+        } ?: Offset.Zero
 
-    /** Pega o vídeo sob [y] (em pixels, a partir do topo da lista). */
-    internal fun startAt(y: Float) {
-        val at = y + list.layoutInfo.viewportStartOffset
-        list.layoutInfo.visibleItemsInfo
-            .firstOrNull { at.toInt() in it.offset..(it.offset + it.size) && it.key in keys.value }
-            ?.let { start(it) }
-    }
-
-    /** Pega o vídeo [key] (arrastando pela alça). */
-    internal fun start(key: String) {
-        list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key }?.let { start(it) }
-    }
-
-    private fun start(item: LazyListItemInfo) {
-        draggingKey = item.key as String
+    /** Pega o vídeo [key]. */
+    internal fun start(key: Any) {
+        val item = grid.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key } ?: return
+        draggingKey = key
         initialOffset = item.offset
-        dragged = 0f
+        dragged = Offset.Zero
     }
 
+    /** Solta o vídeo onde ele está. */
     internal fun stop() {
+        if (draggingKey == null) return
         draggingKey = null
-        dragged = 0f
+        dragged = Offset.Zero
+        onDrop.value()
     }
 
-    internal fun drag(dy: Float) {
+    internal fun drag(delta: Offset) {
         val item = draggingItem ?: return
-        dragged += dy
-        val top = item.offset + offset
-        val bottom = top + item.size
-        val middle = (top + bottom) / 2f
-        val target = list.layoutInfo.visibleItemsInfo.firstOrNull {
-            it.key != item.key && it.key in keys.value && middle.toInt() in it.offset..(it.offset + it.size)
+        dragged += delta
+        val shift = offset
+        val left = item.offset.x + shift.x
+        val top = item.offset.y + shift.y
+        val bottom = top + item.size.height
+        val centerX = (left + item.size.width / 2f).toInt()
+        val centerY = (top + item.size.height / 2f).toInt()
+        val target = grid.layoutInfo.visibleItemsInfo.firstOrNull {
+            it.key != item.key && it.key in keys.value &&
+                centerX in it.offset.x..(it.offset.x + it.size.width) &&
+                centerY in it.offset.y..(it.offset.y + it.size.height)
         }
         if (target != null) {
-            // A lista fica presa ao primeiro item visível: sem isso, mover esse item rola a lista junto.
-            if (item.index == list.firstVisibleItemIndex || target.index == list.firstVisibleItemIndex) {
-                list.requestScrollToItem(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset)
+            // A grade fica presa ao primeiro item visível: sem isso, mover esse item rola a lista junto.
+            if (item.index == grid.firstVisibleItemIndex || target.index == grid.firstVisibleItemIndex) {
+                grid.requestScrollToItem(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset)
             }
             val ids = keys.value
             val from = ids.indexOf(item.key)
@@ -94,10 +94,10 @@ class DragReorderState internal constructor(
             if (from >= 0 && to >= 0) onMove.value(from, to)
             return
         }
-        val info = list.layoutInfo
+        val info = grid.layoutInfo
         val overscroll = when {
-            dragged > 0 -> (bottom - info.viewportEndOffset).coerceAtLeast(0f)
-            dragged < 0 -> (top - info.viewportStartOffset).coerceAtMost(0f)
+            dragged.y > 0 -> (bottom - info.viewportEndOffset).coerceAtLeast(0f)
+            dragged.y < 0 -> (top - info.viewportStartOffset).coerceAtMost(0f)
             else -> 0f
         }
         if (overscroll != 0f) scroll.trySend(overscroll)
@@ -105,42 +105,34 @@ class DragReorderState internal constructor(
 }
 
 @Composable
-fun rememberDragReorderState(list: LazyListState, keys: List<String>, onMove: (Int, Int) -> Unit): DragReorderState {
+fun rememberDragReorderState(
+    grid: LazyGridState,
+    keys: List<Any>,
+    onMove: (Int, Int) -> Unit,
+    onDrop: () -> Unit,
+): DragReorderState {
     val currentKeys = rememberUpdatedState(keys)
     val currentMove = rememberUpdatedState(onMove)
-    val state = remember(list) { DragReorderState(list, currentKeys, currentMove) }
+    val currentDrop = rememberUpdatedState(onDrop)
+    val state = remember(grid) { DragReorderState(grid, currentKeys, currentMove, currentDrop) }
     LaunchedEffect(state) {
         for (diff in state.scroll) {
-            list.scrollBy(diff)
+            grid.scrollBy(diff)
             // A lista rolou: o vídeo pego pode ter passado por cima de outro.
-            state.drag(0f)
+            state.drag(Offset.Zero)
         }
     }
     return state
 }
 
-/** Na lista: segurar um vídeo pega ele. */
-fun Modifier.dragReorderOnLongPress(state: DragReorderState, enabled: Boolean): Modifier =
-    if (!enabled) this else pointerInput(state) {
-        detectDragGesturesAfterLongPress(
-            onDragStart = { state.startAt(it.y) },
-            onDrag = { change, amount ->
-                change.consume()
-                state.drag(amount.y)
-            },
-            onDragEnd = state::stop,
-            onDragCancel = state::stop,
-        )
-    }
-
 /** Na alça de um vídeo: arrastar pega ele na hora. */
-fun Modifier.dragReorderHandle(state: DragReorderState, key: String, enabled: Boolean): Modifier =
-    if (!enabled) this else pointerInput(state, key) {
+fun Modifier.dragReorderHandle(state: DragReorderState, key: Any): Modifier =
+    pointerInput(state, key) {
         detectDragGestures(
             onDragStart = { state.start(key) },
             onDrag = { change, amount ->
                 change.consume()
-                state.drag(amount.y)
+                state.drag(amount)
             },
             onDragEnd = state::stop,
             onDragCancel = state::stop,
