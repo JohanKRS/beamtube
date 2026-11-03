@@ -11,8 +11,12 @@ import ytslim.R
  * cabe numa linha: o tempo e a barra sobem para uma linha só deles, os botões ficam embaixo à
  * direita e o Skip ahead fica só com o ícone. A activity cuida sozinha dos giros, então [fit]
  * roda ao montar a tela e a cada giro.
+ *
+ * Na TV ([tv]) são sempre duas linhas, com o Skip ahead com o texto (0.5.6, achado pelo Johan na
+ * TV): na barra, esquerda e direita avançam o vídeo, então numa linha só os botões depois dela não
+ * tinham como receber o foco. Com a barra em cima, baixo leva aos botões e cima volta para a barra.
  */
-class PlayerIsland(root: View) {
+class PlayerIsland(root: View, private val tv: Boolean) {
     private val barRow: LinearLayout = root.findViewById(R.id.player_bar_row)
     private val buttonRow: LinearLayout = root.findViewById(R.id.player_button_row)
     private val divider: View = root.findViewById(R.id.player_island_divider)
@@ -23,8 +27,9 @@ class PlayerIsland(root: View) {
         .map { root.findViewById<View>(it) }
     private val density = root.resources.displayMetrics.density
 
-    var compact = false
-        private set
+    /** O tempo e a barra numa linha só deles. null = ainda não arrumou. */
+    private var twoRows: Boolean? = null
+    private var narrow = false
 
     init {
         // Sem o texto, o leitor de tela ainda diz o que o botão faz.
@@ -33,14 +38,16 @@ class PlayerIsland(root: View) {
 
     fun fit(widthDp: Int) {
         val narrow = widthDp < COMPACT_WIDTH_DP
-        if (narrow == compact) return
-        compact = narrow
+        val two = narrow || tv
+        if (two == twoRows && narrow == this.narrow) return
+        twoRows = two
+        this.narrow = narrow
         time.forEach { (it.parent as? ViewGroup)?.removeView(it) }
         // Numa linha só, o tempo vem logo depois do tocar/pausar.
-        if (narrow) time.forEach { barRow.addView(it) } else time.forEachIndexed { i, view -> buttonRow.addView(view, 1 + i) }
-        barRow.visibility = if (narrow) View.VISIBLE else View.GONE
-        divider.visibility = if (narrow) View.GONE else View.VISIBLE
-        spacer.visibility = if (narrow) View.VISIBLE else View.GONE
+        if (two) time.forEach { barRow.addView(it) } else time.forEachIndexed { i, view -> buttonRow.addView(view, 1 + i) }
+        barRow.visibility = if (two) View.VISIBLE else View.GONE
+        divider.visibility = if (two) View.GONE else View.VISIBLE
+        spacer.visibility = if (two) View.VISIBLE else View.GONE
         skip.text = if (narrow) null else label
         skip.compoundDrawablePadding = if (narrow) 0 else dp(6)
         skip.setPaddingRelative(if (narrow) dp(8) else dp(12), 0, if (narrow) dp(8) else dp(14), 0)

@@ -103,7 +103,7 @@ class PlayerActivity : ComponentActivity() {
     private var saveHistory = true
     private var external = false
 
-    /** Brilho do vídeo no modo dormir, em %. Volta a 100 a cada player aberto. */
+    /** Brilho do vídeo no modo dormir, em %. Vale até fechar o app ([sessionBrightness]). */
     private var brightness = 100
 
     /** "When done: Turn off", guardado nas configurações. */
@@ -175,6 +175,8 @@ class PlayerActivity : ComponentActivity() {
         bindButtons()
         if (touch) bindTouchGestures()
         buildSleepPanel()
+        // O brilho escolhido num vídeo vale para os próximos, até fechar o app (pedido do Johan, 2026-11-03).
+        if (sessionBrightness < 100) setBrightness(sessionBrightness)
         onBackPressedDispatcher.addCallback(this, closePanelOnBack)
 
         val startMs = savedInstanceState?.getLong(KEY_POSITION) ?: target.startMs
@@ -440,6 +442,7 @@ class PlayerActivity : ComponentActivity() {
     /** Escurece o vídeo (a legenda junto), sem mexer nos controles nem no brilho da TV. */
     private fun setBrightness(level: Int) {
         brightness = level
+        sessionBrightness = level
         dimView.alpha = 1f - level / 100f
         dimView.visibility = if (level < 100) View.VISIBLE else View.GONE
         // Escurecido, os controles não acendem sozinhos na troca de vídeo nem no fim.
@@ -668,7 +671,7 @@ class PlayerActivity : ComponentActivity() {
         rotateButton = playerView.findViewById<ImageButton>(R.id.player_rotate).apply {
             visibility = if (touch) View.VISIBLE else View.GONE
         }
-        island = PlayerIsland(playerView).apply { fit(resources.configuration.screenWidthDp) }
+        island = PlayerIsland(playerView, tv = !touch).apply { fit(resources.configuration.screenWidthDp) }
         sleepPanel = playerView.findViewById(R.id.player_sleep_panel)
         qualityButton = playerView.findViewById(R.id.player_quality_button)
         qualityPanel = playerView.findViewById(R.id.player_quality_panel)
@@ -774,6 +777,12 @@ class PlayerActivity : ComponentActivity() {
 
         /** Opções de brilho do painel de dormir, em %. */
         private val BRIGHTNESS_LEVELS = listOf(100, 50, 25, 10, 0)
+
+        /**
+         * O último brilho escolhido, guardado só na memória: vale para os próximos vídeos até o app
+         * fechar (ou a TV desligar), e o app abre de novo com o vídeo claro.
+         */
+        private var sessionBrightness = 100
 
         /** Tempo para cancelar o "Turn off" depois que os vídeos acabam. */
         private const val TURN_OFF_DELAY_MS = 10_000L
