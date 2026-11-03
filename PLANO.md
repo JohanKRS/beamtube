@@ -94,6 +94,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - Em cima, à esquerda: o título e, embaixo dele, o nome do canal (um toque, ou OK na TV, abre a página do canal) e o aviso "not saved to history" quando for o caso. À direita, uma **pílula de vidro** com like, dislike, Save (âmbar quando salvo) e "Subscribe" (cheio e claro; inscrito, só o contorno).
   - Embaixo, uma **ilha de vidro** arredondada: tocar/pausar num círculo claro, o tempo, a barra (âmbar, com o carregado mais claro), a duração e, depois de um divisor, Skip ahead, legenda, a etiqueta da resolução ("2160p", com contorno), girar a tela (só celular e tablet) e a lua.
     - Numa tela com menos de 720 dp de largura (o celular em pé), a ilha vira **duas linhas** (0.5.1): o tempo e a barra em cima, e embaixo o tocar/pausar e os botões, com o Skip ahead só no ícone (`PlayerIsland`). Numa linha só, os botões não cabiam.
+    - **Na TV, sempre duas linhas** (0.5.6, achado pelo Johan com o controle remoto): na barra, esquerda e direita avançam o vídeo, então numa linha só não dava para chegar nos botões depois dela sem arrastar o vídeo até o fim (e aí pulava para o próximo). Com a barra em cima, **baixo** leva aos botões (Skip ahead com o texto, legenda, resolução, lua) e **cima** volta para a barra.
   - Os painéis da resolução e do modo dormir abrem num cartão **à direita, logo acima da ilha**, com as opções em **trilhos segmentados** (a escolhida fica âmbar e cheia). Os trilhos de um painel ficam da mesma largura.
   - Na TV: o foco é um anel âmbar em todos os botões (o tocar/pausar fica âmbar inteiro), e os controles ficam a 48 dp das bordas, dentro da área segura da tela (`values-television`). O título cresce um pouco.
   - Saiu da tela a linha técnica com o codec e o idioma do áudio ("1080p avc1 · audio: en"): a resolução já aparece na etiqueta, e o resto continua no log (tag Doorglow).
@@ -108,7 +109,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - **Descer um degrau** só quando o aparelho falha de verdade: erro do decodificador ou muitos quadros perdidos duas vezes (o teto cai para a resolução de baixo até o app fechar), ou o vídeo parar para carregar três vezes sem o usuário pular (só naquele vídeo, porque é a rede). Depois de descer pela rede, o app tenta o topo de novo após 2 minutos sem parar para carregar.
   - **Demora para começar:** o app agora prepara o player do YouTube (o JavaScript que decifra os links) ao abrir, como o SmartTube faz (`refreshCacheIfNeeded`). Numa TV fraca, isso levava segundos no primeiro vídeo.
 - **Modo dormir** (0.4.1, pedido do Johan, que usa playlists para dormir, principalmente na TV): o botão da lua, na ilha de baixo, abre um painel acima dela com três linhas:
-  - **Brightness: 100% / 50% / 25% / 10% / 0%** escurece o vídeo e a legenda, sem mexer no brilho da TV (uma camada preta por cima do vídeo e por baixo dos controles). Escurecido, os controles não acendem sozinhos na troca de vídeo nem no fim. Volta a 100% a cada player aberto, para não pegar a tela escura de dia.
+  - **Brightness: 100% / 50% / 25% / 10% / 0%** escurece o vídeo e a legenda, sem mexer no brilho da TV (uma camada preta por cima do vídeo e por baixo dos controles). Escurecido, os controles não acendem sozinhos na troca de vídeo nem no fim. **Vale até fechar o app** (0.5.6, pedido do Johan; até a 0.5.5 voltava a 100% a cada player aberto): o brilho escolhido fica para os próximos vídeos, mas só na memória, então o app aberto de novo (ou a TV ligada de novo) começa com o vídeo claro.
   - **Then play: None / 1 / 2 / 3 / 4 / 5 / All**: quantos vídeos da playlist ainda tocam depois do atual (ver "Tocar em sequência"). Só aparece quando o vídeo veio da página de uma playlist. O número desce a cada vídeo. Começa em All a cada vez. Por decisão do Johan, essa escolha fica **só no player**, não na lista.
   - **When done: Stay on / Turn off** (**só na TV**; no celular e no tablet a linha e o serviço de Acessibilidade saem do app, pedido do Johan na 0.4.2): o que fazer quando os vídeos acabam. A escolha **fica guardada** (pedido do Johan) e vale para todo vídeo ou sequência que terminar. Com "Turn off", o app avisa e espera 10 s (qualquer botão ou toque cancela) e põe o aparelho para dormir. Pelo HDMI-CEC, a TV desliga junto.
   - O Android não deixa um app comum pôr o aparelho para dormir. Por isso o app tem um serviço de Acessibilidade (`ScreenOffService`) que só faz isso (não recebe eventos nem lê a tela) e que o usuário liga uma vez, em Configurações > Acessibilidade. Ao escolher "Turn off" sem o serviço ligado, o app abre essa tela. Precisa do Android 9 ou mais novo; antes disso, a linha não aparece.
@@ -197,6 +198,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
+   - *Versão 0.5.6 (2026-11-03), achados do Johan na TV, aguardando o teste no aparelho* (ver "Como testar a 0.5.6"): a ilha do player em duas linhas na TV (os botões depois da barra não pegavam o foco) e o brilho do modo dormir mantido até fechar o app.
    - *Versão 0.5.5 (2026-11-03), pedidos do Johan testando a 0.5.4, aguardando o teste no aparelho* (ver "Como testar a 0.5.5"): Undo ao tirar vídeos do Histórico e das playlists, reordenar sem o modo (alça em cada vídeo, cada movimento gravado na hora), a seta para o topo, o toque longo desligado dentro do Watch later, e as playlists e o Histórico guardados no aparelho e carregando à frente.
    - *Versão 0.5.4 (2026-11-03), ajustes depois de o Johan testar a 0.5.3, aguardando o teste no aparelho* (ver "Como testar a 0.5.4"): 3 colunas no tablet de 14,6" em pé, a atualização das listas sem os cartões voando e o ícone e o banner da TV refinados.
    - *Versão 0.5.3 (2026-11-02), correções depois de o Johan testar a 0.5.2; o Johan aprovou a Explore em 2026-11-03* (ver "Como testar a 0.5.3"): a Explore vazia (a lista de canais inscritos vinha sem ids; achado pelos logs do celular, via ADB pelo PC) e as Inscrições guardadas no aparelho para o app abrir na hora.
@@ -213,6 +215,12 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 0.5.6
+
+1. TV: abrir um vídeo e mostrar os controles. A barra de tempo fica numa linha só dela, em cima dos botões.
+2. Com o controle: na barra, esquerda e direita avançam e voltam; **baixo** vai para os botões (Skip ahead, legenda, resolução, lua), e esquerda e direita andam entre eles sem mexer no vídeo. **Cima** volta para a barra.
+3. Na lua, escolher Brightness 25%. Abrir outro vídeo (ou o próximo da playlist): continua em 25%. Fechar o app de vez (ou desligar a TV) e abrir de novo: o vídeo volta claro.
 
 ## Como testar a 0.5.5
 
