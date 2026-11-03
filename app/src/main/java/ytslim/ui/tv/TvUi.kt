@@ -943,7 +943,11 @@ object TvUi : Screens {
                             arranging = false
                         }) { Text(stringResource(R.string.reorder_done)) }
                     } else {
-                        OutlinedButton(onClick = { arranging = true }, enabled = state is UiState.Ready) { Text(stringResource(R.string.reorder)) }
+                        OutlinedButton(
+                            onClick = { arranging = true },
+                            // A lista guardada no aparelho pode estar velha: mover espera a da conta.
+                            enabled = (state as? UiState.Ready)?.data?.cached == false,
+                        ) { Text(stringResource(R.string.reorder)) }
                     }
                 }
             }

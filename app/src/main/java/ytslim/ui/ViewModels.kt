@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +26,7 @@ import ytslim.data.AuthRepository.SignInEvent
 import ytslim.data.ExploreRepository
 import ytslim.data.ExternalLinks
 import ytslim.data.FeedCache
+import ytslim.data.ListCache
 import ytslim.data.FeedMerge
 import ytslim.data.FeedRepository
 import ytslim.data.FeedRules
@@ -92,7 +96,14 @@ class SignInViewModel : ViewModel() {
 }
 
 /** Uma lista de vídeos na tela, com paginação. */
-data class VideoListContent(val videos: List<Video>, val hasMore: Boolean, val loadingMore: Boolean, val title: String? = null)
+/** [cached]: a lista guardada no aparelho ([ListCache]), na tela até a da conta chegar. */
+data class VideoListContent(
+    val videos: List<Video>,
+    val hasMore: Boolean,
+    val loadingMore: Boolean,
+    val title: String? = null,
+    val cached: Boolean = false,
+)
 
 /**
  * Feed de Inscrições: o feed dos canais mais os vídeos novos das playlists inscritas,
@@ -236,8 +247,15 @@ class PlaylistsViewModel : ViewModel(), Refreshable {
     }
 }
 
-/** Lista paginada de vídeos (os de uma playlist). */
-open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : ViewModel(), Refreshable {
+/**
+ * Lista paginada de vídeos (uma playlist, o Histórico). Com [cacheKey], a lista fica guardada no
+ * aparelho ([ListCache]): abre na hora com ela, e a da conta chega por trás.
+ */
+@OptIn(FlowPreview::class)
+open class VideoListViewModel(
+    private val cacheKey: String?,
+    private val firstPage: suspend () -> VideoPage,
+) : ViewModel(), Refreshable {
     private val _state = MutableStateFlow<UiState<VideoListContent>>(UiState.Loading)
     val state: StateFlow<UiState<VideoListContent>> = _state.asStateFlow()
     private val _refreshing = MutableStateFlow(false)
@@ -257,6 +275,14 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
 
     init {
         reload()
+        if (cacheKey != null) {
+            // Guarda a lista um segundo depois da última mudança (página nova, vídeo movido ou tirado).
+            viewModelScope.launch {
+                state.mapNotNull { (it as? UiState.Ready)?.data?.takeUnless { content -> content.cached } }
+                    .debounce(1_000)
+                    .collect { AppScope.launch { ListCache.save(cacheKey, it.title, it.videos) } }
+            }
+        }
     }
 
     fun reload() = load(quiet = false)
@@ -269,13 +295,22 @@ open class VideoListViewModel(private val firstPage: suspend () -> VideoPage) : 
         _refreshing.value = quiet
         if (!quiet) _state.value = UiState.Loading
         loadJob = viewModelScope.launch {
+            if (!quiet && cacheKey != null) {
+                ListCache.read(cacheKey)?.let { saved ->
+                    val videos = saved.videos.filterNot { it.id in removing }
+                    _state.value = UiState.Ready(VideoListContent(videos, hasMore = false, loadingMore = false, title = saved.title, cached = true))
+                    _refreshing.value = true
+                }
+            }
+            val onScreen = _state.value
             _state.value = runCatching { firstPage() }.fold(
                 { page ->
                     lastPage = page
                     val videos = page.videos.filterNot { it.id in removing }
                     UiState.Ready(VideoListContent(videos, page.hasMore, loadingMore = false, title = page.title))
                 },
-                { UiState.Error(it.toMessage()) },
+                // Sem rede, a lista que está na tela (a guardada, ou a de antes do puxar) fica.
+                { if (onScreen is UiState.Ready) onScreen else UiState.Error(it.toMessage()) },
             )
             _refreshing.value = false
         }
@@ -357,7 +392,10 @@ private fun Video.sameEntry(other: Video) = id == other.id && playlistIndex == o
  * Página de uma playlist: os vídeos; se for de outro canal, o botão de inscrição; se for do
  * usuário (inclui Assistir mais tarde), tirar vídeos e mudar a ordem.
  */
-class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ LibraryRepository.playlistVideos(playlist) }) {
+class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel(
+    playlist.playlistId?.let { "playlist-$it" },
+    { LibraryRepository.playlistVideos(playlist) },
+) {
     val playlistId: String? get() = playlist.playlistId
 
     /** Abrir [video] daqui começa a sequência: os vídeos seguintes da playlist tocam depois dele. */
@@ -419,7 +457,8 @@ class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ L
      */
     fun move(from: Int, to: Int) {
         if (!_editable.value) return
-        val videos = shown?.videos ?: return
+        // A lista guardada pode estar velha: mover espera a da conta chegar (um instante).
+        val videos = shown?.takeUnless { it.cached }?.videos ?: return
         if (from !in videos.indices || to !in videos.indices || from == to) return
         val video = videos[from]
         if (dragged?.sameEntry(video) != true) {
@@ -462,7 +501,7 @@ class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel({ L
     fun moveToTop(video: Video, onError: (String) -> Unit): Boolean {
         val id = playlist.playlistId ?: return false
         if (!_editable.value) return false
-        val videos = shown?.videos ?: return false
+        val videos = shown?.takeUnless { it.cached }?.videos ?: return false
         val index = videos.indexOfFirst { it.sameEntry(video) }
         if (index <= 0) return false
         val first = videos[0].id
@@ -637,6 +676,7 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             AuthRepository.signOut()
             FeedCache.clear()
+            ListCache.clear()
             onDone()
         }
     }

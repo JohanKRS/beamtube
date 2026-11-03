@@ -1160,7 +1160,8 @@ object MobileUi : Screens {
                         null
                     },
                     // Nas suas playlists, cada vídeo tem uma alça (arrastar muda a ordem na hora) e uma seta para o topo.
-                    onMove = if (editable) vm::move else null,
+                    // A lista guardada no aparelho pode estar velha: a alça e a seta aparecem com a da conta.
+                    onMove = if (editable && !content.cached) vm::move else null,
                     onDrop = { vm.drop { Notices.show(res.getString(R.string.reorder_failed, it)) } },
                     onMoveToTop = { video ->
                         if (vm.moveToTop(video) { Notices.show(res.getString(R.string.reorder_failed, it)) }) {
@@ -1288,15 +1289,20 @@ object MobileUi : Screens {
     }
 
     /** Chama [onNearEnd] quando a rolagem chega perto do fim (para carregar a próxima página). */
+    /**
+     * Pede a próxima página quando faltam [ahead] itens para o fim. Cada página que chega muda
+     * [count] e pede de novo, então a lista vai carregando à frente enquanto rola. [ready] muda
+     * quando a lista da conta troca a guardada no aparelho.
+     */
     @Composable
-    private fun NearEnd(grid: LazyGridState, count: Int, onNearEnd: () -> Unit) {
-        val nearEnd by remember {
+    private fun NearEnd(grid: LazyGridState, count: Int, onNearEnd: () -> Unit, ahead: Int = 6, ready: Boolean = true) {
+        val nearEnd by remember(ahead) {
             derivedStateOf {
                 val last = grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                last >= grid.layoutInfo.totalItemsCount - 6
+                last >= grid.layoutInfo.totalItemsCount - ahead
             }
         }
-        LaunchedEffect(nearEnd, count) { if (nearEnd) onNearEnd() }
+        LaunchedEffect(nearEnd, count, ready) { if (nearEnd) onNearEnd() }
     }
 
     /**
@@ -1386,7 +1392,9 @@ object MobileUi : Screens {
         onMoveToTop: (Video) -> Unit = {},
     ) {
         val grid = rememberLazyGridState()
-        NearEnd(grid, content.videos.size, onNearEnd)
+        // Playlists e Histórico (pedido do Johan, 2026-11-03): as páginas vêm bem antes do fim, para
+        // rolar sem esperar.
+        NearEnd(grid, content.videos.size, onNearEnd, ahead = ROWS_AHEAD, ready = !content.cached)
         PrefetchThumbnails(content.videos)
         val cards = rememberCardState(showSaved)
         val keys = remember(content.videos) { content.videos.map { it.rowKey } }
@@ -1792,3 +1800,6 @@ private data class VideoColumns(val portrait: Boolean) : GridCells {
 
 /** A chave de um vídeo nas listas (um vídeo pode aparecer duas vezes numa playlist). */
 private val Video.rowKey: String get() = id + playlistIndex
+
+/** Nas listas em linhas, quantos vídeos à frente a próxima página já é pedida. */
+private const val ROWS_AHEAD = 50

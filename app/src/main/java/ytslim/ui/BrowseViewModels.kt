@@ -142,7 +142,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
 }
 
 /** Histórico da conta (o que foi assistido). */
-class HistoryViewModel : VideoListViewModel({ LibraryRepository.history() }) {
+class HistoryViewModel : VideoListViewModel("history", { LibraryRepository.history() }) {
     /**
      * Tira [video] do histórico: some da tela na hora, e a conta muda quando o prazo do Undo passa
      * (devolve o Undo). Se a conta não mudar, [onError] avisa e a lista volta a ser a da conta.

@@ -9,6 +9,7 @@ import ytslim.data.AppScope
 import ytslim.data.Engine
 import ytslim.data.ExploreRepository
 import ytslim.data.FeedCache
+import ytslim.data.ListCache
 import ytslim.data.PlaylistSubscriptions
 import ytslim.data.SettingsRepository
 import ytslim.player.ScreenOffService
@@ -21,6 +22,7 @@ class App : Application() {
         PlaylistSubscriptions.init(this)
         ExploreRepository.init(this)
         FeedCache.init(this)
+        ListCache.init(this)
         AppIcons.init(this)
         AppScope.launch { SettingsRepository.dropOldExplore() }
         if (!isTv()) removeScreenOffService()
