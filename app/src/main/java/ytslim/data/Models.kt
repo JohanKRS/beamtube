@@ -28,6 +28,8 @@ data class Video(
     val fromPlaylist: String? = null,
     /** No Histórico: o que o YouTube pede para tirar o vídeo de lá (o menu do cartão manda). */
     val feedbackToken: String? = null,
+    /** Onde o YouTube diz que o vídeo parou (o tempo do card); 0 quando não foi começado. */
+    val resumeMs: Long = 0,
 )
 
 /**
@@ -88,6 +90,7 @@ internal fun MediaItem.toVideo(): Video? {
         playlistId = playlistId,
         playlistIndex = playlistIndex,
         feedbackToken = feedbackToken,
+        resumeMs = startTimeSeconds.coerceAtLeast(0) * 1000L,
     )
 }
 

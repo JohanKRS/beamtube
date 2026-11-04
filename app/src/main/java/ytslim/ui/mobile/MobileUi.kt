@@ -189,6 +189,7 @@ import ytslim.ui.Notice
 import ytslim.ui.NoticeAction
 import ytslim.ui.Notices
 import ytslim.ui.PlaylistViewModel
+import ytslim.ui.Subscription
 import ytslim.ui.PlaylistsViewModel
 import ytslim.ui.PrefetchThumbnails
 import ytslim.ui.RecommendedViewModel
@@ -1316,7 +1317,7 @@ object MobileUi : Screens {
 
         DetailFrame(title = shownTitle, navigation = { BackButton(onBack) }) {
             Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
-                val shown = subscription as? PlaylistViewModel.Subscription.Shown
+                val shown = subscription as? Subscription.Shown
                 VideoRows(
                     content = content,
                     onNearEnd = vm::loadMore,
@@ -1357,6 +1358,36 @@ object MobileUi : Screens {
     ) {
         val state by vm.state.collectAsStateWithLifecycle()
         val blocked by vm.blocked.collectAsStateWithLifecycle()
+        val subscription by vm.subscription.collectAsStateWithLifecycle()
+        ChannelPage(
+            title, state, blocked, subscription,
+            onSubscribe = vm::toggleSubscribed,
+            onBlock = vm::toggleBlocked,
+            onRetry = vm::reload,
+            refresh = vm,
+            onNearEnd = vm::loadMore,
+            onPlay = onPlay,
+            onOpenPlaylist = onOpenPlaylist,
+            onBack = onBack,
+        )
+    }
+
+    /** A página do canal com o que o [ChannelViewModel] diz (separada para as fotos de tela). */
+    @Composable
+    internal fun ChannelPage(
+        title: String,
+        state: UiState<ChannelViewModel.Content>,
+        blocked: Boolean,
+        subscription: Subscription,
+        onSubscribe: () -> Unit,
+        onBlock: () -> Unit,
+        onRetry: () -> Unit,
+        refresh: Refreshable?,
+        onNearEnd: () -> Unit,
+        onPlay: (Video) -> Unit,
+        onOpenPlaylist: (Playlist) -> Unit,
+        onBack: () -> Unit,
+    ) {
         var tab by rememberSaveable { mutableIntStateOf(0) }
         val res = LocalContext.current.resources
         DetailFrame(
@@ -1365,7 +1396,7 @@ object MobileUi : Screens {
             // Bloquear: só um ícone pequeno na barra de cima (âmbar quando bloqueado); o resultado vem num aviso.
             actions = {
                 IconButton(onClick = {
-                    vm.toggleBlocked()
+                    onBlock()
                     Notices.show(res.getString(if (blocked) R.string.channel_unblocked_notice else R.string.channel_blocked_notice))
                 }) {
                     Icon(
@@ -1377,13 +1408,23 @@ object MobileUi : Screens {
                 }
             },
         ) {
-            Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
+            Loadable(state, onRetry = onRetry, refresh = refresh) { content ->
                 val hasPlaylists = content.playlists.isNotEmpty()
-                val header: (@Composable () -> Unit)? = if (!hasPlaylists) null else {
+                val shown = subscription as? Subscription.Shown
+                // Em cima da lista: a inscrição (o mesmo botão da playlist) e, com playlists, Vídeos e Playlists.
+                val header: (@Composable () -> Unit)? = if (!hasPlaylists && shown == null) null else {
                     {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(R.string.channel_videos, R.string.channel_playlists).forEachIndexed { i, label ->
-                                Segment(stringResource(label), selected = tab == i) { tab = i }
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            shown?.let { state ->
+                                SubscribeButton(state, onToggle = onSubscribe)
+                                state.error?.let { Text(stringResource(R.string.action_failed, it), color = MaterialTheme.colorScheme.error) }
+                            }
+                            if (hasPlaylists) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf(R.string.channel_videos, R.string.channel_playlists).forEachIndexed { i, label ->
+                                        Segment(stringResource(label), selected = tab == i) { tab = i }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1394,7 +1435,7 @@ object MobileUi : Screens {
                     VideoGrid(
                         content.videos,
                         emptyText = stringResource(R.string.list_empty),
-                        onNearEnd = vm::loadMore,
+                        onNearEnd = onNearEnd,
                         onPlay = onPlay,
                         onOpenChannel = null,
                         header = header,
@@ -1422,34 +1463,9 @@ object MobileUi : Screens {
     }
 
     @Composable
-    internal fun SubscribeHeader(state: PlaylistViewModel.Subscription.Shown, onToggle: () -> Unit) {
+    internal fun SubscribeHeader(state: Subscription.Shown, onToggle: () -> Unit) {
         Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (state.subscribed) {
-                    // Inscrito: contorno âmbar e um ✓. Tocar de novo cancela a inscrição.
-                    OutlinedButton(
-                        onClick = onToggle,
-                        enabled = !state.busy,
-                        border = BorderStroke(1.dp, Look.Glow.copy(alpha = 0.45f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Look.Glow),
-                        contentPadding = PaddingValues(start = 16.dp, end = 22.dp),
-                    ) {
-                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.playlist_subscribed))
-                    }
-                } else {
-                    Button(onClick = onToggle, enabled = !state.busy, contentPadding = PaddingValues(start = 16.dp, end = 22.dp)) {
-                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.playlist_subscribe))
-                    }
-                }
-                if (state.busy) {
-                    Spacer(Modifier.width(12.dp))
-                    CircularProgressIndicator(Modifier.size(24.dp))
-                }
-            }
+            SubscribeButton(state, onToggle)
             Text(
                 stringResource(if (state.subscribed) R.string.playlist_subscribed_hint_touch else R.string.playlist_subscribe_hint),
                 style = MaterialTheme.typography.bodySmall,
@@ -1458,6 +1474,37 @@ object MobileUi : Screens {
             )
             state.error?.let {
                 Text(stringResource(R.string.action_failed, it), color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+
+    /** "+ Subscribe" ou "✓ Subscribed", na playlist e no canal. Tocar de novo cancela a inscrição. */
+    @Composable
+    internal fun SubscribeButton(state: Subscription.Shown, onToggle: () -> Unit) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (state.subscribed) {
+                // Inscrito: contorno na cor de destaque e um ✓.
+                OutlinedButton(
+                    onClick = onToggle,
+                    enabled = !state.busy,
+                    border = BorderStroke(1.dp, Look.Glow.copy(alpha = 0.45f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Look.Glow),
+                    contentPadding = PaddingValues(start = 16.dp, end = 22.dp),
+                ) {
+                    Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.playlist_subscribed))
+                }
+            } else {
+                Button(onClick = onToggle, enabled = !state.busy, contentPadding = PaddingValues(start = 16.dp, end = 22.dp)) {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.playlist_subscribe))
+                }
+            }
+            if (state.busy) {
+                Spacer(Modifier.width(12.dp))
+                CircularProgressIndicator(Modifier.size(24.dp))
             }
         }
     }

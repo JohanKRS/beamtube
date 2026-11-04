@@ -230,15 +230,17 @@ class PlayerActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this, closePanelOnBack)
 
         val startMs = savedInstanceState?.getLong(KEY_POSITION) ?: target.startMs
+        // O tempo do card vale só para o vídeo pedido (recriada no meio da sequência, é outro).
+        val resumeMs = if (restored) 0L else target.resumeMs
         lifecycleScope.launch {
             turnOffWhenDone = canTurnOff && SettingsRepository.current().turnOffWhenDone
             renderSleep()
-            if (!target.external) return@launch start(videoId, startMs, saveHistory = true, title)
+            if (!target.external) return@launch start(videoId, startMs, saveHistory = true, title, resumeMs)
             // Link de outro app: o padrão é não ir para o histórico (configurável).
             when (SettingsRepository.current().externalLinks) {
-                ExternalLinks.NO_HISTORY -> start(videoId, startMs, saveHistory = false, title)
-                ExternalLinks.SAVE_HISTORY -> start(videoId, startMs, saveHistory = true, title)
-                ExternalLinks.ASK -> ask { save -> start(videoId, startMs, save, title) }
+                ExternalLinks.NO_HISTORY -> start(videoId, startMs, saveHistory = false, title, resumeMs)
+                ExternalLinks.SAVE_HISTORY -> start(videoId, startMs, saveHistory = true, title, resumeMs)
+                ExternalLinks.ASK -> ask { save -> start(videoId, startMs, save, title, resumeMs) }
             }
         }
 
@@ -267,9 +269,9 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun start(videoId: String, startMs: Long, saveHistory: Boolean, title: String?) {
+    private fun start(videoId: String, startMs: Long, saveHistory: Boolean, title: String?, resumeMs: Long) {
         this.saveHistory = saveHistory
-        controller.open(videoId, startMs, saveHistory, title, requestedAtMs = requestedAtMs)
+        controller.open(videoId, startMs, saveHistory, title, resumeHintMs = resumeMs, requestedAtMs = requestedAtMs)
         requestedAtMs = 0L
     }
 
@@ -928,7 +930,11 @@ class PlayerActivity : ComponentActivity() {
             visibility = if (touch) View.VISIBLE else View.GONE
         }
         island = PlayerIsland(playerView, tv = !touch).apply { fit(resources.configuration.screenWidthDp) }
-        timeBar = playerView.findViewById(R.id.exo_progress)
+        timeBar = playerView.findViewById<ChapterTimeBar>(R.id.exo_progress).apply {
+            // Esquerda e direita na barra andam 10 s, como os dois toques no celular (achado do Johan
+            // na TV, 2026-11-04: o padrão do Media3 anda 1/20 do vídeo, minutos num vídeo longo).
+            setKeyTimeIncrement(TouchRules.SEEK_STEP_MS)
+        }
         chapterView = playerView.findViewById(R.id.player_chapter)
         islandView = playerView.findViewById(R.id.player_island)
         preview = playerView.findViewById(R.id.player_preview)
@@ -1012,7 +1018,8 @@ class PlayerActivity : ComponentActivity() {
         if (::island.isInitialized) island.fit(newConfig.screenWidthDp)
     }
 
-    private data class Target(val videoId: String, val startMs: Long, val external: Boolean)
+    /** @param resumeMs onde o card do YouTube diz que o vídeo parou (0 = não diz). */
+    private data class Target(val videoId: String, val startMs: Long, val external: Boolean, val resumeMs: Long = 0)
 
     private fun linkText(intent: Intent): String? = when (intent.action) {
         Intent.ACTION_VIEW -> intent.dataString
@@ -1022,7 +1029,7 @@ class PlayerActivity : ComponentActivity() {
 
     /** Vídeo pedido: de dentro do app (extra) ou de um link externo (VIEW ou SEND). */
     private fun resolveTarget(intent: Intent): Target? {
-        intent.getStringExtra(EXTRA_VIDEO_ID)?.let { return Target(it, 0, external = false) }
+        intent.getStringExtra(EXTRA_VIDEO_ID)?.let { return Target(it, 0, external = false, resumeMs = intent.getLongExtra(EXTRA_RESUME, 0L)) }
         val link = VideoLinks.parse(linkText(intent)) ?: return null
         return Target(link.videoId, link.startSeconds * 1000, external = true)
     }
@@ -1035,6 +1042,7 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_VIDEO_ID = "video_id"
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_REQUESTED_AT = "requested_at"
+        private const val EXTRA_RESUME = "resume_ms"
         private const val KEY_POSITION = "position"
         private const val KEY_VIDEO = "video"
         private const val KEY_TITLE = "video_title"
@@ -1072,10 +1080,12 @@ class PlayerActivity : ComponentActivity() {
         private const val FLASH_MS = 450L
         private const val FLASH_FADE_MS = 250L
 
-        fun intent(context: Context, videoId: String, title: String?): Intent =
+        /** @param resumeMs onde o card do YouTube diz que o vídeo parou ([Video.resumeMs]). */
+        fun intent(context: Context, videoId: String, title: String?, resumeMs: Long = 0): Intent =
             Intent(context, PlayerActivity::class.java)
                 .putExtra(EXTRA_VIDEO_ID, videoId)
                 .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_RESUME, resumeMs)
                 .putExtra(EXTRA_REQUESTED_AT, SystemClock.elapsedRealtime())
     }
 }

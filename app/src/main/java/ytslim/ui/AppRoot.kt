@@ -53,7 +53,7 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
     val openPlayer: (Video) -> Unit = { video ->
         // O vídeo começa a ser pedido já no toque, enquanto a tela do player abre.
         PlaybackRepository.prefetch(video.id)
-        context.startActivity(PlayerActivity.intent(context, video.id, video.title))
+        context.startActivity(PlayerActivity.intent(context, video.id, video.title, video.resumeMs))
     }
     // Só a página de uma playlist toca em sequência; o resto abre um vídeo sozinho.
     val play: (Video) -> Unit = { video ->

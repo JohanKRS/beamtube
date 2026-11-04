@@ -18,6 +18,8 @@ internal data class VideoTrack(
     /** HDR (10 bits): só vale se o decodificador aceitar de verdade. */
     val hdr: Boolean = false,
     val selected: Boolean,
+    /** O tipo do vídeo (ex.: video/x-vnd.on2.vp9); só faixas do mesmo tipo trocam sem parar. */
+    val mime: String? = null,
 )
 
 /**
@@ -47,6 +49,31 @@ internal object QualityRules {
         .filter { it.hardware && (it.handled || (it.exceeds && !it.hdr)) }
         .filter { it.height in 1..ceiling && it.frameRate <= MAX_FRAME_RATE }
         .maxWithOrNull(compareBy<VideoTrack>({ it.height }, { it.handled }, { it.bitrate }))
+
+    /** A maior faixa de partida ([start]): o primeiro pedaço do vídeo vem em até 1080p. */
+    const val START_HEIGHT = 1080
+
+    /**
+     * A faixa para o primeiro pedaço do vídeo (uns 5 s) quando o alvo passa de 1080p (o 4K da TV):
+     * menos dados até o primeiro quadro, e o resto já vem no alvo (pedido do Johan em 2026-11-04).
+     * A maior até 1080p que troca com o alvo sem parar: mesmo grupo, mesmo codec, mesmo HDR (trocar
+     * o HDR mexe no modo da tela) e, se houver, os mesmos quadros por segundo. null = começa no alvo.
+     */
+    fun start(tracks: List<VideoTrack>, target: VideoTrack): VideoTrack? {
+        if (target.height <= START_HEIGHT) return null
+        return tracks
+            .filter { it.group == target.group && it.index != target.index && it.mime == target.mime && it.hdr == target.hdr }
+            .filter { it.hardware && (it.handled || it.exceeds) }
+            .filter { it.height in 1..START_HEIGHT && it.frameRate <= MAX_FRAME_RATE }
+            .maxWithOrNull(
+                compareBy<VideoTrack>(
+                    { kotlin.math.abs(it.frameRate - target.frameRate) < 1f },
+                    { it.height },
+                    { it.handled },
+                    { it.bitrate },
+                ),
+            )
+    }
 
     /** O teto depois de o aparelho não dar conta de [failedHeight]: o degrau de baixo. */
     fun lowerCeiling(failedHeight: Int): Int = failedHeight - 1

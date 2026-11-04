@@ -38,6 +38,11 @@ object FeedRepository {
             .getOrNull()?.also { lastChannels = System.currentTimeMillis() to it }
     }
 
+    /** A inscrição num canal mudou: a próxima leitura da lista vai à conta. */
+    fun forgetChannels() {
+        lastChannels = null
+    }
+
     @Volatile
     private var lastChannels: Pair<Long, List<Channel>>? = null
 
