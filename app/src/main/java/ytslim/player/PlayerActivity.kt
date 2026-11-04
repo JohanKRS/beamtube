@@ -150,6 +150,12 @@ class PlayerActivity : ComponentActivity() {
     /** A seta que acabou de esconder os controles ([hidesControls]): o resto dela não os acende de novo. */
     private var hidingKey: Int? = null
 
+    /**
+     * A tecla apertada agora começou com os controles abertos. Segurada, só ela pode escondê-los: a
+     * seta que acendeu os controles, se continuar apertada, não os apaga logo em seguida.
+     */
+    private var keyStartedOpen = false
+
     /** As resoluções que o painel de qualidade mostra agora. */
     private var qualityHeights: List<Int> = emptyList()
 
@@ -621,7 +627,10 @@ class PlayerActivity : ComponentActivity() {
             }
             hidingKey = null
         }
-        if (event.action == KeyEvent.ACTION_DOWN && hidesControls(event.keyCode)) {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            keyStartedOpen = ::playerView.isInitialized && playerView.isControllerFullyVisible
+        }
+        if (event.action == KeyEvent.ACTION_DOWN && (event.repeatCount == 0 || keyStartedOpen) && hidesControls(event.keyCode)) {
             playerView.hideController()
             hidingKey = event.keyCode
             return true

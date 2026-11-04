@@ -102,6 +102,23 @@ class PlayerKeysTest {
     }
 
     @Test
+    fun holdingTheArrowThatOpenedThemKeepsThemOpen() {
+        playerView.hideController()
+        settle()
+        val down = SystemClock.uptimeMillis()
+        activity.dispatchKeyEvent(KeyEvent(down, down, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, 0))
+        settle()
+        assertTrue(playerView.isControllerFullyVisible)
+        // Abertos, o foco vai para o tocar/pausar, na linha de baixo (aqui, sem vídeo, à mão).
+        focusablesIn(playerView).forEach { it.isEnabled = true }
+        focus(R.id.exo_play_pause)
+        for (repeat in 1..5) activity.dispatchKeyEvent(KeyEvent(down, down, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, repeat))
+        activity.dispatchKeyEvent(KeyEvent(down, down, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN, 0))
+        settle()
+        assertTrue(playerView.isControllerFullyVisible)
+    }
+
+    @Test
     fun withAPanelOpenTheArrowsStayWithIt() {
         playerView.findViewById<View>(R.id.player_sleep).performClick()
         settle()
