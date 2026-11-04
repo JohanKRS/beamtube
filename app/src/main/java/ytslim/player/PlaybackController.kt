@@ -388,7 +388,7 @@ class PlaybackController(
             .build()
         val parsers = DefaultSubtitleParserFactory()
         if (!parsers.supportsFormat(format)) return null
-        val extractors = ExtractorsFactory { arrayOf(SubtitleExtractor(parsers.create(format), format)) }
+        val extractors = ExtractorsFactory { arrayOf(SubtitleExtractor(BlockCaptionParser(parsers.create(format)), format)) }
         val lenient = LenientDataSource.Factory(http, LenientDataSource.emptyCaption(caption.mimeType))
         return ProgressiveMediaSource.Factory(lenient, extractors).createMediaSource(MediaItem.fromUri(caption.url))
     }

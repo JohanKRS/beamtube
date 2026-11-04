@@ -147,6 +147,9 @@ class PlayerActivity : ComponentActivity() {
     /** O painel aberto acima da barra de tempo (resolução ou modo dormir), se houver. */
     private var openPanel: View? = null
 
+    /** A seta que acabou de esconder os controles ([hidesControls]): o resto dela não os acende de novo. */
+    private var hidingKey: Int? = null
+
     /** As resoluções que o painel de qualidade mostra agora. */
     private var qualityHeights: List<Int> = emptyList()
 
@@ -611,6 +614,18 @@ class PlayerActivity : ComponentActivity() {
             cancelTurnOff(announce = true)
             return true
         }
+        hidingKey?.let { key ->
+            if (event.keyCode == key) {
+                if (event.action == KeyEvent.ACTION_UP) hidingKey = null
+                return true
+            }
+            hidingKey = null
+        }
+        if (event.action == KeyEvent.ACTION_DOWN && hidesControls(event.keyCode)) {
+            playerView.hideController()
+            hidingKey = event.keyCode
+            return true
+        }
         // A tecla de avançar do controle remoto também pula o trecho (sem ele, o PlayerView avança 15 s).
         if (event.keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
             ::controller.isInitialized
@@ -621,6 +636,24 @@ class PlayerActivity : ComponentActivity() {
         }
         return super.dispatchKeyEvent(event)
     }
+
+    /**
+     * Descer da última linha dos controles, ou subir da primeira, esconde os controles na hora, sem
+     * esperar o tempo (pedido do Johan na TV, 2026-11-04). Com um painel aberto, a seta fica com ele.
+     */
+    private fun hidesControls(keyCode: Int): Boolean {
+        val direction = when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_DOWN -> View.FOCUS_DOWN
+            KeyEvent.KEYCODE_DPAD_UP -> View.FOCUS_UP
+            else -> return false
+        }
+        if (openPanel != null || !::playerView.isInitialized || !playerView.isControllerFullyVisible) return false
+        val controls = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller) ?: return false
+        val focused = controls.findFocus() ?: return false
+        return focused.focusSearch(direction)?.isInside(controls) != true
+    }
+
+    private fun View.isInside(group: View) = generateSequence(this) { it.parent as? View }.any { it === group }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && turnOffJob != null) cancelTurnOff(announce = true)

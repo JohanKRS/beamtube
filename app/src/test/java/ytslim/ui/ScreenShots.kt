@@ -418,6 +418,15 @@ class ScreenShots {
      * O player de verdade (PlayerActivity) com os controles abertos e uma miniatura no lugar do
      * vídeo. Sem login, a pílula de cima (like, Save, Subscribe) aparece à mão.
      */
+    /** Uma legenda automática como o YouTube manda (fmt=vtt): cada linha nova entra embaixo, a cada 2 s. */
+    private val rollingCaptions = listOf(
+        "WEBVTT", "",
+        "00:00:00.000 --> 00:00:02.000 align:start position:0%", " ", "the grid has to balance supply and demand", "",
+        "00:00:02.000 --> 00:00:04.000 align:start position:0%", "the grid has to balance supply and demand", "every second of every day", "",
+        "00:00:04.000 --> 00:00:06.000 align:start position:0%", "every second of every day", "so when the sun goes down", "",
+        "00:00:06.000 --> 00:00:08.000 align:start position:0%", "so when the sun goes down", "something else has to take over", "",
+    ).joinToString("\n")
+
     private fun playerShot(
         name: String,
         tv: Boolean = false,
@@ -427,6 +436,8 @@ class ScreenShots {
         hidden: Boolean = false,
         live: Boolean = false,
         channelFocused: Boolean = false,
+        captionsAtMs: Long = 3_000,
+        rolling: Boolean = false,
     ) {
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         // O qualificador "television" não chega ao UiModeManager do Robolectric: sem isso o player
@@ -505,10 +516,12 @@ class ScreenShots {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1))
         }
         if (captions) {
-            // Duas linhas como as da legenda automática do YouTube: cada uma com a sua linha, de baixo para cima.
-            val cues = listOf("the grid has to balance supply and demand" to -2f, "every second of every day" to -1f).map { (text, line) ->
-                androidx.media3.common.text.Cue.Builder().setText(text).setLine(line, androidx.media3.common.text.Cue.LINE_TYPE_NUMBER).build()
-            }
+            // A legenda automática do YouTube como ela chega ([rollingCaptions]), em blocos ou ([rolling]) rolando.
+            val parser = androidx.media3.extractor.text.webvtt.WebvttParser()
+                .let { if (rolling) it else ytslim.player.BlockCaptionParser(it) }
+            val timeline = mutableListOf<androidx.media3.extractor.text.CuesWithTiming>()
+            parser.parse(rollingCaptions.toByteArray(), androidx.media3.extractor.text.SubtitleParser.OutputOptions.allCues()) { timeline += it }
+            val cues = timeline.first { captionsAtMs * 1000 >= it.startTimeUs && captionsAtMs * 1000 < it.endTimeUs }.cues
             (ytslim.player.PlayerActivity::class.java.getDeclaredField("captionsView").apply { isAccessible = true }.get(activity) as androidx.media3.ui.SubtitleView)
                 .setCues(ytslim.player.CaptionRules.centered(cues))
         }
@@ -588,4 +601,16 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun playerTvCaptionsHidden() = playerShot("player-tv-captions-hidden", tv = true, captions = true, hidden = true)
+
+    /** A mesma legenda em 1, 3, 5 e 7 s: rolando (como chega) e em blocos (como o app mostra). */
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvCaptionsOverTime() = listOf(true, false).forEach { rolling ->
+        listOf(1_000L, 3_000L, 5_000L, 7_000L).forEach { at ->
+            playerShot(
+                "player-tv-captions-${if (rolling) "rolling" else "blocks"}-${at / 1000}s",
+                tv = true, captions = true, hidden = true, captionsAtMs = at, rolling = rolling,
+            )
+        }
+    }
 }
