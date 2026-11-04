@@ -48,7 +48,9 @@ object VideoActions {
         }
     }
 
-    suspend fun setSubscribed(channelId: String, subscribed: Boolean) = io {
-        if (subscribed) Engine.mediaItems.subscribe(channelId) else Engine.mediaItems.unsubscribe(channelId)
+    suspend fun setSubscribed(channelId: String, subscribed: Boolean) {
+        io { if (subscribed) Engine.mediaItems.subscribe(channelId) else Engine.mediaItems.unsubscribe(channelId) }
+        // A Explore não sugere canais inscritos: ela relê a lista.
+        FeedRepository.forgetChannels()
     }
 }

@@ -36,12 +36,16 @@
         android:paddingStart="@dimen/player_edge"
         android:paddingTop="@dimen/player_edge_top"
         android:paddingEnd="@dimen/player_edge"
-        android:paddingBottom="32dp">
+        android:paddingBottom="32dp"
+        android:clipChildren="false"
+        android:clipToPadding="false">
 
+        <!-- Sem cortar o que passa da coluna: o contorno do nome do canal sai 8 dp para a esquerda. -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:clipChildren="false"
             android:orientation="vertical">
 
             <TextView
@@ -57,10 +61,13 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:clipChildren="false"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <!-- O nome do canal: um toque (ou OK na TV) abre a página dele. -->
+                <!-- O nome do canal: um toque (ou OK na TV) abre a página dele. O texto fica alinhado
+                     com o título e o contorno do foco sai para a esquerda (achado do Johan na TV,
+                     2026-11-04: antes ele aparecia cortado). -->
                 <TextView
                     android:id="@+id/player_channel"
                     android:layout_width="wrap_content"

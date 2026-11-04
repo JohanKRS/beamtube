@@ -19,9 +19,11 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ytslim.data.AuthRepository
 import ytslim.data.BlockedChannel
 import ytslim.data.ChannelRepository
 import ytslim.data.ContentFilters
+import ytslim.data.FeedRepository
 import ytslim.data.LibraryRepository
 import ytslim.data.Playlist
 import ytslim.data.SearchDuration
@@ -33,6 +35,7 @@ import ytslim.data.Settings
 import ytslim.data.SettingsRepository
 import ytslim.data.TopicRules
 import ytslim.data.Video
+import ytslim.data.VideoActions
 import ytslim.data.VideoPage
 
 /**
@@ -241,7 +244,7 @@ class SearchViewModel : ViewModel() {
     }
 }
 
-/** Página do canal: vídeos (paginados), playlists e o bloqueio do canal. */
+/** Página do canal: vídeos (paginados), playlists, a inscrição e o bloqueio do canal. */
 class ChannelViewModel(private val channelId: String, private val name: String) : ViewModel(), Refreshable {
     data class Content(val videos: VideoListContent, val playlists: List<Playlist>)
 
@@ -256,8 +259,32 @@ class ChannelViewModel(private val channelId: String, private val name: String) 
         .map { s -> s.filters.blocked.any { it.id == channelId } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    private val _subscription = MutableStateFlow<Subscription>(Subscription.Hidden)
+    /** Subscribe / Subscribed (pedido do Johan, 2026-11-04): escondido até saber se a conta está inscrita. */
+    val subscription: StateFlow<Subscription> = _subscription.asStateFlow()
+
     init {
         reload()
+        // A página do canal que o motor lê não diz se a conta está inscrita: a lista de canais
+        // inscritos (a mesma das Inscrições e da Explore) diz. Sem ela, o botão não aparece.
+        viewModelScope.launch {
+            if (!AuthRepository.isSigned()) return@launch
+            val ids = FeedRepository.subscribedChannelIds() ?: return@launch
+            _subscription.value = Subscription.Shown(subscribed = channelId in ids)
+        }
+    }
+
+    fun toggleSubscribed() {
+        val current = _subscription.value as? Subscription.Shown ?: return
+        if (current.busy) return
+        val to = !current.subscribed
+        _subscription.value = current.copy(busy = true, error = null)
+        viewModelScope.launch {
+            _subscription.value = runCatching { VideoActions.setSubscribed(channelId, to) }.fold(
+                { Subscription.Shown(subscribed = to) },
+                { current.copy(busy = false, error = it.toMessage()) },
+            )
+        }
     }
 
     fun reload() = load(quiet = false)

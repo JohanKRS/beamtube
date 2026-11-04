@@ -18,6 +18,7 @@ import ytslim.data.ExploreRepository
 import ytslim.data.FeedCache
 import ytslim.data.ListCache
 import ytslim.data.PlaylistSubscriptions
+import ytslim.data.WatchPositions
 import ytslim.data.SettingsRepository
 import ytslim.player.ScreenOffService
 import ytslim.ui.Accents
@@ -32,6 +33,7 @@ class App : Application(), SingletonImageLoader.Factory {
         ExploreRepository.init(this)
         FeedCache.init(this)
         ListCache.init(this)
+        WatchPositions.init(this)
         AppIcons.init(this)
         Accents.init(this)
         AppScope.launch { SettingsRepository.dropOldExplore() }
