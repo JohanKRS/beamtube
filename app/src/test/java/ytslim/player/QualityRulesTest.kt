@@ -15,7 +15,8 @@ class QualityRulesTest {
         hdr: Boolean = false,
         selected: Boolean = false,
         group: Int = 0,
-    ) = VideoTrack(group, height, height, fps, bitrate, handled, exceeds, hardware, hdr, selected)
+        mime: String? = VP9,
+    ) = VideoTrack(group, height, height, fps, bitrate, handled, exceeds, hardware, hdr, selected, mime)
 
     private val tv = listOf(
         // A TV de 32 bits: o decodificador de hardware diz que não dá conta de nada acima de 360p.
@@ -92,5 +93,56 @@ class QualityRulesTest {
     fun unsupportedCodecsAreIgnored() {
         val tracks = listOf(track(2160, handled = false, exceeds = false), track(360, hardware = false, selected = true))
         assertNull(QualityRules.best(tracks, QualityRules.MAX_HEIGHT))
+    }
+
+    @Test
+    fun fourKStartsWithTheLargestTrackUpTo1080pOfTheSameCodec() {
+        // O grupo MP4 do YouTube mistura AVC (até 1080p) e AV1: a partida tem de ser do codec do alvo.
+        val tracks = listOf(
+            track(2160, mime = AV1),
+            track(1440, mime = AV1),
+            track(1080, mime = AVC, bitrate = 9_000_000),
+            track(1080, mime = AV1),
+            track(720, mime = AV1),
+        )
+        val target = QualityRules.best(tracks, QualityRules.MAX_HEIGHT)!!
+        val start = QualityRules.start(tracks, target)!!
+        assertEquals(1080, start.height)
+        assertEquals(AV1, start.mime)
+    }
+
+    @Test
+    fun theStartKeepsTheFrameRateAndTheHdrOfTheTarget() {
+        val tracks = listOf(
+            track(2160, fps = 60f),
+            track(1080, fps = 30f),
+            track(1080, fps = 60f, hdr = true),
+            track(720, fps = 60f),
+        )
+        val start = QualityRules.start(tracks, tracks[0])!!
+        assertEquals(720, start.height)
+        assertEquals(60f, start.frameRate)
+    }
+
+    @Test
+    fun theStartIsOnlyFromTheSameGroup() {
+        val tracks = listOf(track(2160, group = 1), track(1080, group = 0), track(720, group = 1))
+        assertEquals(720, QualityRules.start(tracks, tracks[0])?.height)
+        assertNull(QualityRules.start(listOf(track(2160, group = 1), track(1080, group = 0)), track(2160, group = 1)))
+    }
+
+    @Test
+    fun upTo1080pTheVideoStartsAtTheTarget() {
+        val tracks = listOf(track(1080), track(720), track(480))
+        assertNull(QualityRules.start(tracks, tracks[0]))
+        // A TV que declara menos do que decodifica: a partida também vale acima do declarado.
+        val declaresLess = listOf(track(2160, handled = false, exceeds = true), track(1080, handled = false, exceeds = true))
+        assertEquals(1080, QualityRules.start(declaresLess, declaresLess[0])?.height)
+    }
+
+    private companion object {
+        const val VP9 = "video/x-vnd.on2.vp9"
+        const val AV1 = "video/av01"
+        const val AVC = "video/avc"
     }
 }
