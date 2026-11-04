@@ -129,7 +129,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - **Brightness: 100% / 50% / 25% / 10% / 0%** escurece o vídeo e a legenda, sem mexer no brilho da TV (uma camada preta por cima do vídeo e por baixo dos controles). Escurecido, os controles não acendem sozinhos na troca de vídeo nem no fim. **Vale até fechar o app** (0.5.6, pedido do Johan; até a 0.5.5 voltava a 100% a cada player aberto): o brilho escolhido fica para os próximos vídeos, mas só na memória, então o app aberto de novo (ou a TV ligada de novo) começa com o vídeo claro.
   - **Then play: None / 1 / 2 / 3 / 4 / 5 / All**: quantos vídeos da playlist ainda tocam depois do atual (ver "Tocar em sequência"). Só aparece quando o vídeo veio da página de uma playlist. O número desce a cada vídeo. Começa em All a cada vez. Por decisão do Johan, essa escolha fica **só no player**, não na lista.
   - **When done: Stay on / Turn off** (**só na TV**; no celular e no tablet a linha e o serviço de Acessibilidade saem do app, pedido do Johan na 0.4.2): o que fazer quando os vídeos acabam. A escolha **fica guardada** (pedido do Johan) e vale para todo vídeo ou sequência que terminar. Com "Turn off", o app avisa e espera 10 s (qualquer botão ou toque cancela) e põe o aparelho para dormir. Pelo HDMI-CEC, a TV desliga junto.
-  - O Android não deixa um app comum pôr o aparelho para dormir. Por isso o app tem um serviço de Acessibilidade (`ScreenOffService`) que faz isso e, desde a versão do botão YouTube, segura esse botão do controle (ver "Botão YouTube do controle"); ele não recebe eventos nem lê a tela, e o usuário liga uma vez, em Configurações > Acessibilidade. Ao escolher "Turn off" sem o serviço ligado, o app abre essa tela. Precisa do Android 9 ou mais novo; antes disso, a linha não aparece.
+  - O Android não deixa um app comum pôr o aparelho para dormir. Por isso o app tem um serviço de Acessibilidade (`ScreenOffService`) que faz isso e, desde a 0.6.1, também segura o botão YouTube do controle (ver "Botão YouTube do controle"); ele não lê a tela, e o usuário liga uma vez, em Configurações > Acessibilidade. Ao escolher "Turn off" sem o serviço ligado, o app abre essa tela. Precisa do Android 9 ou mais novo; antes disso, a linha não aparece.
   - Com "Stay on", ou sem o serviço, o player só para de manter a tela acesa quando os vídeos acabam, e quem apaga é o timer do aparelho.
   - Com o painel aberto, os controles não somem sozinhos; "voltar" ou a lua fecham o painel.
 
@@ -197,11 +197,14 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
 
 ## Botão YouTube do controle (TV)
 
-- Pedido do Johan em 2026-11-04: o botão YouTube do controle remoto abrir o Doorglow, nas duas TVs (Hisense Android 11 e TCL Android 14).
+- Pedido do Johan em 2026-11-04: o botão YouTube do controle remoto abrir o Doorglow, nas duas TVs (Hisense Android 11 e TCL Android 14). Ele escolheu fazer pelo próprio Doorglow, e não pelo Button Mapper.
 - **Por que não pelos links:** o botão não manda um link. A TV entrega a tecla a um componente fixo do sistema (as "teclas globais" do Android mandam um broadcast explícito; no Google TV, quem recebe é o launcher), e ele abre o app do YouTube direto. Por isso nem desativar o YouTube faz o botão cair no Doorglow.
-- **Como fica:** o serviço de Acessibilidade do app (`ScreenOffService`, o mesmo do "When done: Turn off") ganha o filtro de teclas: vê cada tecla do controle antes do sistema, segura só a do botão YouTube (a descida, as repetições e a subida) e traz o Doorglow para a frente como o launcher faz (com o player aberto, volta para ele). As outras teclas seguem na hora. A tela continua fora do alcance do serviço, e a descrição dele nos ajustes diz que ele vê as teclas. O nome da classe fica, para o serviço não desligar em quem já o ligou. Só na TV (no celular e no tablet o serviço sai do app).
-- **Os códigos do botão** variam por marca e modelo (`RemoteKeys`) e são medidos pelo ADB nas TVs do Johan. Teclas fora das comuns vão para o log (tag Doorglow, "remote key: code=… scan=…"), para achar o código num controle novo.
-- *Em andamento (2026-11-04):* falta medir o código nas duas TVs. Riscos a conferir no aparelho: em algumas Hisense, um serviço que filtra teclas faz o volume parar de repetir ao segurar; e com a TV desligada, o botão pode ligar a TV direto no YouTube, por fora do Android.
+- **Como fica:** o serviço de Acessibilidade do app (`ScreenOffService`, o mesmo do "When done: Turn off") ganha o filtro de teclas: vê cada tecla do controle antes do sistema, segura só a do botão YouTube (a descida, as repetições e a subida) e traz o Doorglow para a frente como o launcher faz (com o player aberto, volta para ele). As outras teclas seguem na hora. Só na TV (no celular e no tablet o serviço sai do app). O nome da classe fica, para o serviço não desligar em quem já o ligou.
+- **O app aprende o código do botão** (`YouTubeButton`), porque cada marca e cada controle mandam um código diferente, e o Johan só poderia medir pelo ADB dias depois. Quando uma janela do app do YouTube aparece até 5 s depois de uma tecla de app (fora das setas, OK, voltar, início, volume, mídia, canais, números, letras, voz e teclas do sistema), sem outra tecla no meio, aquela tecla era o botão. O código fica guardado no aparelho e, dali em diante, o YouTube nem abre. Na primeira vez, o YouTube abre e o Doorglow vem por cima logo depois. Um controle novo soma outro código.
+  - Para isso o serviço fica sabendo quando uma janela do app do YouTube aparece (`packageNames`), e só disso: dos outros apps não chega nada, e a tela continua fora do alcance dele. A descrição do serviço nos ajustes diz que ele vê as teclas e quando o YouTube abre.
+  - Um vídeo mandado do celular para a TV abre o YouTube sem tecla nenhuma, então não ensina nada nem é desviado.
+  - Teclas de app vão para o log (tag Doorglow, "remote key: code=… scan=…"), e o aprendizado também ("learned the YouTube button").
+- **Limites e riscos, a conferir no aparelho:** se a TV tratar o botão por baixo do Android (antes do filtro de teclas), o serviço não vê a tecla e o botão continua abrindo o YouTube. Com a TV desligada, o botão pode ligar a TV direto no YouTube, por fora do Android. E em algumas Hisense, um serviço que filtra teclas faz o volume parar de repetir ao segurar.
 
 ## Atualizações (Obtainium)
 
@@ -226,6 +229,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
+   - *Versão 0.6.1 (2026-11-04), pedido do Johan, aguardando o teste no aparelho* (ver "Como testar a 0.6.1"): o botão YouTube do controle abre o Doorglow, que aprende o código do botão sozinho (ver "Botão YouTube do controle").
    - *Versão 0.5.9 (2026-11-04), achado do Johan testando a 0.5.8 na TV, aguardando o teste no aparelho* (ver "Como testar a 0.5.9"): na TV, as listas (início, playlist e canal) rolam até a borda de baixo da tela, sem a última linha de miniaturas cortada antes dela.
    - *Versão 0.5.8 (2026-11-03), pedidos do Johan depois de testar a 0.5.7, aguardando o teste no aparelho* (ver "Como testar a 0.5.8"): os filtros de data, duração e ordem saem das Recomendações e vão para a Explore; a legenda sobe acima da barra com os controles abertos e ganha uma margem pequena da borda; o botão LIVE nas lives; e as cores de destaque passam a fazer par com as do ícone, com o vermelho do YouTube.
    - *Versão 0.5.7 (2026-11-03), pedidos do Johan do mesmo dia, juntados antes do build; aguardando o teste no aparelho* (ver "Como testar a 0.5.7"): o texto da Explore vira um aviso que aparece só na primeira vez, o vidro das barras e do player mais opaco, em degradê da borda da tela para o conteúdo, e o OK longo da TV mais curto (0,3 s). Do refinamento do visual (mesmo dia): o canal e as visualizações sem corte duplo nos cartões, as Configurações em cartões, o player mais compacto, com a **barra de baixo de borda a borda** (e, na TV, like, dislike, Save e Subscribe nela) e **sem o botão Skip ahead** (avançar dentro do trecho pula até o fim dele), a **cor de destaque escolhida em Settings**, os indicadores sem brilho, **reordenar sem ícones** (segurar e arrastar; deslizar para a direita leva ao topo), os **capítulos na barra** (frestas e o nome do atual) e o **preview com miniatura** ao arrastar a barra. Na TV, os Ajustes em cartões e os filtros mais leves; e cartões vazios no lugar do carregando.
@@ -247,6 +251,15 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 0.6.1
+
+1. TV: a Acessibilidade do Doorglow precisa estar ligada (a mesma do "When done: Turn off"; Configurações > Acessibilidade > Doorglow). A descrição dela agora fala do botão YouTube.
+2. Com o Doorglow fechado, apertar o botão YouTube do controle. Na primeira vez, o YouTube abre e, logo depois, o Doorglow vem por cima.
+3. Voltar ao início e apertar o botão de novo: o Doorglow abre direto, sem o YouTube aparecer. Com o player aberto, o botão volta para ele.
+4. As outras teclas continuam iguais: setas, OK, voltar, voz e o botão Netflix. Segurar o volume ainda sobe ou desce sem parar (em algumas Hisense, o filtro de teclas atrapalha isso).
+5. Com a TV desligada, apertar o botão YouTube: ver se ela liga no Doorglow ou no YouTube.
+6. Se o botão continuar abrindo o YouTube, a TV trata o botão por baixo do Android. Aí, pelo ADB, `logcat -s Doorglow` mostra se aparece "remote key" ao apertar o botão.
 
 ## Como testar a 0.5.9
 
