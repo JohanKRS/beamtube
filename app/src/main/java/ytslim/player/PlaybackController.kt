@@ -18,6 +18,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -470,7 +471,8 @@ class PlaybackController(
             if (firstFrameLogged) return
             firstFrameLogged = true
             val total = SystemClock.elapsedRealtime() - requestedAt
-            Log.i(TAG, "first frame of $videoId in $total ms (stream ready in $readyInMs ms, ${playingHeight ?: _quality.value.playing}p, quality switched at start: $switchedAtStart)")
+            val first = player.videoFormat?.let(::heightOf)
+            Log.i(TAG, "first frame of $videoId in $total ms (stream ready in $readyInMs ms, ${first}p going to ${playingHeight ?: _quality.value.playing}p, quality switched at start: $switchedAtStart)")
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -536,6 +538,16 @@ class PlaybackController(
             Log.i(TAG, "dropped $droppedFrames frames in $elapsedMs ms (playing ${playingHeight}p)")
             if (playingHeight == null || droppedFrames < STUTTER_FRAMES || elapsedMs > STUTTER_WINDOW_MS) return
             if (++stutters >= MAX_STUTTERS) stepDown(sessionWide = true, reason = "dropped frames")
+        }
+
+        /** Para conferir no log a troca da faixa de partida para o alvo, e se o decodificador seguiu o mesmo. */
+        override fun onVideoInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: Format, decoderReuseEvaluation: DecoderReuseEvaluation?) {
+            val reuse = when (decoderReuseEvaluation?.result) {
+                null -> "new decoder"
+                DecoderReuseEvaluation.REUSE_RESULT_NO -> "decoder recreated"
+                else -> "same decoder"
+            }
+            Log.i(TAG, "video now ${format.width}x${format.height} at ${eventTime.currentPlaybackPositionMs} ms ($reuse)")
         }
     }
 
@@ -632,23 +644,31 @@ class PlaybackController(
         hardware = hasHardwareDecoder(format.sampleMimeType),
         hdr = isHdr(format),
         selected = false,
+        mime = format.sampleMimeType,
     )
 
     /**
      * A escolha do Auto (ou da resolução à mão) para o [QualitySelector], na thread do player: a mesma
      * regra do [pickQuality], já na primeira escolha do vídeo.
      */
-    private fun chooseAuto(tracks: List<VideoTrack>): VideoTrack? {
-        manualHeight?.let { height -> QualityRules.manual(tracks, height)?.let { return it } }
-        return QualityRules.best(tracks, minOf(sessionCeiling, videoCeiling))
+    private fun chooseAuto(tracks: List<VideoTrack>): QualityPick? {
+        manualHeight?.let { height -> QualityRules.manual(tracks, height)?.let { return QualityPick(it) } }
+        val target = QualityRules.best(tracks, minOf(sessionCeiling, videoCeiling)) ?: return null
+        // No Auto acima de 1080p, o primeiro pedaço vem numa faixa menor: começa mais rápido.
+        return QualityPick(target, QualityRules.start(tracks, target))
     }
 
     /** A resolução (o lado menor do quadro) da faixa de vídeo tocando. */
     private fun selectedHeight(tracks: Tracks): Int? {
         val group = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected } ?: return null
-        val format = (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { group.getTrackFormat(it) } ?: return null
-        return if (format.width > 0) minOf(format.width, format.height) else format.height.takeIf { it > 0 }
+        // Com a faixa de partida ([StartLowSelection]), duas ficam escolhidas: vale a maior, o alvo.
+        return (0 until group.length).filter { group.isTrackSelected(it) }
+            .mapNotNull { heightOf(group.getTrackFormat(it)) }
+            .maxOrNull()
     }
+
+    private fun heightOf(format: Format): Int? =
+        if (format.width > 0) minOf(format.width, format.height) else format.height.takeIf { it > 0 }
 
     /**
      * A resolução atual não deu conta: o teto cai para o degrau de baixo e a faixa é escolhida de
