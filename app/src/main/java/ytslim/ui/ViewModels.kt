@@ -37,6 +37,7 @@ import ytslim.data.PlayQueue
 import ytslim.data.Playlist
 import ytslim.data.PlaylistEditor
 import ytslim.data.PlaylistSubscriptions
+import ytslim.data.WatchPositions
 import ytslim.data.SaveTarget
 import ytslim.data.SavedVideos
 import ytslim.data.Settings
@@ -391,6 +392,12 @@ open class VideoListViewModel(
 /** O mesmo item da lista (um vídeo pode aparecer duas vezes numa playlist). */
 private fun Video.sameEntry(other: Video) = id == other.id && playlistIndex == other.playlistIndex
 
+/** O botão de inscrição, na playlist e no canal: escondido até saber (ou quando não se aplica). */
+sealed interface Subscription {
+    data object Hidden : Subscription
+    data class Shown(val subscribed: Boolean, val busy: Boolean = false, val error: String? = null) : Subscription
+}
+
 /**
  * Página de uma playlist: os vídeos; se for de outro canal, o botão de inscrição; se for do
  * usuário (inclui Assistir mais tarde), tirar vídeos e mudar a ordem.
@@ -405,11 +412,6 @@ class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel(
     fun queueFrom(video: Video) {
         val videos = shown?.videos
         if (videos == null) PlayQueue.clear() else PlayQueue.start(videos, video.id, loadedPage)
-    }
-
-    sealed interface Subscription {
-        data object Hidden : Subscription
-        data class Shown(val subscribed: Boolean, val busy: Boolean = false, val error: String? = null) : Subscription
     }
 
     private val _subscription = MutableStateFlow<Subscription>(Subscription.Hidden)
@@ -680,6 +682,7 @@ class SettingsViewModel : ViewModel() {
             AuthRepository.signOut()
             FeedCache.clear()
             ListCache.clear()
+            WatchPositions.clear()
             onDone()
         }
     }

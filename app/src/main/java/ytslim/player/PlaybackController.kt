@@ -60,6 +60,7 @@ import ytslim.data.SkipRules
 import ytslim.data.Stream
 import ytslim.data.SubtitleRules
 import ytslim.data.VideoActions
+import ytslim.data.WatchPositions
 import ytslim.data.VideoState
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -198,11 +199,13 @@ class PlaybackController(
         startPositionMs: Long = 0,
         saveHistory: Boolean = true,
         title: String? = null,
+        /** Onde o card do YouTube diz que o vídeo parou; vale quando este aparelho não guardou outro ponto. */
+        resumeHintMs: Long = 0L,
         /** Quando o card foi tocado ([SystemClock.elapsedRealtime]); 0 = agora. Só para o log de tempos. */
         requestedAtMs: Long = 0L,
     ) {
         nextJob?.cancel()
-        start(videoId, startPositionMs, saveHistory, title, fromQueue = false, requestedAtMs)
+        start(videoId, startPositionMs, saveHistory, title, fromQueue = false, resumeHintMs, requestedAtMs)
     }
 
     private fun start(
@@ -211,6 +214,7 @@ class PlaybackController(
         saveHistory: Boolean,
         title: String?,
         fromQueue: Boolean,
+        resumeHintMs: Long,
         requestedAtMs: Long = 0L,
     ) {
         requestedAt = requestedAtMs.takeIf { it > 0 } ?: SystemClock.elapsedRealtime()
@@ -229,7 +233,7 @@ class PlaybackController(
         manualHeight = null
         _quality.value = Quality()
         _controls.value = Controls()
-        load(videoId, startPositionMs)
+        load(videoId, startPositionMs, resumeHintMs)
         loadExtras(videoId)
     }
 
@@ -246,7 +250,7 @@ class PlaybackController(
                 _ended.value = true
                 return@launch
             }
-            start(next.id, 0, saveHistory, next.title, fromQueue = true)
+            start(next.id, 0, saveHistory, next.title, fromQueue = true, resumeHintMs = next.resumeMs)
         }
     }
 
@@ -257,7 +261,11 @@ class PlaybackController(
         if (fromQueue) playNext(counts = false, delayMs = FAILED_PAUSE_MS)
     }
 
-    private fun load(videoId: String, startPositionMs: Long) {
+    /**
+     * @param startPositionMs 0 = de onde o vídeo parou ([WatchPositions], ou [resumeHintMs]); o
+     * começo de um link com tempo, ou o ponto de uma nova tentativa, vem aqui.
+     */
+    private fun load(videoId: String, startPositionMs: Long, resumeHintMs: Long = 0L) {
         loadJob?.cancel()
         _state.value = State.Loading
         loadJob = scope.launch {
@@ -266,7 +274,11 @@ class PlaybackController(
             if (readyInMs < 0) readyInMs = SystemClock.elapsedRealtime() - requestedAt
             when (result) {
                 is PlaybackResult.Unplayable -> fail(result.reason ?: res.getString(R.string.player_unplayable))
-                is PlaybackResult.Ready -> play(result, startPositionMs)
+                is PlaybackResult.Ready -> {
+                    // Uma live começa no ao vivo, como antes.
+                    val from = if (startPositionMs > 0 || result.info.isLive) startPositionMs else WatchPositions.startAt(videoId, resumeHintMs)
+                    play(result, from)
+                }
             }
         }
     }
@@ -452,6 +464,8 @@ class PlaybackController(
         val id = videoId ?: return
         val position = player.currentPosition
         if (position <= 0) return
+        val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+        if (current?.isLive != true) scope.launch { WatchPositions.save(id, position, duration) }
         scope.launch { PlaybackRepository.saveProgress(id, position) }
     }
 

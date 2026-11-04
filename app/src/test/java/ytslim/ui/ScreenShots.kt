@@ -254,7 +254,7 @@ class ScreenShots {
             MobileUi.DetailFrame("Essence of linear algebra", navigation = { MobileUi.BackButton {} }) {
                 MobileUi.VideoRows(
                     feed(videos.filter { it.channelName == "3Blue1Brown" } + videos.take(6)), {}, {}, {}, showSaved = true,
-                    header = { MobileUi.SubscribeHeader(PlaylistViewModel.Subscription.Shown(subscribed = true)) {} },
+                    header = { MobileUi.SubscribeHeader(Subscription.Shown(subscribed = true)) {} },
                 )
             }
         }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +69,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
@@ -113,6 +115,7 @@ import androidx.tv.material3.ListItem
 import androidx.tv.material3.ListItemDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
+import androidx.tv.material3.OutlinedButtonDefaults
 import androidx.tv.material3.RadioButton
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Switch
@@ -151,6 +154,7 @@ import ytslim.ui.Look
 import ytslim.ui.Notice
 import ytslim.ui.Notices
 import ytslim.ui.PlaylistViewModel
+import ytslim.ui.Subscription
 import ytslim.ui.PlaylistsViewModel
 import ytslim.ui.PrefetchThumbnails
 import ytslim.ui.QrCode
@@ -177,6 +181,14 @@ import ytslim.ui.toggleSaved
  * puxam o foco: andar pelas abas com o D-pad troca o conteúdo sem tirar o foco das abas.
  */
 private val LocalInitialFocus = compositionLocalOf<MutableState<Boolean>> { mutableStateOf(false) }
+
+/**
+ * Subir do conteúdo até uma fileira de abas para na aba aberta ([selected]), e não na aba que
+ * estiver mais perto do card focado: como a aba muda com o foco, a de perto trocava a página
+ * (achado do Johan na TV, 2026-11-04: das Inscrições ia para os Ajustes).
+ */
+private fun Modifier.entersAt(selected: FocusRequester) =
+    focusProperties { onEnter = { selected.requestFocus() } }.focusGroup()
 
 /**
  * As cores do Doorglow na TV. O foco é a luz da porta: botões e linhas focados ficam na cor de
@@ -359,7 +371,7 @@ object TvUi : Screens {
             val selectedIndex = tabs.indexOfFirst { it.first == tab }
             TabRow(
                 selectedTabIndex = selectedIndex,
-                modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus },
+                modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
                 separator = { Spacer(Modifier.width(4.dp)) },
                 indicator = { positions, _ -> positions.getOrNull(selectedIndex)?.let { SlitIndicator(it) } },
             ) {
@@ -1057,20 +1069,9 @@ object TvUi : Screens {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                (subscription as? PlaylistViewModel.Subscription.Shown)?.let { shown ->
+                (subscription as? Subscription.Shown)?.let { shown ->
                     Spacer(Modifier.width(24.dp))
-                    val label = stringResource(if (shown.subscribed) R.string.playlist_subscribed else R.string.playlist_subscribe)
-                    val toggle = { vm.toggleSubscription(shownTitle) }
-                    // Inscrito: ✓ e "Subscribed"; apertar de novo cancela a inscrição.
-                    if (shown.subscribed) {
-                        OutlinedButton(onClick = toggle, enabled = !shown.busy) {
-                            Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(label)
-                        }
-                    } else {
-                        Button(onClick = toggle, enabled = !shown.busy) { Text(label) }
-                    }
+                    SubscribeButton(shown) { vm.toggleSubscription(shownTitle) }
                 }
                 if (editable) {
                     Spacer(Modifier.width(24.dp))
@@ -1090,7 +1091,7 @@ object TvUi : Screens {
             }
             val note: Pair<String, Boolean>? = when {
                 arranging -> stringResource(R.string.reorder_hint_tv) to false
-                else -> (subscription as? PlaylistViewModel.Subscription.Shown)?.let { shown ->
+                else -> (subscription as? Subscription.Shown)?.let { shown ->
                     shown.error?.let { stringResource(R.string.action_failed, it) to true }
                         ?: (stringResource(if (shown.subscribed) R.string.playlist_subscribed_hint_tv else R.string.playlist_subscribe_hint) to false)
                 }
@@ -1231,6 +1232,7 @@ object TvUi : Screens {
     ) {
         val state by vm.state.collectAsStateWithLifecycle()
         val blocked by vm.blocked.collectAsStateWithLifecycle()
+        val subscription by vm.subscription.collectAsStateWithLifecycle()
         var tab by rememberSaveable { mutableIntStateOf(0) }
 
         Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
@@ -1242,24 +1244,27 @@ object TvUi : Screens {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
+                // A inscrição, o mesmo botão da playlist (pedido do Johan, 2026-11-04), e o bloqueio.
+                (subscription as? Subscription.Shown)?.let { shown ->
+                    Spacer(Modifier.width(24.dp))
+                    SubscribeButton(shown, onToggle = vm::toggleSubscribed)
+                }
                 Spacer(Modifier.width(16.dp))
                 BlockButton(blocked, onToggle = vm::toggleBlocked)
+            }
+            (subscription as? Subscription.Shown)?.error?.let {
+                Text(
+                    stringResource(R.string.action_failed, it),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
             Spacer(Modifier.height(16.dp))
             Loadable(state, onRetry = vm::reload) { content ->
                 Column(Modifier.fillMaxSize()) {
                     if (content.playlists.isNotEmpty()) {
-                        TabRow(selectedTabIndex = tab) {
-                            listOf(R.string.channel_videos, R.string.channel_playlists).forEachIndexed { i, label ->
-                                Tab(selected = tab == i, onFocus = { tab = i }, onClick = { tab = i }) {
-                                    Text(
-                                        stringResource(label),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                                    )
-                                }
-                            }
-                        }
+                        ChannelTabs(tab, onTab = { tab = it })
                         Spacer(Modifier.height(16.dp))
                     }
                     if (tab == 1 && content.playlists.isNotEmpty()) {
@@ -1275,6 +1280,48 @@ object TvUi : Screens {
                             onFocusTaken = {},
                         )
                     }
+                }
+            }
+        }
+    }
+
+    /**
+     * "Subscribe" ou "✓ Subscribed" (contornado), na playlist e no canal; apertar de novo cancela a
+     * inscrição. Um botão só, que só muda de cara: o foco fica nele quando a inscrição muda (dois
+     * botões trocando, ou um desligado enquanto vai para a conta, soltavam o foco).
+     */
+    @Composable
+    private fun SubscribeButton(state: Subscription.Shown, onToggle: () -> Unit) {
+        Button(
+            onClick = { if (!state.busy) onToggle() },
+            colors = if (state.subscribed) OutlinedButtonDefaults.colors() else ButtonDefaults.colors(),
+            border = if (state.subscribed) OutlinedButtonDefaults.border() else ButtonDefaults.border(),
+        ) {
+            if (state.subscribed) {
+                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(stringResource(if (state.subscribed) R.string.playlist_subscribed else R.string.playlist_subscribe))
+        }
+    }
+
+    /** Vídeos e Playlists do canal. A aba muda com o foco, como as de cima. */
+    @Composable
+    internal fun ChannelTabs(tab: Int, onTab: (Int) -> Unit) {
+        val selected = remember { FocusRequester() }
+        TabRow(selectedTabIndex = tab, modifier = Modifier.entersAt(selected)) {
+            listOf(R.string.channel_videos, R.string.channel_playlists).forEachIndexed { i, label ->
+                Tab(
+                    selected = tab == i,
+                    onFocus = { onTab(i) },
+                    onClick = { onTab(i) },
+                    modifier = if (tab == i) Modifier.focusRequester(selected) else Modifier,
+                ) {
+                    Text(
+                        stringResource(label),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
                 }
             }
         }

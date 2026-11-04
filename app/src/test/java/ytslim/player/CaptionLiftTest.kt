@@ -100,6 +100,24 @@ class CaptionLiftTest {
     }
 
     @Test
+    fun theWindowIsLaidOutAgainOnceTheCaptionsComeDown() {
+        // A parte da janela que tem algo desenhado por cima do vídeo é anotada em cada layout, com a
+        // legenda onde ela está naquela hora. O último layout precisa ser com ela já embaixo.
+        val screen = Screen(width = 2000, height = 1000, videoHeight = 1000, barHeight = 150)
+        val atLayout = mutableListOf<Float>()
+        screen.captions.viewTreeObserver.addOnGlobalLayoutListener { atLayout += screen.captions.translationY }
+        screen.lift.setOpen(true)
+        screen.settle()
+        // Com os controles abertos, o tempo da barra muda e a tela passa por layouts.
+        screen.root.requestLayout()
+        screen.settle()
+        assertEquals(-150f, atLayout.last())
+        screen.lift.setOpen(false)
+        screen.settle()
+        assertEquals(0f, atLayout.last())
+    }
+
+    @Test
     fun aTallerBarWhileOpenLiftsMore() {
         // A barra muda de altura com os controles abertos (girar a tela passa para duas linhas).
         val screen = Screen(width = 2000, height = 1000, videoHeight = 1000, barHeight = 150)

@@ -37,11 +37,21 @@ internal class CaptionLift(
         val target = -lift().toFloat()
         captions.animate().cancel()
         if (animate && captions.isLaidOut) {
-            captions.animate().translationY(target).setDuration(DURATION_MS).start()
-        } else {
+            captions.animate().translationY(target).setDuration(DURATION_MS).withEndAction(::relayoutWindow).start()
+        } else if (captions.translationY != target) {
             captions.translationY = target
+            captions.post(::relayoutWindow)
         }
     }
+
+    /**
+     * Uma passada de layout com a legenda já parada. O vídeo fica numa camada por baixo da janela,
+     * e é no layout que o Android anota que partes da janela por cima dele têm algo desenhado; o
+     * resto ele nem mostra. A subida e a descida são só um deslocamento (sem layout), então, ao
+     * fechar os controles, a anotação ficava a do meio da descida: a faixa de baixo valia como
+     * vazia e a legenda que descia para lá sumia (achado do Johan na TV, 2026-11-04).
+     */
+    private fun relayoutWindow() = captions.requestLayout()
 
     /** O quanto a área da legenda (sem contar a subida) passa do topo da barra. */
     private fun overlap(): Int {
