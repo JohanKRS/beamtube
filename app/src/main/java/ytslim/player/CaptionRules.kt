@@ -24,8 +24,8 @@ internal object CaptionRules {
     )
 
     /**
-     * Centraliza cada linha na horizontal. A altura fica como veio: a legenda automática do YouTube
-     * empilha duas linhas, e cada uma já traz a sua.
+     * Centraliza cada linha na horizontal. A altura fica como veio (a automática do YouTube chega
+     * em blocos de duas linhas, [CaptionBlocks]).
      */
     fun centered(cues: List<Cue>): List<Cue> = cues.map { cue ->
         if (cue.bitmap != null) {
