@@ -1359,6 +1359,35 @@ object MobileUi : Screens {
         val state by vm.state.collectAsStateWithLifecycle()
         val blocked by vm.blocked.collectAsStateWithLifecycle()
         val subscription by vm.subscription.collectAsStateWithLifecycle()
+        ChannelPage(
+            title, state, blocked, subscription,
+            onSubscribe = vm::toggleSubscribed,
+            onBlock = vm::toggleBlocked,
+            onRetry = vm::reload,
+            refresh = vm,
+            onNearEnd = vm::loadMore,
+            onPlay = onPlay,
+            onOpenPlaylist = onOpenPlaylist,
+            onBack = onBack,
+        )
+    }
+
+    /** A página do canal com o que o [ChannelViewModel] diz (separada para as fotos de tela). */
+    @Composable
+    internal fun ChannelPage(
+        title: String,
+        state: UiState<ChannelViewModel.Content>,
+        blocked: Boolean,
+        subscription: Subscription,
+        onSubscribe: () -> Unit,
+        onBlock: () -> Unit,
+        onRetry: () -> Unit,
+        refresh: Refreshable?,
+        onNearEnd: () -> Unit,
+        onPlay: (Video) -> Unit,
+        onOpenPlaylist: (Playlist) -> Unit,
+        onBack: () -> Unit,
+    ) {
         var tab by rememberSaveable { mutableIntStateOf(0) }
         val res = LocalContext.current.resources
         DetailFrame(
@@ -1367,7 +1396,7 @@ object MobileUi : Screens {
             // Bloquear: só um ícone pequeno na barra de cima (âmbar quando bloqueado); o resultado vem num aviso.
             actions = {
                 IconButton(onClick = {
-                    vm.toggleBlocked()
+                    onBlock()
                     Notices.show(res.getString(if (blocked) R.string.channel_unblocked_notice else R.string.channel_blocked_notice))
                 }) {
                     Icon(
@@ -1379,7 +1408,7 @@ object MobileUi : Screens {
                 }
             },
         ) {
-            Loadable(state, onRetry = vm::reload, refresh = vm) { content ->
+            Loadable(state, onRetry = onRetry, refresh = refresh) { content ->
                 val hasPlaylists = content.playlists.isNotEmpty()
                 val shown = subscription as? Subscription.Shown
                 // Em cima da lista: a inscrição (o mesmo botão da playlist) e, com playlists, Vídeos e Playlists.
@@ -1387,7 +1416,7 @@ object MobileUi : Screens {
                     {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             shown?.let { state ->
-                                SubscribeButton(state, onToggle = vm::toggleSubscribed)
+                                SubscribeButton(state, onToggle = onSubscribe)
                                 state.error?.let { Text(stringResource(R.string.action_failed, it), color = MaterialTheme.colorScheme.error) }
                             }
                             if (hasPlaylists) {
@@ -1406,7 +1435,7 @@ object MobileUi : Screens {
                     VideoGrid(
                         content.videos,
                         emptyText = stringResource(R.string.list_empty),
-                        onNearEnd = vm::loadMore,
+                        onNearEnd = onNearEnd,
                         onPlay = onPlay,
                         onOpenChannel = null,
                         header = header,

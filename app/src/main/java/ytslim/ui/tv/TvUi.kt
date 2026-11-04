@@ -1233,6 +1233,31 @@ object TvUi : Screens {
         val state by vm.state.collectAsStateWithLifecycle()
         val blocked by vm.blocked.collectAsStateWithLifecycle()
         val subscription by vm.subscription.collectAsStateWithLifecycle()
+        ChannelPage(
+            title, state, blocked, subscription,
+            onSubscribe = vm::toggleSubscribed,
+            onBlock = vm::toggleBlocked,
+            onRetry = vm::reload,
+            onNearEnd = vm::loadMore,
+            onPlay = onPlay,
+            onOpenPlaylist = onOpenPlaylist,
+        )
+    }
+
+    /** A página do canal com o que o [ChannelViewModel] diz (separada para as fotos de tela). */
+    @Composable
+    internal fun ChannelPage(
+        title: String,
+        state: UiState<ChannelViewModel.Content>,
+        blocked: Boolean,
+        subscription: Subscription,
+        onSubscribe: () -> Unit,
+        onBlock: () -> Unit,
+        onRetry: () -> Unit,
+        onNearEnd: () -> Unit,
+        onPlay: (Video) -> Unit,
+        onOpenPlaylist: (Playlist) -> Unit,
+    ) {
         var tab by rememberSaveable { mutableIntStateOf(0) }
 
         Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
@@ -1247,10 +1272,10 @@ object TvUi : Screens {
                 // A inscrição, o mesmo botão da playlist (pedido do Johan, 2026-11-04), e o bloqueio.
                 (subscription as? Subscription.Shown)?.let { shown ->
                     Spacer(Modifier.width(24.dp))
-                    SubscribeButton(shown, onToggle = vm::toggleSubscribed)
+                    SubscribeButton(shown, onToggle = onSubscribe)
                 }
                 Spacer(Modifier.width(16.dp))
-                BlockButton(blocked, onToggle = vm::toggleBlocked)
+                BlockButton(blocked, onToggle = onBlock)
             }
             (subscription as? Subscription.Shown)?.error?.let {
                 Text(
@@ -1261,7 +1286,7 @@ object TvUi : Screens {
                 )
             }
             Spacer(Modifier.height(16.dp))
-            Loadable(state, onRetry = vm::reload) { content ->
+            Loadable(state, onRetry = onRetry) { content ->
                 Column(Modifier.fillMaxSize()) {
                     if (content.playlists.isNotEmpty()) {
                         ChannelTabs(tab, onTab = { tab = it })
@@ -1273,7 +1298,7 @@ object TvUi : Screens {
                         VideoGrid(
                             content = content.videos,
                             emptyText = stringResource(R.string.list_empty),
-                            onNearEnd = vm::loadMore,
+                            onNearEnd = onNearEnd,
                             onPlay = onPlay,
                             onOpenChannel = null,
                             takeFocus = true,

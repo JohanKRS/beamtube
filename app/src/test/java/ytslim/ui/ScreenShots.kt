@@ -302,6 +302,41 @@ class ScreenShots {
         }
     }
 
+    /** A página de um canal (Veritasium), com a inscrição e as abas Vídeos e Playlists. */
+    private fun channel(subscribed: Boolean) = Triple(
+        "Veritasium",
+        UiState.Ready(ChannelViewModel.Content(feed((videos.filter { it.channelName == "Veritasium" } + videos.drop(8)).distinctBy { it.id }), playlists.drop(1))),
+        Subscription.Shown(subscribed = subscribed),
+    )
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvChannel() = shot("tv-channel") {
+        val (title, state, subscription) = channel(subscribed = true)
+        TvUi.Theme { TvUi.ChannelPage(title, state, false, subscription, {}, {}, {}, {}, {}, {}) }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvChannelSubscribe() = shot("tv-channel-subscribe") {
+        val (title, state, subscription) = channel(subscribed = false)
+        TvUi.Theme { TvUi.ChannelPage(title, state, false, subscription, {}, {}, {}, {}, {}, {}) }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneChannel() = shot("phone-channel") {
+        val (title, state, subscription) = channel(subscribed = false)
+        MobileUi.Theme { MobileUi.ChannelPage(title, state, false, subscription, {}, {}, {}, null, {}, {}, {}, {}) }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneChannelSubscribed() = shot("phone-channel-subscribed") {
+        val (title, state, subscription) = channel(subscribed = true)
+        MobileUi.Theme { MobileUi.ChannelPage(title, state, false, subscription, {}, {}, {}, null, {}, {}, {}, {}) }
+    }
+
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvPlaylists() = shot("tv-playlists") {
@@ -391,6 +426,7 @@ class ScreenShots {
         captions: Boolean = false,
         hidden: Boolean = false,
         live: Boolean = false,
+        channelFocused: Boolean = false,
     ) {
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         // O qualificador "television" não chega ao UiModeManager do Robolectric: sem isso o player
@@ -457,6 +493,11 @@ class ScreenShots {
             }
             bar.setChapters(emptyList())
         }
+        if (channelFocused) {
+            // O Robolectric fica no modo de toque, onde só o foco "de toque" pega: como o controle na TV.
+            playerView.findViewById<android.view.View>(ytslim.R.id.player_channel).apply { isFocusableInTouchMode = true }.requestFocus()
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        }
         if (hidden) {
             playerView.hideController()
             // O fade dos controles e a descida da legenda.
@@ -515,6 +556,10 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun playerTv() = playerShot("player-tv", tv = true)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvChannelFocused() = playerShot("player-tv-channel-focused", tv = true, channelFocused = true)
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
