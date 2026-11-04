@@ -192,7 +192,7 @@
     <string name="player_turn_off_not_allowed">Doorglow can\'t turn off the TV: turn it on in Accessibility settings.</string>
     <string name="player_turning_off">Turning off in 10 seconds. Press any button to cancel.</string>
     <string name="player_turn_off_canceled">Staying on.</string>
-    <string name="screen_off_service_description">Lets Doorglow turn off the TV (or the screen) when the videos you chose in sleep mode end. It doesn\'t read anything on the screen.</string>
+    <string name="screen_off_service_description">Lets Doorglow turn off the TV when the videos you chose in sleep mode end, and open Doorglow with the YouTube button on the remote. It sees the remote\'s key presses to catch that button, but doesn\'t read anything on the screen.</string>
     <string name="action_failed">Couldn\'t do that: %1$s</string>
 
     <string name="ext_ask_title">Open this video</string>
