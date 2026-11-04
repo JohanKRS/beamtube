@@ -247,6 +247,13 @@ object TvUi : Screens {
     private val GridGapY = 28.dp
     private val screenPadding = PaddingValues(horizontal = 48.dp, vertical = 26.dp)
 
+    /**
+     * As telas com lista (o início, uma playlist, um canal): sem margem embaixo, para a lista rolar
+     * até a borda da tela em vez de ser cortada antes dela (achado do Johan na TV, 2026-11-04). O
+     * respiro do fim da lista fica no contentPadding de cada uma.
+     */
+    private val listScreenPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 26.dp)
+
     @Composable
     override fun Theme(content: @Composable () -> Unit) {
         MaterialTheme(colorScheme = remember(Look.accent) { colors() }, typography = Type) {
@@ -345,7 +352,7 @@ object TvUi : Screens {
         // Voltar, de dentro do conteúdo, sobe para as abas; nas abas, sai do app.
         BackHandler(enabled = !tabsFocused) { runCatching { selectedTab.requestFocus() } }
 
-        Column(Modifier.fillMaxSize().padding(screenPadding)) {
+        Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
             DoorGlyph(Modifier.size(width = 15.dp, height = 22.dp))
             Spacer(Modifier.width(24.dp))
@@ -1041,7 +1048,7 @@ object TvUi : Screens {
         }
         BackHandler(enabled = arranging) { if (held != null) drop() else arranging = false }
 
-        Column(Modifier.fillMaxSize().padding(screenPadding)) {
+        Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     shownTitle,
@@ -1226,7 +1233,7 @@ object TvUi : Screens {
         val blocked by vm.blocked.collectAsStateWithLifecycle()
         var tab by rememberSaveable { mutableIntStateOf(0) }
 
-        Column(Modifier.fillMaxSize().padding(screenPadding)) {
+        Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     title.ifBlank { stringResource(R.string.channel_default_title) },

@@ -217,6 +217,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
+   - *Versão 0.5.9 (2026-11-04), achado do Johan testando a 0.5.8 na TV, aguardando o teste no aparelho* (ver "Como testar a 0.5.9"): na TV, as listas (início, playlist e canal) rolam até a borda de baixo da tela, sem a última linha de miniaturas cortada antes dela.
    - *Versão 0.5.8 (2026-11-03), pedidos do Johan depois de testar a 0.5.7, aguardando o teste no aparelho* (ver "Como testar a 0.5.8"): os filtros de data, duração e ordem saem das Recomendações e vão para a Explore; a legenda sobe acima da barra com os controles abertos e ganha uma margem pequena da borda; o botão LIVE nas lives; e as cores de destaque passam a fazer par com as do ícone, com o vermelho do YouTube.
    - *Versão 0.5.7 (2026-11-03), pedidos do Johan do mesmo dia, juntados antes do build; aguardando o teste no aparelho* (ver "Como testar a 0.5.7"): o texto da Explore vira um aviso que aparece só na primeira vez, o vidro das barras e do player mais opaco, em degradê da borda da tela para o conteúdo, e o OK longo da TV mais curto (0,3 s). Do refinamento do visual (mesmo dia): o canal e as visualizações sem corte duplo nos cartões, as Configurações em cartões, o player mais compacto, com a **barra de baixo de borda a borda** (e, na TV, like, dislike, Save e Subscribe nela) e **sem o botão Skip ahead** (avançar dentro do trecho pula até o fim dele), a **cor de destaque escolhida em Settings**, os indicadores sem brilho, **reordenar sem ícones** (segurar e arrastar; deslizar para a direita leva ao topo), os **capítulos na barra** (frestas e o nome do atual) e o **preview com miniatura** ao arrastar a barra. Na TV, os Ajustes em cartões e os filtros mais leves; e cartões vazios no lugar do carregando.
    - *Na 0.5.7 também, o pacote de desempenho* (pedido do Johan em 2026-11-03: carregar o vídeo e rolar as listas mais rápido, sem perder qualidade de vídeo nem de imagem; ele leu o levantamento e liberou todos os itens): o vídeo pedido já no toque, a qualidade certa na primeira escolha do player, os extras depois do primeiro quadro, o próximo vídeo da playlist resolvido antes, voltar 10 s sem baixar de novo, HTTP/3 no Android 14, miniaturas em HTTP/2 e só à frente da tela, filtros fora da thread da tela, perfil de compilação e o R8. Ver "Desempenho (0.5.7)" nas notas técnicas. O levantamento está em https://claude.ai/artifact/WvrQg4nVqexDtmtHdwZkPd.
@@ -237,6 +238,10 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 0.5.9
+
+1. TV: em Subscriptions (e nas outras abas, numa playlist e num canal), a última linha de miniaturas vai até a borda de baixo da tela, sem um corte reto antes dela. Descendo até o fim da lista, o último vídeo fica inteiro, com um respiro embaixo.
 
 ## Como testar a 0.5.8
 
