@@ -24,7 +24,7 @@ import ytslim.R
 
 /**
  * A tela do player de verdade, no celular: desligar a tela no meio do vídeo não pausa (pedido do
- * Johan, 2026-11-11), e o vídeo segue só com o som; sair para outro app pausa, como antes.
+ * Johan, 2026-11-11), e o vídeo segue só com o som; sair para outro app sem o mini player pausa, como antes.
  */
 @OptIn(UnstableApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -69,7 +69,8 @@ class ScreenOffPlaybackTest {
     }
 
     @Test
-    fun leavingForAnotherAppStillPauses() {
+    fun leavingWithoutTheMiniPlayerStillPauses() {
+        // Sem o mini player (o aparelho não tem, ou ele foi desligado nos ajustes do Android).
         screen.pause().stop()
         assertFalse(player.playWhenReady)
     }

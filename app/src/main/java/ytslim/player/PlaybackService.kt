@@ -129,8 +129,9 @@ class PlaybackService : MediaSessionService() {
 internal object ScreenOffRules {
     /**
      * Continua tocando (só o som) quando a tela do celular ou do tablet apaga no meio do vídeo.
-     * Sair do app para outro (Home, outro app) pausa, como antes; na TV, apagar a tela é desligar
-     * a TV, e o vídeo pausa.
+     * Sair do app para outro (Home, outro app) com o vídeo tocando abre o mini player
+     * ([MiniPlayerRules]), e a tela do player não sai de vista; sem ele, pausa, como antes. Na TV,
+     * apagar a tela é desligar a TV, e o vídeo pausa.
      */
     fun keepsPlaying(touch: Boolean, screenOn: Boolean, playWhenReady: Boolean): Boolean =
         touch && !screenOn && playWhenReady

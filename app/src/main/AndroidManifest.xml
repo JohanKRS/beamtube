@@ -160,12 +160,14 @@
         </activity-alias>
 
         <!-- Também abre links do YouTube vindos de fora (WhatsApp, navegador, Compartilhar).
-             Esses vídeos tocam sem ir para o histórico. Shorts ficam de fora. -->
+             Esses vídeos tocam sem ir para o histórico. Shorts ficam de fora.
+             No celular e no tablet, sair do app com o vídeo tocando abre o mini player flutuante. -->
         <activity
             android:name=".player.PlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:exported="true"
             android:screenOrientation="sensorLandscape"
+            android:supportsPictureInPicture="true"
             android:theme="@style/Theme.App.Player"
             tools:ignore="DiscouragedApi,LockedOrientationActivity">
             <intent-filter>

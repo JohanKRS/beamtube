@@ -2,20 +2,26 @@ package ytslim.player
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.app.PictureInPictureParams
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.Rect
 import android.graphics.drawable.BitmapDrawable
+import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Log
+import android.util.Rational
 import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.Gravity
@@ -35,6 +41,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.OptIn
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.WindowCompat
@@ -57,6 +64,7 @@ import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.size.Size as CoilSize
 import coil3.toBitmap
+import java.lang.ref.WeakReference
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -85,7 +93,8 @@ import ytslim.ui.Look
  *
  * No celular e no tablet: toques no vídeo como no YouTube ([TouchRules]), e a tela gira conforme
  * o vídeo (deitada para vídeo horizontal, em pé para vertical), com um botão para girar à mão.
- * Com a tela desligada no meio do vídeo, ele continua tocando, só o som ([PlaybackService]).
+ * Com a tela desligada no meio do vídeo, ele continua tocando, só o som ([PlaybackService]); saindo
+ * do app com o vídeo tocando, ele fica no mini player flutuante ([MiniPlayerRules]).
  */
 @OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
@@ -185,6 +194,16 @@ class PlayerActivity : ComponentActivity() {
     /** Celular ou tablet (toques no vídeo, girar a tela, 1080p). */
     private val touch by lazy { !isTv() }
 
+    /** O aparelho tem o mini player flutuante (picture-in-picture): celular e tablet, Android 8 em diante. */
+    private val miniPlayerSupported by lazy {
+        touch && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+    }
+
+    /** O vídeo está no mini player agora. */
+    private var floating = false
+    private val videoBounds = Rect()
+
     /** O sentido escolhido no botão de girar; vale até fechar o player. null = segue o vídeo. */
     private var chosenOrientation: Int? = null
 
@@ -216,6 +235,8 @@ class PlayerActivity : ComponentActivity() {
             finish()
             return
         }
+        // Um vídeo novo fecha o mini player do anterior: os dois não tocam juntos.
+        floatingPlayer?.get()?.takeIf { it !== this }?.finish()
         external = target.external
         if (savedInstanceState == null) requestedAtMs = intent.getLongExtra(EXTRA_REQUESTED_AT, 0L)
 
@@ -240,6 +261,7 @@ class PlayerActivity : ComponentActivity() {
         controller.player.addListener(PlayerScreenListener())
         bindButtons()
         if (touch) bindTouchGestures()
+        if (miniPlayerSupported) bindMiniPlayer()
         bindScrubbing()
         buildSleepPanel()
         // O brilho escolhido num vídeo vale para os próximos, até fechar o app (pedido do Johan, 2026-11-03).
@@ -388,8 +410,9 @@ class PlayerActivity : ComponentActivity() {
         channelButton.setOnClickListener {
             val page = controller.controls.value.page ?: return@setOnClickListener
             val channelId = page.channelId ?: return@setOnClickListener
-            startActivity(MainActivity.channelIntent(this, channelId, page.channelName.orEmpty()))
+            // Fecha antes de abrir o canal: sair assim não abre o mini player.
             finish()
+            startActivity(MainActivity.channelIntent(this, channelId, page.channelName.orEmpty()))
         }
         captionsButton.setOnClickListener { controller.toggleCaptions() }
         sleepButton.setOnClickListener { togglePanel(sleepPanel) }
@@ -684,6 +707,12 @@ class PlayerActivity : ComponentActivity() {
         }
 
         override fun onVideoSizeChanged(videoSize: VideoSize) = followVideo(videoSize)
+
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (events.containsAny(Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_VIDEO_SIZE_CHANGED)) {
+                updateMiniPlayer()
+            }
+        }
     }
 
     /** Celular e tablet: deitado para vídeo horizontal, em pé para vertical (a não ser que o botão tenha escolhido). */
@@ -700,6 +729,79 @@ class PlayerActivity : ComponentActivity() {
         val next = if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         chosenOrientation = next
         requestedOrientation = next
+    }
+
+    /**
+     * O mini player flutuante (pedido do Johan, 2026-11-11): sair do app com o vídeo tocando deixa
+     * o vídeo numa janelinha por cima dos outros apps. Nela fica só o vídeo; tocar/pausar são os do
+     * Android, pela sessão de mídia do [PlaybackService]. Fechar a janelinha fecha o vídeo, e
+     * tocar nela volta para o player.
+     */
+    private fun bindMiniPlayer() {
+        addOnPictureInPictureModeChangedListener { showFloating(it.isInPictureInPictureMode) }
+        // Onde o vídeo está na tela, para a janelinha sair dele.
+        playerView.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)
+            ?.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                if (left != oldLeft || top != oldTop || right != oldRight || bottom != oldBottom) updateMiniPlayer()
+            }
+    }
+
+    private fun showFloating(on: Boolean) {
+        floating = on
+        if (on) {
+            floatingPlayer = WeakReference(this)
+            closePanel(focusButton = false)
+            seekBadge.animate().cancel()
+            seekBadge.visibility = View.GONE
+            preview.visibility = View.GONE
+        } else {
+            if (floatingPlayer?.get() === this) floatingPlayer = null
+            // A janelinha saiu com a tela já fora de vista: foi fechada (o X ou arrastar para baixo),
+            // não aberta de volta. Fecha o vídeo, e a tarefa que o Android criou para a janelinha.
+            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                if (isTaskRoot) finishAndRemoveTask() else finish()
+            }
+        }
+        // Sem os controles da tela na janelinha (escondê-los também baixa a legenda).
+        playerView.useController = !on
+    }
+
+    private fun floats() =
+        MiniPlayerRules.floats(touch, controller.player.playWhenReady, controller.player.playbackState, isFinishing)
+
+    /** A forma da janelinha, de onde ela sai e, do Android 12 em diante, se ela abre sozinha ao sair do app. */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun miniPlayerParams(): PictureInPictureParams {
+        val size = controller.player.videoSize
+        val (width, height) = MiniPlayerRules.shape(size.width, size.height, size.pixelWidthHeightRatio)
+        val params = PictureInPictureParams.Builder().setAspectRatio(Rational(width, height))
+        val video = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)
+        if (!floating && video != null && video.getGlobalVisibleRect(videoBounds) && !videoBounds.isEmpty) {
+            params.setSourceRectHint(videoBounds)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) params.setAutoEnterEnabled(floats())
+        return params.build()
+    }
+
+    private fun updateMiniPlayer() {
+        if (!miniPlayerSupported || !::controller.isInitialized || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        runCatching { setPictureInPictureParams(miniPlayerParams()) }
+            .onFailure { Log.w(TAG, "couldn't set up the mini player", it) }
+    }
+
+    /** Até o Android 11 a janelinha abre à mão, ao sair do app; do 12 em diante, sozinha ([miniPlayerParams]). */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT !in Build.VERSION_CODES.O until Build.VERSION_CODES.S) return
+        if (!miniPlayerSupported || !::controller.isInitialized || floating || !floats()) return
+        runCatching { enterPictureInPictureMode(miniPlayerParams()) }
+            .onFailure { Log.w(TAG, "couldn't open the mini player", it) }
+    }
+
+    override fun finish() {
+        super.finish()
+        // Fechando o player (voltar, ou o canal do vídeo), sair não abre a janelinha.
+        updateMiniPlayer()
     }
 
     /**
@@ -945,6 +1047,7 @@ class PlayerActivity : ComponentActivity() {
             // O serviço que deixa o vídeo continuar com a tela desligada começa com a tela na frente.
             controller.sessionPlayer?.let { PlaybackService.attach(this, it) }
             controller.setBackground(false)
+            updateMiniPlayer()
         }
     }
 
@@ -971,6 +1074,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (floatingPlayer?.get() === this) floatingPlayer = null
         if (!::controller.isInitialized) return
         // A notificação e a sessão saem antes de o player ser solto.
         controller.sessionPlayer?.let { PlaybackService.detach(this, it) }
@@ -1102,6 +1206,7 @@ class PlayerActivity : ComponentActivity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     companion object {
+        private const val TAG = "Doorglow"
         private const val EXTRA_VIDEO_ID = "video_id"
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_REQUESTED_AT = "requested_at"
@@ -1131,6 +1236,9 @@ class PlayerActivity : ComponentActivity() {
          * fechar (ou a TV desligar), e o app abre de novo com o vídeo claro.
          */
         private var sessionBrightness = 100
+
+        /** O player que está no mini player agora, se houver (um vídeo novo o fecha). */
+        private var floatingPlayer: WeakReference<PlayerActivity>? = null
 
         /** Tempo para cancelar o "Turn off" depois que os vídeos acabam. */
         private const val TURN_OFF_DELAY_MS = 10_000L
