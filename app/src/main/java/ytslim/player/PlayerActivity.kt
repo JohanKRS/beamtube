@@ -13,6 +13,7 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.TypedValue
@@ -84,6 +85,7 @@ import ytslim.ui.Look
  *
  * No celular e no tablet: toques no vídeo como no YouTube ([TouchRules]), e a tela gira conforme
  * o vídeo (deitada para vídeo horizontal, em pé para vertical), com um botão para girar à mão.
+ * Com a tela desligada no meio do vídeo, ele continua tocando, só o som ([PlaybackService]).
  */
 @OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
@@ -200,6 +202,12 @@ class PlayerActivity : ComponentActivity() {
         // A cor de destaque escolhida em Settings, para os drawables do player (values/accents.xml).
         theme.applyStyle(Look.accent.playerStyle, true)
         super.onCreate(savedInstanceState)
+        if (intent.getBooleanExtra(EXTRA_BACK_TO_PLAYER, false)) {
+            // O toque na notificação, com o player numa tarefa que não é a de cima: só traz ele para a frente.
+            PlaybackService.bringPlayerToFront(this)
+            finish()
+            return
+        }
         val target = resolveTarget(intent)
         if (target == null) {
             // Um link de playlist compartilhado vai para a página da playlist.
@@ -931,7 +939,13 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (!::controller.isInitialized) return
         playerView.requestFocus()
+        if (touch) {
+            // O serviço que deixa o vídeo continuar com a tela desligada começa com a tela na frente.
+            controller.sessionPlayer?.let { PlaybackService.attach(this, it) }
+            controller.setBackground(false)
+        }
     }
 
     override fun onStop() {
@@ -940,7 +954,11 @@ class PlayerActivity : ComponentActivity() {
         // Saiu do app durante a contagem: não desliga nada.
         cancelTurnOff(announce = false)
         controller.saveProgress()
-        controller.player.pause()
+        val screenOn = getSystemService(PowerManager::class.java)?.isInteractive != false
+        // Tela desligada no meio do vídeo (celular e tablet): continua tocando (pedido do Johan, 2026-11-11).
+        if (!ScreenOffRules.keepsPlaying(touch, screenOn, controller.player.playWhenReady)) controller.player.pause()
+        // Fora da tela, sem imagem: só o som, se continuar (ou se voltar a tocar pela notificação).
+        if (touch && !isFinishing) controller.setBackground(true)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -953,7 +971,10 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (::controller.isInitialized) controller.release()
+        if (!::controller.isInitialized) return
+        // A notificação e a sessão saem antes de o player ser solto.
+        controller.sessionPlayer?.let { PlaybackService.detach(this, it) }
+        controller.release()
     }
 
     private fun buildLayout(initialTitle: String?): View {
@@ -1085,6 +1106,7 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_REQUESTED_AT = "requested_at"
         private const val EXTRA_RESUME = "resume_ms"
+        private const val EXTRA_BACK_TO_PLAYER = "back_to_player"
         private const val KEY_POSITION = "position"
         private const val KEY_VIDEO = "video"
         private const val KEY_TITLE = "video_title"
@@ -1121,6 +1143,16 @@ class PlayerActivity : ComponentActivity() {
         /** O aviso dos toques fica este tempo e some em [FLASH_FADE_MS]. */
         private const val FLASH_MS = 450L
         private const val FLASH_FADE_MS = 250L
+
+        /**
+         * O toque na notificação do vídeo tocando com a tela desligada ([PlaybackService]). Com o
+         * player em cima da tarefa do app, o Android só a traz para a frente (SINGLE_TOP); senão, a
+         * tela nova o procura e fecha ([PlaybackService.bringPlayerToFront]).
+         */
+        fun backIntent(context: Context): Intent =
+            Intent(context, PlayerActivity::class.java)
+                .putExtra(EXTRA_BACK_TO_PLAYER, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
         /** @param resumeMs onde o card do YouTube diz que o vídeo parou ([Video.resumeMs]). */
         fun intent(context: Context, videoId: String, title: String?, resumeMs: Long = 0): Intent =

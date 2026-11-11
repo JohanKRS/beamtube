@@ -3,6 +3,7 @@ package ytslim.player
 import ytslim.R
 import android.content.Context
 import android.net.Uri
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.OptIn
@@ -71,6 +72,9 @@ import java.util.concurrent.ConcurrentHashMap
  * qualidade sempre na máxima, áudio sempre o original, legenda com um toque e
  * "pular partes menos interessantes". Quando o vídeo acaba, toca o próximo da
  * sequência da playlist ([PlayQueue]), se houver.
+ *
+ * No celular e no tablet, o vídeo continua com a tela desligada ([PlaybackService]): o player
+ * segura o processador e o Wi-Fi acordados enquanto toca, e [setBackground] desliga a imagem.
  */
 @OptIn(UnstableApi::class)
 class PlaybackController(
@@ -81,6 +85,9 @@ class PlaybackController(
 ) {
     private val app = context.applicationContext
     private val res = app.resources
+
+    /** Na TV o vídeo pausa quando a tela some; no celular e no tablet ele pode continuar com ela apagada. */
+    private val tv = top > QualityRules.TOUCH_HEIGHT
 
     sealed interface State {
         data object Loading : State
@@ -124,17 +131,37 @@ class PlaybackController(
     val player: ExoPlayer = ExoPlayer.Builder(context)
         // A regra de qualidade já na primeira escolha do Media3 ([QualitySelector]).
         .setTrackSelector(QualitySelector(context, ::describeTrack, ::chooseAuto))
-        .setLoadControl(LoadRules.create(tv = top > QualityRules.TOUCH_HEIGHT))
+        .setLoadControl(LoadRules.create(tv = tv))
         .setAudioAttributes(
             AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
             /* handleAudioFocus = */ true,
         )
         .setHandleAudioBecomingNoisy(true)
+        // Com a tela desligada, o Android põe o processador e o Wi-Fi para dormir sem isto.
+        .setWakeMode(if (tv) C.WAKE_MODE_NONE else C.WAKE_MODE_NETWORK)
         .build().apply {
         playWhenReady = true
         addListener(PlayerListener())
         addAnalyticsListener(DroppedFramesListener())
     }
+
+    /**
+     * O player como a notificação e a tela de bloqueio o veem, com o título e o canal que o app
+     * conhece ([PlaybackService]). Só no celular e no tablet.
+     */
+    internal val sessionPlayer: SessionPlayer? = if (tv) null else SessionPlayer(player)
+
+    /** A tela não mostra o vídeo ([setBackground]): só o som toca. */
+    private var background = false
+
+    /**
+     * Entre um vídeo e o próximo da sequência (e enquanto o próximo é pedido ao YouTube), o player
+     * não segura o processador: com a tela desligada, o aparelho dormiria antes de o próximo começar.
+     */
+    private val loadingLock: PowerManager.WakeLock? = if (tv) null else
+        app.getSystemService(PowerManager::class.java)
+            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Doorglow:next video")
+            ?.apply { setReferenceCounted(false) }
 
     /** A qualidade deste vídeo já foi escolhida ([pickQuality]). */
     private var qualityChecked = false
@@ -234,6 +261,7 @@ class PlaybackController(
         manualHeight = null
         _quality.value = Quality()
         _controls.value = Controls()
+        describeNowPlaying()
         load(videoId, startPositionMs, resumeHintMs)
         loadExtras(videoId)
     }
@@ -244,10 +272,12 @@ class PlaybackController(
      */
     private fun playNext(counts: Boolean, delayMs: Long = 0) {
         nextJob?.cancel()
+        holdAwake()
         nextJob = scope.launch {
             if (delayMs > 0) delay(delayMs)
             val next = PlayQueue.next(counts)
             if (next == null) {
+                letSleep()
                 _ended.value = true
                 return@launch
             }
@@ -259,7 +289,7 @@ class PlaybackController(
     private fun fail(message: String) {
         started.value = true
         _state.value = State.Failed(message)
-        if (fromQueue) playNext(counts = false, delayMs = FAILED_PAUSE_MS)
+        if (fromQueue) playNext(counts = false, delayMs = FAILED_PAUSE_MS) else letSleep()
     }
 
     /**
@@ -269,6 +299,7 @@ class PlaybackController(
     private fun load(videoId: String, startPositionMs: Long, resumeHintMs: Long = 0L) {
         loadJob?.cancel()
         _state.value = State.Loading
+        holdAwake()
         loadJob = scope.launch {
             val result = runCatching { PlaybackRepository.load(videoId) }
                 .getOrElse { PlaybackResult.Unplayable(it.message) }
@@ -305,12 +336,14 @@ class PlaybackController(
                 }
                 val page = VideoActions.state(videoId)
                 _controls.update { it.copy(page = page) }
+                describeNowPlaying()
             }
         }
     }
 
     private suspend fun play(result: PlaybackResult.Ready, startPositionMs: Long) {
         current = result.info
+        describeNowPlaying()
         qualityChecked = false
         playingHeight = null
         videoCeiling = top
@@ -331,6 +364,8 @@ class PlaybackController(
         )
         player.setMediaSource(buildSource(result, caption), startPositionMs)
         player.prepare()
+        // Daqui em diante, o próprio player segura o processador enquanto toca.
+        letSleep()
         _controls.update { it.copy(captionsAvailable = caption != null, captionsOn = captionsOn) }
         _state.value = State.Playing(result.info)
         if (!result.info.isLive) prefetchNextNearEnd()
@@ -391,6 +426,46 @@ class PlaybackController(
         val extractors = ExtractorsFactory { arrayOf(SubtitleExtractor(BlockCaptionParser(parsers.create(format)), format)) }
         val lenient = LenientDataSource.Factory(http, LenientDataSource.emptyCaption(caption.mimeType))
         return ProgressiveMediaSource.Factory(lenient, extractors).createMediaSource(MediaItem.fromUri(caption.url))
+    }
+
+    /**
+     * A tela não mostra o vídeo ([on]: a tela apagou, ou o app foi para trás de outro): o player
+     * continua só com o som, sem baixar nem decodificar a imagem (bateria e dados). Com a tela de
+     * volta, a imagem volta no mesmo ponto, pela regra de qualidade de sempre.
+     */
+    fun setBackground(on: Boolean) {
+        if (background == on) return
+        background = on
+        Log.i(TAG, if (on) "screen off: playing the sound only" else "screen back: video again")
+        if (!on) {
+            // A imagem volta carregando um instante: não é a rede falhando nem o aparelho engasgando.
+            expectBuffering = true
+            stutters = 0
+        }
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, on)
+            .build()
+    }
+
+    /** O título e o canal na notificação e na tela de bloqueio: o que a tela do player mostraria. */
+    private fun describeNowPlaying() {
+        val session = sessionPlayer ?: return
+        val id = videoId ?: return
+        val info = current?.takeIf { it.videoId == id }
+        val page = _controls.value.page
+        session.describe(
+            videoId = id,
+            title = info?.title ?: titleHint ?: page?.title,
+            channel = page?.channelName?.takeIf { it.isNotBlank() } ?: info?.author,
+        )
+    }
+
+    private fun holdAwake() {
+        loadingLock?.acquire(LOADING_LOCK_MS)
+    }
+
+    private fun letSleep() {
+        loadingLock?.takeIf { it.isHeld }?.release()
     }
 
     fun toggleCaptions() {
@@ -476,6 +551,7 @@ class PlaybackController(
         nextJob?.cancel()
         climbJob?.cancel()
         aheadJob?.cancel()
+        letSleep()
         player.release()
     }
 
@@ -502,6 +578,11 @@ class PlaybackController(
                     _ended.value = false
                 }
             }
+        }
+
+        /** Pausado pela tela de bloqueio, pelo fone ou por uma ligação, com a tela desligada: guarda onde parou. */
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (!playWhenReady && background) saveProgress()
         }
 
         override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
@@ -572,7 +653,8 @@ class PlaybackController(
         when (state) {
             Player.STATE_READY -> expectBuffering = false
             Player.STATE_BUFFERING -> {
-                if (previous != Player.STATE_READY || expectBuffering || !player.playWhenReady) return
+                // Sem a imagem (tela desligada), uma parada não diz nada da resolução do vídeo.
+                if (previous != Player.STATE_READY || expectBuffering || !player.playWhenReady || background) return
                 Log.i(TAG, "rebuffering (playing ${playingHeight}p)")
                 if (playingHeight == null) return
                 // Já abaixo do topo por causa da rede: a volta espera a rede ficar calma de novo.
@@ -791,6 +873,9 @@ class PlaybackController(
 
         /** Quanto o erro de um vídeo da sequência fica na tela antes de ir para o próximo. */
         const val FAILED_PAUSE_MS = 3_000L
+
+        /** O máximo que o processador fica acordado esperando o próximo vídeo carregar. */
+        const val LOADING_LOCK_MS = 60_000L
     }
 }
 

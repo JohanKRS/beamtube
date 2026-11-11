@@ -16,7 +16,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - **Login:** pelo código de TV (youtube.com/activate), o mesmo fluxo em todos os aparelhos.
   - Na TV, a tela mostra também um **QR code** (pedido do Johan, 2026-11-01) com `youtube.com/activate?user_code=<código>`, que já abre a página do Google com o código preenchido. No celular, o botão "Copy code and open the site" abre esse mesmo endereço.
   - O login fica salvo entre atualizações. Até a 0.2.1 o app às vezes pedia o código de novo depois de atualizar (ver as notas técnicas).
-- **Fora do app:** envio de vídeos (upload), Shorts, comentários, chat ao vivo e notificações.
+- **Fora do app:** envio de vídeos (upload), Shorts, comentários, chat ao vivo e notificações. A única notificação é a do controle de mídia, que o Android exige para o vídeo continuar com a tela desligada (ver "Tela desligada", no Player).
 - **Nome e ícone:** **Doorglow**. Ícone: a porta entreaberta (fresta de luz) em fundo azul-noite. `applicationId` = `app.doorglow`. Nome e ID ficam no `gradle.properties`.
   - **Cor do ícone à escolha** (decidido em 2026-11-01): o desenho é sempre a porta original, e nas Configurações ("App icon") dá para escolher uma de sete cores: azul-noite (padrão), preto, verde-azulado, ameixa, mostarda, gradiente vivo e vermelho. São as versões 01 a 07 de `/mnt/project-files/nome-e-icone/versoes/`. O vermelho (luz branca em #E53935, no tom do YouTube) entrou em 2026-11-02, a pedido do Johan.
   - Ícones, banners da TV e cores saem de `tools/make_icons.py` (não editar os XMLs gerados à mão). A tabela de cores fica no script.
@@ -87,6 +87,10 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 
 ## Player
 
+- **Tela desligada** (pedido do Johan, 2026-11-11: "que continue tocando quando eu desligo"; celular e tablet): desligar a tela no meio do vídeo não pausa mais. O som continua, e a sequência da playlist segue para os próximos vídeos, com os limites do modo dormir. Pausado, continua pausado.
+  - Sem a tela, o app **desliga a imagem**: o vídeo não é baixado nem decodificado (poupa bateria e dados), só o áudio. Ao voltar, a imagem volta no mesmo ponto e na mesma regra de qualidade, depois de carregar um instante.
+  - Só a tela desligada: sair para outro app (Home, trocar de app) continua pausando, como antes. Na TV nada muda (desligar a TV pausa).
+  - Para isso o Android exige um serviço de mídia em primeiro plano, que mostra o **controle de mídia** na notificação e na tela de bloqueio enquanto um vídeo do celular ou do tablet está aberto: a miniatura, o título, o canal, tocar/pausar e a barra de tempo (os do Android, `PlaybackService`). Tocar na notificação volta para o player. Os botões do fone e do Bluetooth também tocam e pausam. Fechar o player tira a notificação.
 - **Volta de onde parou** (0.6.0, achado do Johan na TV: recomeçava do início): o vídeo começa onde parou da última vez. O aparelho guarda onde cada vídeo parou (os 300 mais recentes, `WatchPositions`, arquivo `positions.json`, apagado ao sair da conta); sem isso, vale o tempo que o card do YouTube traz (visto em outro aparelho). Menos de 10 s vistos, ou menos de 30 s para o fim, começa do início (`ResumeRules`). Lives e links com tempo (`?t=`) começam como antes. Vale também na sequência de uma playlist.
 - **Títulos sempre no idioma original**, sem as traduções automáticas do YouTube.
   - O cliente de TV do YouTube (o primeiro que o motor usa) manda o vídeo **sem título e sem autor**. Até a 0.4.0 o player trocava o título do card por esse vazio. Agora o título vem do stream, se vier; senão do card que abriu o vídeo; e, nos links de outros apps, da página do vídeo (`getMetadata`).
@@ -234,6 +238,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Doo
    - *Etapas 3, 4 e 5 implementadas juntas em 2026-11-01 (versão 0.3.0), a pedido do Johan, aguardando o teste no aparelho* (ver "Como testar as etapas 3 a 5"). Junto: QR code no login da TV e a correção do login perdido nas atualizações.
    - Validado fora do aparelho, sem login: busca com filtros combinados, sugestões, playlists na busca e a página do canal. Precisam do aparelho: Recomendações e Histórico (só existem com login), o botão Save e o reordenar.
 6. **Polimento visual** e rotina de atualização do motor.
+   - *Próxima versão (pedido do Johan em 2026-11-11), ainda sem número e sem release: ele vai pedir mais coisas antes do build* (ver "Como testar a próxima versão"): o vídeo continua tocando com a tela do celular ou do tablet desligada, só o som, com o controle de mídia na notificação e na tela de bloqueio.
    - *Versão 0.6.2 (2026-11-04), pedidos do Johan testando a 0.6.0, aguardando o teste no aparelho* (ver "Como testar a 0.6.2"): a legenda automática aparece em blocos de duas linhas, sem rolar; e na TV, descer da última linha dos controles (ou subir da primeira) os esconde na hora.
    - *Versão 0.6.1 (2026-11-04), pedido do Johan, aguardando o teste no aparelho* (ver "Como testar a 0.6.1"): o botão YouTube do controle abre o Doorglow, que aprende o código do botão sozinho (ver "Botão YouTube do controle").
    - *Versão 0.6.0 (2026-11-04), achados e pedidos do Johan testando a 0.5.9 na TV, aguardando o teste no aparelho* (ver "Como testar a 0.6.0"): Subscribe/Subscribed na página do canal; subir até as abas para na aba aberta; a legenda não some mais com os controles fechados; voltar a um vídeo começado retoma de onde parou; 10 s por toque na barra da TV; o contorno do nome do canal no player não sai cortado; e o 4K da TV começa mais rápido (o primeiro pedaço em até 1080p, da thread de desempenho).
@@ -258,6 +263,17 @@ Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", por
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a próxima versão
+
+1. Celular ou tablet: abrir um vídeo e apertar o botão de desligar a tela. O som continua.
+2. Na tela de bloqueio (e na notificação), o controle de mídia com a miniatura, o título e o canal: pausar e tocar por ali. O título e o canal podem aparecer um pouco depois do vídeo começar.
+3. Desbloquear: o player está lá, no ponto em que o som está, e a imagem volta em um instante.
+4. Playlist com a tela desligada: o próximo vídeo começa sozinho quando o atual acaba, e o "Then play" do modo dormir continua valendo.
+5. Com o vídeo tocando, apertar Home: pausa, como antes.
+6. Tocar na notificação com o app por trás: abre o player. Também com um vídeo aberto por um link do WhatsApp.
+7. Fechar o player (voltar): a notificação some.
+8. TV: desligar a TV com um vídeo tocando continua pausando, e não aparece notificação.
 
 ## Como testar a 0.6.2
 
@@ -522,4 +538,11 @@ Tem o R8 ligado no release pela primeira vez: vale um teste completo (login, fee
   - Ficou com a thread do visual (mesmos arquivos): calcular o desfoque do vidro em 1/3 da resolução (`HazeInputScale.Auto`) e um brilho de foco da TV mais barato que o glow do tv-material.
 - **Começo do 4K (2026-11-04, pedido do Johan):** na TV o vídeo demorava a começar por ir direto para o 4K, e ele topou começar menor e trocar logo depois. O `QualitySelector` entrega ao Media3 duas faixas do mesmo grupo e codec: o alvo da regra e a de partida (`QualityRules.start`: a maior até 1080p com o mesmo HDR e, se houver, os mesmos quadros por segundo). A `StartLowSelection` pede nela só o primeiro pedaço do vídeo (uns 5 s, que pesam umas 5 vezes menos que em 4K) e todos os outros no alvo. A troca é sem parar: os pedaços seguintes já chegam em 4K, e o decodificador é configurado desde o início para o tamanho maior. Vale também depois de pular para um trecho que não estava carregado (de novo uns 5 s menores ali). Só no Auto acima de 1080p: no celular (1080p) e com a resolução escolhida à mão, nada muda. O botão de qualidade mostra o alvo. No log (tag Doorglow): `first frame of … (… 1080p going to 2160p …)` e `video now 3840x2160 at N ms (same decoder)`; se aparecer `decoder recreated`, o decodificador da TV não troca de tamanho sozinho e a troca dá uma piscada.
 - **Sequência e modo dormir (0.4.1):** a sequência é um objeto do app (`PlayQueue`), montado pela página da playlist ao abrir o vídeo e limpo por qualquer outro jeito de abrir. O mesmo player troca de vídeo no fim (`PlaybackController`, no `STATE_ENDED`). Escurecer usa o `overlayFrameLayout` do `PlayerView`, que fica entre o vídeo (com a legenda) e os controles. Desligar usa `AccessibilityService.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)`, que chama o `PowerManager.goToSleep` do sistema; na TV isso é o mesmo que o botão de desligar do controle.
+- **Tela desligada (2026-11-11):** a tela do player continua dona do `ExoPlayer` (`PlaybackController`); o `PlaybackService` (um `MediaSessionService` do Media3 1.11, com `foregroundServiceType="mediaPlayback"`) só põe uma `MediaSession` sobre ele. O serviço começa no `onStart` do player, com a tela na frente (o Android 12+ não deixa começar com o app por trás), e o Media3 o põe em primeiro plano quando o vídeo toca; sai no `onDestroy`, antes do `release` do player. Na TV ele não é criado.
+  - **Quem decide** é o `onStop` do player: com `PowerManager.isInteractive` falso (a tela apagou) e o vídeo tocando, não pausa (`ScreenOffRules`). Home deixa a tela acesa, então pausa.
+  - **Sem imagem:** `setTrackTypeDisabled(TRACK_TYPE_VIDEO)` no `onStop` e de volta no `onStart` (`PlaybackController.setBackground`). Os parâmetros de cada vídeo novo (`TrackRules.defaults`) mantêm o vídeo desligado, então a sequência continua só com o som. Com a imagem desligada, as paradas para carregar não contam para descer a resolução.
+  - **Acordado:** `setWakeMode(WAKE_MODE_NETWORK)` (processador e Wi-Fi enquanto toca) e um `WakeLock` próprio de até 60 s entre um vídeo e o próximo, porque no fim do vídeo o player solta o dele e o próximo ainda é pedido ao YouTube.
+  - **Título e canal na notificação:** o stream do cliente de TV vem sem eles, que chegam depois (card, sequência, página do vídeo). Trocar o `MediaItem` do player (`replaceMediaItem`) quebraria: o `DashMediaSource` montado a partir do MPD não tem URI e o `canUpdateMediaItem` dele falha. Então a sessão vê o player por um `ForwardingSimpleBasePlayer` (`SessionPlayer`) que acrescenta título, canal e a miniatura `mqdefault` (16:9, sem faixas pretas).
+  - **Tocar na notificação:** volta para o player com `SINGLE_TOP`. Se o player estiver em outra tarefa (um link aberto pelo WhatsApp entra na tarefa do WhatsApp), abre uma tela vazia do player que só chama `moveTaskToFront` para a tarefa dele e fecha (permissão `REORDER_TASKS`).
+  - O Android 13+ não pede a permissão de notificações para a notificação de uma sessão de mídia. O ícone pequeno (`ic_notification`) sai do `tools/make_icons.py`.
 - **Compilar:** `./gradlew :app:assembleAppRelease` gera `app/build/outputs/apk/app/release/app-app-release.apk`, com o R8 (desde a versão do pacote de desempenho), assinado com a chave das releases se `-Pdoorglow.keystore=` for passado, senão com a de debug da máquina. Os submódulos precisam estar baixados: `git submodule update --init`.

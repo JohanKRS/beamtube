@@ -3,6 +3,14 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Tocar com a tela desligada (celular e tablet): o serviço de mídia em primeiro plano, com o
+         processador e o Wi-Fi acordados enquanto o vídeo toca (player.PlaybackService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- O toque na notificação traz de volta a tela do player, mesmo numa tarefa de outro app
+         (um link aberto pelo WhatsApp). -->
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
 
     <!-- Um APK só: roda com ou sem tela de toque, com ou sem leanback. -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -189,6 +197,13 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- Tocar com a tela desligada (celular e tablet): a sessão de mídia do player, com a
+             notificação e o controle da tela de bloqueio. Só o app fala com ele. -->
+        <service
+            android:name=".player.PlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- Painel de dormir do player: desligar a TV quando os vídeos acabam ("When done: Turn off").
              Só o sistema se liga a ele (BIND_ACCESSIBILITY_SERVICE). -->

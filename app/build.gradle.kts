@@ -137,6 +137,8 @@ dependencies {
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
+    // Tocar com a tela desligada: o serviço de mídia, a notificação e os controles da tela de bloqueio.
+    implementation(libs.media3.session)
 
     // QR code do login na TV.
     implementation(libs.zxing.core)
