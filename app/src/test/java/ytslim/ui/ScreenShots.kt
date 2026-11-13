@@ -45,6 +45,11 @@ import androidx.compose.ui.test.hasAnyChild
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
@@ -585,6 +590,15 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvTopicsLess() = shot("tv-topics-less") { TvUi.Theme { TvUi.Topics(topicsVm(lessStep = true), firstRun = true) {} } }
+
+    /** O foco numa sugestão da primeira linha: o botão cresce e não pode sair cortado em cima. */
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTopicsFocused() = shot("tv-topics-focused", action = {
+        // Uma tecla do controle põe o Compose no modo de teclado, onde os botões da TV aceitam o foco.
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onNode(hasText("Video essays") and hasClickAction(), useUnmergedTree = false).requestFocus()
+    }) { TvUi.Theme { TvUi.Topics(topicsVm(lessStep = false), firstRun = true) {} } }
 
     @Test
     @Config(qualifiers = "pt-w411dp-h891dp-xxhdpi")

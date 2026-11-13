@@ -42,6 +42,9 @@ import ytslim.ui.TopicsViewModel
 import ytslim.ui.TopicsViewModel.Step
 import ytslim.ui.Wordmark
 
+/** Folga acima da primeira linha de sugestões para o botão em foco, que cresce, não sair cortado. */
+private val ChipFocusRoom = 8.dp
+
 /**
  * A tela de tópicos na TV: a pergunta em cima, as sugestões em botões que OK marca e desmarca (com
  * um visto, que continua à vista com o foco em cima), e embaixo pular/voltar e seguir. O foco começa
@@ -72,10 +75,16 @@ internal fun TvTopics(vm: TopicsViewModel, firstRun: Boolean, onDone: () -> Unit
             }
             if (firstRun) Wordmark(16.sp)
         }
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(20.dp - ChipFocusRoom))
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)) {
             if (state.loaded) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                FlowRow(
+                    // O botão em foco cresce 10% e a rolagem corta o que passa da borda de cima: a primeira
+                    // linha começa um pouco abaixo dela, no mesmo lugar de antes na tela.
+                    modifier = Modifier.padding(top = ChipFocusRoom),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     state.shown.forEachIndexed { index, topic ->
                         val selected = topic in state.chosen
                         Button(
