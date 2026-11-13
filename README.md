@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/screenshots/hero.jpg" alt="BeamTube on a TV and on a phone, showing the Subscriptions feed" width="100%">
+  <img src="docs/screenshots/tv-subscriptions.jpg" alt="BeamTube on a TV, showing the Subscriptions feed" width="100%">
 </p>
 
 # BeamTube
 
-**A calm YouTube client for Android phones, tablets and TVs, for people who sit down to watch.**
+**An uncluttered YouTube client for Android phones, tablets and TVs, for people who sit down to watch.**
 
 The official YouTube app is built to keep you scrolling. Shorts in every corner, comments under
 everything, notifications, autoplay into whatever is trending. That's fine when you want it. But a
@@ -73,11 +73,11 @@ Most of what BeamTube adds is about the moment after you press play.
 - **The best picture your screen can show.** On TV the player goes for 4K first and only steps down
   when the TV really can't keep up; phones and tablets start at 1080p. If you pick a resolution by
   hand, it stays.
-- **A calm ending.** When a video ends, BeamTube shows a few suggestions (the next video from the
-  list you came from, one from the same channel, and related videos that respect your topics), with
-  Back already focused on the TV. If you don't pick anything, it takes you back to your list after
-  15 seconds instead of autoplaying the next thing. In Settings you can make it go straight back,
-  play the first suggestion, or just stay on the video. Playlists and the sleep mode are left alone.
+- **When a video ends,** BeamTube shows a few suggestions (the next video from the list you came
+  from, one from the same channel, and related videos that respect your topics), with Back already
+  focused on the TV. If you don't pick anything, it takes you back to your list after 15 seconds
+  instead of autoplaying the next thing. In Settings you can make it go straight back, play the
+  first suggestion, or just stay on the video. Playlists and the sleep mode are left alone.
 
 <p align="center">
   <img src="docs/screenshots/player-tv.jpg" alt="The player on TV, with chapters on the timeline" width="49%">
