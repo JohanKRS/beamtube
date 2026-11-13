@@ -51,6 +51,7 @@ import ytslim.data.Chapter
 import ytslim.data.HeatSegment
 import ytslim.data.HeatmapRepository
 import ytslim.data.PlaybackInfo
+import ytslim.data.Published
 import ytslim.data.PlaybackRepository
 import ytslim.data.PlaybackResult
 import ytslim.data.PlayQueue
@@ -214,6 +215,13 @@ class PlaybackController(
     var titleHint: String? = null
         private set
 
+    /**
+     * Há quanto tempo o vídeo foi publicado, como o card escreve ("3 hours ago"); null quando o vídeo
+     * veio sem (link de outro app): o player usa a data da página do vídeo ([VideoState.published]).
+     */
+    var publishedHint: String? = null
+        private set
+
     /** O vídeo atual foi aberto pela sequência (e não pelo usuário)? */
     private var fromQueue = false
 
@@ -221,19 +229,21 @@ class PlaybackController(
      * @param saveHistory false para links externos: toca com a conta (Premium), mas não manda
      * o progresso para o histórico do YouTube.
      * @param title o título conhecido antes de carregar (o do card).
+     * @param published há quanto tempo o vídeo foi publicado, como o card escreve.
      */
     fun open(
         videoId: String,
         startPositionMs: Long = 0,
         saveHistory: Boolean = true,
         title: String? = null,
+        published: String? = null,
         /** Onde o card do YouTube diz que o vídeo parou; vale quando este aparelho não guardou outro ponto. */
         resumeHintMs: Long = 0L,
         /** Quando o card foi tocado ([SystemClock.elapsedRealtime]); 0 = agora. Só para o log de tempos. */
         requestedAtMs: Long = 0L,
     ) {
         nextJob?.cancel()
-        start(videoId, startPositionMs, saveHistory, title, fromQueue = false, resumeHintMs, requestedAtMs)
+        start(videoId, startPositionMs, saveHistory, title, published, fromQueue = false, resumeHintMs, requestedAtMs)
     }
 
     private fun start(
@@ -241,6 +251,7 @@ class PlaybackController(
         startPositionMs: Long,
         saveHistory: Boolean,
         title: String?,
+        published: String?,
         fromQueue: Boolean,
         resumeHintMs: Long,
         requestedAtMs: Long = 0L,
@@ -254,6 +265,7 @@ class PlaybackController(
         this.videoId = videoId
         this.saveHistory = saveHistory
         this.titleHint = title?.takeIf { it.isNotBlank() }
+        this.publishedHint = published?.takeIf { it.isNotBlank() }
         this.fromQueue = fromQueue
         _ended.value = false
         errorRetries = 0
@@ -281,7 +293,7 @@ class PlaybackController(
                 _ended.value = true
                 return@launch
             }
-            start(next.id, 0, saveHistory, next.title, fromQueue = true, resumeHintMs = next.resumeMs)
+            start(next.id, 0, saveHistory, next.title, Published.of(next), fromQueue = true, resumeHintMs = next.resumeMs)
         }
     }
 

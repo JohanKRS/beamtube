@@ -1,13 +1,16 @@
 package ytslim.ui
 
 import android.content.res.Resources
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import ytslim.R
 import ytslim.data.Channel
 import ytslim.data.SavedVideos
 import ytslim.data.Video
+import ytslim.data.VideoActions
 
 /**
  * Um aviso curto em cima da tela (a pílula de vidro), como "Saved to Watch later". Com [action], a
@@ -56,6 +59,20 @@ fun toggleSaved(res: Resources, video: Video) {
 /** O canal de um vídeo, para abrir a página dele. null quando o YouTube não manda o ID. */
 fun channelOf(video: Video): Channel? =
     video.channelId?.takeIf { it.isNotBlank() }?.let { Channel(it, video.channelName.orEmpty(), info = null, thumbnailUrl = null) }
+
+/**
+ * Abre o canal de um vídeo. Quando o card veio sem o ID do canal (as Recomendações vêm assim), ele
+ * é procurado antes na página do vídeo: o "Go to channel" aparece sempre (pedido do Johan, 2026-11-13).
+ */
+fun CoroutineScope.openChannelOf(video: Video, res: Resources, onOpenChannel: (Channel) -> Unit) {
+    channelOf(video)?.let { return onOpenChannel(it) }
+    launch {
+        val found = VideoActions.channel(video.id)
+            ?: return@launch Notices.show(res.getString(R.string.channel_not_found))
+        // O nome do card, quando há: é o que a pessoa viu.
+        onOpenChannel(found.copy(title = video.channelName?.takeIf { it.isNotBlank() } ?: found.title))
+    }
+}
 
 /**
  * O resto da linha do YouTube depois do nome do canal: "Bench Notes • 12K views • 2 hours ago"

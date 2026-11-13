@@ -13,6 +13,8 @@ data class VideoState(
     val channelName: String?,
     val subscribed: Boolean,
     val rating: Rating,
+    /** A data de publicação por extenso ("Nov 10, 2025"); o player mostra como idade ([Published.age]). */
+    val published: String? = null,
 )
 
 /** Like/dislike e inscrever/cancelar inscrição no canal do vídeo. */
@@ -30,8 +32,29 @@ object VideoActions {
                 MediaItemMetadata.LIKE_STATUS_DISLIKE -> Rating.DISLIKED
                 else -> Rating.NONE
             },
+            published = m.publishedDate?.takeIf { it.isNotBlank() },
         )
     }
+
+    /** Os canais já achados pela página do vídeo ([channel]), por id do vídeo. */
+    private val channels = object : LinkedHashMap<String, Channel>(CHANNELS_KEPT, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Channel>?) = size > CHANNELS_KEPT
+    }
+
+    /**
+     * O canal de um vídeo pela página dele. Os cards das Recomendações vêm sem o id do canal (o
+     * YouTube não manda), e o "Go to channel" precisa dele (pedido do Johan, 2026-11-13).
+     */
+    suspend fun channel(videoId: String): Channel? {
+        synchronized(channels) { channels[videoId] }?.let { return it }
+        val m = runCatching { io { Engine.mediaItems.getMetadata(videoId) } }.getOrNull() ?: return null
+        val id = m.channelId?.takeIf { it.isNotBlank() } ?: return null
+        val channel = Channel(id, Handles.channelName(m.author).orEmpty(), info = null, thumbnailUrl = null)
+        synchronized(channels) { channels[videoId] = channel }
+        return channel
+    }
+
+    private const val CHANNELS_KEPT = 200
 
     /** Leva a avaliação de [from] para [to] (tocar no botão já ativo desfaz). */
     suspend fun rate(videoId: String, from: Rating, to: Rating) = io {

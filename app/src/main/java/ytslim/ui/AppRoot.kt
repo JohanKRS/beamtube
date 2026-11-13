@@ -30,6 +30,7 @@ import ytslim.data.Engine
 import ytslim.data.PlayQueue
 import ytslim.data.PlaybackRepository
 import ytslim.data.Playlist
+import ytslim.data.Published
 import ytslim.data.SavedVideos
 import ytslim.data.Video
 import ytslim.player.PlayerActivity
@@ -53,7 +54,7 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
     val openPlayer: (Video) -> Unit = { video ->
         // O vídeo começa a ser pedido já no toque, enquanto a tela do player abre.
         PlaybackRepository.prefetch(video.id)
-        context.startActivity(PlayerActivity.intent(context, video.id, video.title, video.resumeMs))
+        context.startActivity(PlayerActivity.intent(context, video.id, video.title, video.resumeMs, Published.of(video)))
     }
     // Só a página de uma playlist toca em sequência; o resto abre um vídeo sozinho.
     val play: (Video) -> Unit = { video ->
