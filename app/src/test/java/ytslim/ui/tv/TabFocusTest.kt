@@ -9,6 +9,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -100,6 +101,28 @@ class TabFocusTest {
         press(KeyEvent.KEYCODE_DPAD_UP)
         assertEquals(HomeTab.RECOMMENDED, tab)
         compose.onNodeWithText("Recommended").assertIsFocused()
+    }
+
+    /** As abas ficam encostadas à direita: a seta para a direita no fim de uma fileira não pula para elas. */
+    @Test
+    fun rightAtTheEndOfARowStaysOnTheGrid() {
+        var tab by mutableStateOf(HomeTab.SUBSCRIPTIONS)
+        compose.setContent {
+            TvUi.Theme {
+                TvUi.Home(tab, onTab = { tab = it }, onReload = {}) {
+                    TvUi.VideoGrid(grid(), "", {}, {}, null, takeFocus = true, onFocusTaken = {})
+                }
+            }
+        }
+        compose.waitForIdle()
+        focusFirstCard()
+        press(KeyEvent.KEYCODE_DPAD_RIGHT, times = 5)
+        assertEquals(HomeTab.SUBSCRIPTIONS, tab)
+        compose.onNodeWithText("Subscriptions").assertIsNotFocused()
+        // E dali, subir ainda leva à aba aberta.
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals(HomeTab.SUBSCRIPTIONS, tab)
+        compose.onNodeWithText("Subscriptions").assertIsFocused()
     }
 
     @Test

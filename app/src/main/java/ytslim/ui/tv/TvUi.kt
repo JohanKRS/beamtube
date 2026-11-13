@@ -70,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -195,7 +196,17 @@ private val LocalInitialFocus = compositionLocalOf<MutableState<Boolean>> { muta
  * (achado do Johan na TV, 2026-11-04: das Inscrições ia para os Ajustes).
  */
 private fun Modifier.entersAt(selected: FocusRequester) =
-    focusProperties { onEnter = { selected.requestFocus() } }.focusGroup()
+    focusProperties {
+        onEnter = {
+            // Só se entra nas abas subindo ou descendo. Com as abas encostadas à direita, a seta para a
+            // direita no último card de uma fileira achava uma aba "mais à direita" e pulava para lá.
+            if (requestedFocusDirection == FocusDirection.Left || requestedFocusDirection == FocusDirection.Right) {
+                cancelFocusChange()
+            } else {
+                selected.requestFocus()
+            }
+        }
+    }.focusGroup()
 
 /**
  * As cores do BeamTube na TV. O foco é a luz da fresta: botões e linhas focados ficam na cor de
@@ -375,14 +386,16 @@ object TvUi : Screens {
 
         Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
           // O logotipo inteiro (a fresta, o facho com a poeira e o nome), sem fundo, na mesma linha
-          // das abas (pedido do Johan, 2026-11-13). O facho passa um pouco da caixa, por trás das abas.
+          // das abas (pedido do Johan, 2026-11-13), com a letra do tamanho da das abas (ele achou o de
+          // 22sp grande demais). O logotipo fica à esquerda e as abas, encostadas à direita (pedido dele
+          // do mesmo dia): o nome da última aba termina na linha da borda direita dos cards.
           Row(verticalAlignment = Alignment.CenterVertically) {
-            Wordmark(22.sp, Modifier.offset(y = (-2).dp))
-            Spacer(Modifier.width(6.dp))
+            Wordmark(16.sp)
+            Spacer(Modifier.weight(1f))
             val selectedIndex = tabs.indexOfFirst { it.first == tab }
             TabRow(
                 selectedTabIndex = selectedIndex,
-                modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
+                modifier = Modifier.offset(x = TabLabelPadding).onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
                 separator = { Spacer(Modifier.width(2.dp)) },
                 indicator = { positions, _ -> positions.getOrNull(selectedIndex)?.let { SlitIndicator(it) } },
             ) {
@@ -432,11 +445,14 @@ object TvUi : Screens {
     @Composable
     private fun TabLabel(text: String, selected: Boolean) {
         val style = MaterialTheme.typography.titleMedium
-        Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.padding(horizontal = TabLabelPadding, vertical = 6.dp), contentAlignment = Alignment.Center) {
             Text(text, style = style.copy(fontWeight = FontWeight.Bold), color = Color.Transparent, maxLines = 1, modifier = Modifier.clearAndSetSemantics {})
             Text(text, style = style.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Light), maxLines = 1)
         }
     }
+
+    /** O espaço de cada lado do nome de uma aba. */
+    private val TabLabelPadding = 12.dp
 
     /** A fresta de luz embaixo da aba escolhida, que anda junto quando a aba muda. */
     @Composable
