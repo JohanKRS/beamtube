@@ -374,14 +374,15 @@ object TvUi : Screens {
         Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
           // O logotipo inteiro (a fresta, o facho com a poeira e o nome), sem fundo, na mesma linha
           // das abas (pedido do Johan, 2026-11-13), com a letra do tamanho da das abas (ele achou o de
-          // 22sp grande demais). O facho passa um pouco da caixa, por trás das abas.
+          // 22sp grande demais). O logotipo fica à esquerda e as abas, encostadas à direita (pedido dele
+          // do mesmo dia): o nome da última aba termina na linha da borda direita dos cards.
           Row(verticalAlignment = Alignment.CenterVertically) {
             Wordmark(16.sp)
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.weight(1f))
             val selectedIndex = tabs.indexOfFirst { it.first == tab }
             TabRow(
                 selectedTabIndex = selectedIndex,
-                modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
+                modifier = Modifier.offset(x = TabLabelPadding).onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
                 separator = { Spacer(Modifier.width(2.dp)) },
                 indicator = { positions, _ -> positions.getOrNull(selectedIndex)?.let { SlitIndicator(it) } },
             ) {
@@ -431,11 +432,14 @@ object TvUi : Screens {
     @Composable
     private fun TabLabel(text: String, selected: Boolean) {
         val style = MaterialTheme.typography.titleMedium
-        Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.padding(horizontal = TabLabelPadding, vertical = 6.dp), contentAlignment = Alignment.Center) {
             Text(text, style = style.copy(fontWeight = FontWeight.Bold), color = Color.Transparent, maxLines = 1, modifier = Modifier.clearAndSetSemantics {})
             Text(text, style = style.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Light), maxLines = 1)
         }
     }
+
+    /** O espaço de cada lado do nome de uma aba. */
+    private val TabLabelPadding = 12.dp
 
     /** A fresta de luz embaixo da aba escolhida, que anda junto quando a aba muda. */
     @Composable
