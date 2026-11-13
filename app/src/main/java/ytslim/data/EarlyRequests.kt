@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
  *
  * - **no toque** ([asked]): abrir a tela do player leva de 0,2 a 0,5 s, e o pedido corre nesse tempo;
  * - **na TV, com o foco parado num card** ([focused], 2026-11-13): quem para num card costuma apertar
- *   OK um ou dois segundos depois, e o pedido ao YouTube leva mais ou menos isso. Depois de
+ *   OK depois de ler o título, e o pedido ao YouTube leva um ou dois segundos. Depois de
  *   [dwellMs] com o foco no mesmo card, o vídeo é pedido; no OK, ele já está resolvido (ou quase).
  *
  * Os últimos [kept] ficam guardados por [maxAgeMs]: voltar a um card de há pouco não pede de novo.

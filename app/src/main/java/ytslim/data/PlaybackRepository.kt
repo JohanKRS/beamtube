@@ -57,8 +57,12 @@ object PlaybackRepository {
     /** Quantos pedidos adiantados ficam guardados (cada um tem o MPD do vídeo, dezenas de kB). */
     private const val EARLY_KEPT = 3
 
-    /** TV: quanto o foco fica parado num card antes de o vídeo dele ser pedido ([focused]). */
-    private const val FOCUS_DWELL_MS = 600L
+    /**
+     * TV: quanto o foco fica parado num card antes de o vídeo dele ser pedido ([focused]). Eram
+     * 0,6 s; o Johan achou pouco (2026-11-13: "não sou tão ágil assim", pediria vídeo demais só de
+     * passar pelos cards com calma). Com 2 s, só é adiantado o card em que ele parou para ler.
+     */
+    private const val FOCUS_DWELL_MS = 2_000L
 
     /** TV: depois de um pedido adiantado que não trouxe o vídeo, quanto tempo sem adiantar outros. */
     private const val GUESS_PAUSE_MS = 5 * 60_000L
