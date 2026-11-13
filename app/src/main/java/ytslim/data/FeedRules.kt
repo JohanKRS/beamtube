@@ -7,6 +7,15 @@ object FeedRules {
     /** Shorts nunca aparecem; lives e agendados só com o toggle das configurações ligado. */
     fun keep(video: Video, showLives: Boolean): Boolean =
         !video.isShorts && (showLives || (!video.isLive && !video.isUpcoming))
+
+    /** Fora da tela por pelo menos isto (TV desligada, outro app), as Inscrições se atualizam ao voltar. */
+    const val AWAY_REFRESH_MS = 10 * 60_000L
+
+    fun refreshesAfterAway(awayMs: Long): Boolean = awayMs >= AWAY_REFRESH_MS
+
+    /** Na volta, sem rede (a TV recém-ligada ainda achando o Wi-Fi), tenta de novo depois de 2, 4, 8 e 16 s. */
+    const val AWAY_RETRIES = 4
+    const val RETRY_FIRST_MS = 2_000L
 }
 
 /** Um vídeo com a data (estimada) em que ele entrou no feed. */
@@ -15,7 +24,8 @@ data class Timed(val video: Video, val atMs: Long)
 
 /**
  * Lê o tempo relativo que o YouTube escreve nos vídeos ("3 hours ago", "há 3 horas",
- * "Streamed 2 days ago"). O motor não entrega a data de publicação como número.
+ * "hace 3 días", "Streamed 2 days ago"), em inglês, português e espanhol, os idiomas do app (o
+ * motor pede as listas no idioma do app). O motor não entrega a data de publicação como número.
  */
 object RelativeTime {
     private const val DAY = 86_400_000L
@@ -23,10 +33,10 @@ object RelativeTime {
         listOf("second", "segundo") to 1_000L,
         listOf("minute", "minuto", "min") to 60_000L,
         listOf("hour", "hora") to 3_600_000L,
-        listOf("day", "dia") to DAY,
+        listOf("day", "dia", "día") to DAY,
         listOf("week", "semana") to 7 * DAY,
         listOf("month", "mês", "mes") to 30 * DAY,
-        listOf("year", "ano") to 365 * DAY,
+        listOf("year", "ano", "año") to 365 * DAY,
     )
     private val NUMBER_AND_WORD = Regex("""(\d+)\s*([^\d\s•·,.]+)""")
 

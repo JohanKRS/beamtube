@@ -26,10 +26,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AuthRepository
 import ytslim.data.Channel
-import ytslim.data.Engine
+import ytslim.data.EngineWarmup
+import ytslim.data.FirstRun
 import ytslim.data.PlayQueue
 import ytslim.data.PlaybackRepository
 import ytslim.data.Playlist
+import ytslim.data.Published
 import ytslim.data.SavedVideos
 import ytslim.data.Video
 import ytslim.player.PlayerActivity
@@ -49,11 +51,18 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
     val ui: Screens = remember(isTv) { if (isTv) TvUi else MobileUi }
     val nav = rememberNavController()
     var signed by remember { mutableStateOf(AuthRepository.isSigned()) }
-    val start: Any = remember { if (signed) HomeRoute else SignInRoute }
+    // No primeiro uso, depois do login, vem a escolha de tópicos ([TopicsRoute]).
+    val start: Any = remember {
+        when {
+            !signed -> SignInRoute
+            !FirstRun.topicsChosen -> TopicsRoute(firstRun = true)
+            else -> HomeRoute
+        }
+    }
     val openPlayer: (Video) -> Unit = { video ->
         // O vídeo começa a ser pedido já no toque, enquanto a tela do player abre.
         PlaybackRepository.prefetch(video.id)
-        context.startActivity(PlayerActivity.intent(context, video.id, video.title, video.resumeMs))
+        context.startActivity(PlayerActivity.intent(context, video.id, video.title, video.resumeMs, Published.of(video), video.thumbnailUrl))
     }
     // Só a página de uma playlist toca em sequência; o resto abre um vídeo sozinho.
     val play: (Video) -> Unit = { video ->
@@ -77,7 +86,18 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                     val vm: SignInViewModel = viewModel()
                     ui.SignIn(vm) {
                         signed = true
-                        nav.navigate(HomeRoute) { popUpTo<SignInRoute> { inclusive = true } }
+                        val next: Any = if (FirstRun.topicsChosen) HomeRoute else TopicsRoute(firstRun = true)
+                        nav.navigate(next) { popUpTo<SignInRoute> { inclusive = true } }
+                    }
+                }
+                composable<TopicsRoute> { entry ->
+                    val route = entry.toRoute<TopicsRoute>()
+                    ui.Topics(viewModel<TopicsViewModel>(), firstRun = route.firstRun) {
+                        if (route.firstRun) {
+                            nav.navigate(HomeRoute) { popUpTo<TopicsRoute> { inclusive = true } }
+                        } else {
+                            nav.popBackStack()
+                        }
                     }
                 }
                 composable<HomeRoute> { entry ->
@@ -91,9 +111,9 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                         vms[RecommendedViewModel::class]
                         vms[PlaylistsViewModel::class]
                         vms[HistoryViewModel::class]
-                        // Adianta o que o primeiro vídeo precisa (o player do YouTube e a decifragem),
-                        // que numa TV fraca leva segundos. O SmartTube faz o mesmo ao abrir.
-                        Engine.service.refreshCacheIfNeeded()
+                        // Adianta o que o primeiro vídeo precisa (o token do YouTube, o player dele e a
+                        // decifragem), que numa TV fraca leva segundos ([EngineWarmup]).
+                        EngineWarmup.start(delayMs = EngineWarmup.AFTER_LISTS_MS)
                     }
                     // Os ViewModels das abas são os do início (os mesmos que viewModel() devolve abaixo).
                     val reload: (HomeTab) -> Unit = { which ->
@@ -124,6 +144,7 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                                 HomeTab.SETTINGS -> ui.Settings(
                                     vm = viewModel<SettingsViewModel>(),
                                     onOpenPlaylist = openPlaylist,
+                                    onOpenTopics = { nav.navigate(TopicsRoute(firstRun = false)) },
                                     onSignedOut = signedOut,
                                 )
                             }
@@ -221,8 +242,16 @@ interface Screens {
     @Composable
     fun History(vm: HistoryViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit)
 
+    /** [onOpenTopics] abre a tela de tópicos sugeridos ([Topics]). */
     @Composable
-    fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onSignedOut: () -> Unit)
+    fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onOpenTopics: () -> Unit, onSignedOut: () -> Unit)
+
+    /**
+     * Os tópicos sugeridos, em dois passos (ver mais, ver menos). [firstRun]: a tela do primeiro
+     * uso, que pode ser pulada; [onDone] segue (para o início ou de volta aos Ajustes).
+     */
+    @Composable
+    fun Topics(vm: TopicsViewModel, firstRun: Boolean, onDone: () -> Unit)
 
     @Composable
     fun PlaylistPage(

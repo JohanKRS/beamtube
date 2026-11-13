@@ -22,7 +22,7 @@ import java.util.concurrent.Executors
  */
 @OptIn(UnstableApi::class)
 internal object MediaHttp {
-    private const val TAG = "Doorglow"
+    private const val TAG = "BeamTube"
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 20_000
 
@@ -48,7 +48,7 @@ internal object MediaHttp {
     @RequiresExtension(extension = Build.VERSION_CODES.S, version = 7)
     private object Modern {
         @Volatile private var engine: HttpEngine? = null
-        private val executor = Executors.newSingleThreadExecutor { Thread(it, "doorglow-http") }
+        private val executor = Executors.newSingleThreadExecutor { Thread(it, "beamtube-http") }
 
         fun factory(context: Context, userAgent: String): HttpDataSource.Factory =
             HttpEngineDataSource.Factory(engine(context), executor)

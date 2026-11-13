@@ -1,13 +1,16 @@
 package ytslim.ui
 
 import android.content.res.Resources
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import ytslim.R
 import ytslim.data.Channel
 import ytslim.data.SavedVideos
 import ytslim.data.Video
+import ytslim.data.VideoActions
 
 /**
  * Um aviso curto em cima da tela (a pílula de vidro), como "Saved to Watch later". Com [action], a
@@ -58,6 +61,20 @@ fun channelOf(video: Video): Channel? =
     video.channelId?.takeIf { it.isNotBlank() }?.let { Channel(it, video.channelName.orEmpty(), info = null, thumbnailUrl = null) }
 
 /**
+ * Abre o canal de um vídeo. Quando o card veio sem o ID do canal (as Recomendações vêm assim), ele
+ * é procurado antes na página do vídeo: o "Go to channel" aparece sempre (pedido do Johan, 2026-11-13).
+ */
+fun CoroutineScope.openChannelOf(video: Video, res: Resources, onOpenChannel: (Channel) -> Unit) {
+    channelOf(video)?.let { return onOpenChannel(it) }
+    launch {
+        val found = VideoActions.channel(video.id)
+            ?: return@launch Notices.show(res.getString(R.string.channel_not_found))
+        // O nome do card, quando há: é o que a pessoa viu.
+        onOpenChannel(found.copy(title = video.channelName?.takeIf { it.isNotBlank() } ?: found.title))
+    }
+}
+
+/**
  * O resto da linha do YouTube depois do nome do canal: "Bench Notes • 12K views • 2 hours ago"
  * vira "12K views · 2 hours ago" (o nome do canal aparece à parte, com o avatar).
  */
@@ -65,4 +82,34 @@ fun metaAfterChannel(info: String?, channelName: String?, published: String?): S
     val parts = info.orEmpty().split('•', '·').map { it.trim() }.filter { it.isNotEmpty() }
     val rest = parts.filterNot { channelName != null && it.equals(channelName.trim(), ignoreCase = true) }
     return rest.joinToString(" · ").ifEmpty { published?.takeIf { it.isNotBlank() } }
+}
+
+/**
+ * A Outfit tem o espaço e o "·" estreitos, e "12K views · 2 hours ago" saía com o ponto apertado
+ * entre as palavras. Aqui o ponto e os espaços em volta dele ganham um pouco de ar. Vale para toda
+ * linha de detalhes das listas (vídeos, playlists e canais).
+ */
+fun spacedDots(raw: String): androidx.compose.ui.text.AnnotatedString = androidx.compose.ui.text.buildAnnotatedString {
+    // O YouTube separa com "•" (as playlists chegam assim): um ponto só no app inteiro.
+    val text = raw.replace(" • ", DOT)
+    append(text)
+    var at = text.indexOf(DOT)
+    while (at >= 0) {
+        addStyle(androidx.compose.ui.text.SpanStyle(letterSpacing = androidx.compose.ui.unit.TextUnit(0.1f, androidx.compose.ui.unit.TextUnitType.Em)), at, at + DOT.length)
+        at = text.indexOf(DOT, at + DOT.length)
+    }
+}
+
+private const val DOT = " · "
+
+/**
+ * O mesmo respiro do [spacedDots] para um TextView (o player): os espaços em volta de cada "·"
+ * ficam com o dobro da largura.
+ */
+fun spacedDotsForViews(text: String): CharSequence = android.text.SpannableString(text).apply {
+    text.forEachIndexed { i, c ->
+        if (c == ' ' && (text.getOrNull(i - 1) == '·' || text.getOrNull(i + 1) == '·')) {
+            setSpan(android.text.style.ScaleXSpan(2f), i, i + 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
 }

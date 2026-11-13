@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- A cor de destaque a 30% (fundo do foco num botão de ícone). -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:color="?attr/doorglowAccent" android:alpha="0.3" />
+    <item android:color="?attr/beamAccent" android:alpha="0.3" />
 </selector>

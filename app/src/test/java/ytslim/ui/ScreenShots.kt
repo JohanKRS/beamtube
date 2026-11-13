@@ -2,7 +2,21 @@ package ytslim.ui
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import ytslim.R
+import ytslim.data.AppIcon
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -11,8 +25,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.annotation.ExperimentalCoilApi
 import coil3.asImage
 import coil3.compose.AsyncImagePreviewHandler
@@ -36,6 +53,7 @@ import org.robolectric.annotation.GraphicsMode
 import ytslim.data.ChannelPhotos
 import ytslim.data.Playlist
 import ytslim.data.SearchFilters
+import ytslim.data.SuggestedTopic
 import ytslim.data.Video
 import ytslim.ui.mobile.MobileUi
 import ytslim.ui.tv.TvUi
@@ -58,7 +76,14 @@ class ScreenShots {
 
     private val videos: List<Video> by lazy {
         val durations = listOf(754_000L, 1_312_000L, 498_000L, 2_105_000L, 917_000L, 1_843_000L, 365_000L, 3_620_000L)
-        val ages = listOf("2 hours ago", "9 hours ago", "1 day ago", "2 days ago", "4 days ago", "6 days ago", "1 week ago", "2 weeks ago")
+        // O texto de baixo vem pronto do YouTube, no idioma do app; aqui, à mão nos três idiomas.
+        val language = org.robolectric.RuntimeEnvironment.getApplication()
+            .resources.configuration.locales[0].language
+        val (ages, viewsWord) = when (language) {
+            "pt" -> listOf("há 2 horas", "há 9 horas", "há 1 dia", "há 2 dias", "há 4 dias", "há 6 dias", "há 1 semana", "há 2 semanas") to "visualizações"
+            "es" -> listOf("hace 2 horas", "hace 9 horas", "hace 1 día", "hace 2 días", "hace 4 días", "hace 6 días", "hace 1 semana", "hace 2 semanas") to "vistas"
+            else -> listOf("2 hours ago", "9 hours ago", "1 day ago", "2 days ago", "4 days ago", "6 days ago", "1 week ago", "2 weeks ago") to "views"
+        }
         Json.parseToJsonElement(File(dir, "videos.json").readText()).jsonArray.mapIndexed { i, e ->
             val o = e.jsonObject
             val channel = o["channel"]!!.jsonPrimitive.content.removeSuffix(" – In a Nutshell")
@@ -69,7 +94,7 @@ class ScreenShots {
                 channelName = channel,
                 channelId = o["channelId"]!!.jsonPrimitive.content,
                 thumbnailUrl = "thumb:" + o["id"]!!.jsonPrimitive.content,
-                info = "$channel • ${compact(views)} views • ${ages[i % ages.size]}",
+                info = "$channel • ${compact(views)} $viewsWord • ${ages[i % ages.size]}",
                 published = ages[i % ages.size],
                 durationMs = durations[i % durations.size],
                 isLive = false,
@@ -158,6 +183,40 @@ class ScreenShots {
     fun playerPhoneAccent() {
         Look.accent = Accent.RED
         playerShot("player-phone-accent-red")
+    }
+
+    /** A marca como o Android a desenha: o ícone de cada cor (no recorte redondo) e o banner da TV. */
+    @Test
+    @Config(qualifiers = "w1060dp-h1080dp-xhdpi")
+    fun brand() = shot("brand") {
+        val banners = listOf(
+            R.drawable.tv_banner_night, R.drawable.tv_banner_black, R.drawable.tv_banner_teal, R.drawable.tv_banner_plum,
+            R.drawable.tv_banner_mustard, R.drawable.tv_banner_vivid, R.drawable.tv_banner_red,
+        )
+        Column(Modifier.fillMaxSize().background(Color(0xFF202124)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                AppIcon.entries.forEach { AppIconPreview(it, 120.dp) }
+            }
+            banners.chunked(3).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    row.forEach { Image(painterResource(it), contentDescription = null, modifier = Modifier.size(320.dp, 180.dp).clip(RoundedCornerShape(12.dp))) }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                Image(painterResource(R.drawable.ic_launcher_monochrome), contentDescription = null, modifier = Modifier.size(108.dp))
+                Image(painterResource(R.drawable.ic_notification), contentDescription = null, modifier = Modifier.size(48.dp))
+            }
+            // O logotipo desenhado pelo app (a barra de cima da TV, o login e o trilho do tablet).
+            Row(
+                Modifier.background(Look.Ground).padding(horizontal = 32.dp, vertical = 28.dp),
+                horizontalArrangement = Arrangement.spacedBy(72.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Wordmark(40.sp)
+                Wordmark(22.sp)
+                BeamGlyph(Modifier.size(width = 40.dp, height = 30.dp))
+            }
+        }
     }
 
     @Test
@@ -253,7 +312,7 @@ class ScreenShots {
         MobileUi.Theme {
             MobileUi.DetailFrame("Essence of linear algebra", navigation = { MobileUi.BackButton {} }) {
                 MobileUi.VideoRows(
-                    feed(videos.filter { it.channelName == "3Blue1Brown" } + videos.take(6)), {}, {}, {}, showSaved = true,
+                    feed((videos.filter { it.channelName == "3Blue1Brown" } + videos.take(6)).distinctBy { it.id }), {}, {}, {}, showSaved = true,
                     header = { MobileUi.SubscribeHeader(Subscription.Shown(subscribed = true)) {} },
                 )
             }
@@ -278,13 +337,54 @@ class ScreenShots {
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
-    fun tvSubscriptions() = shot("tv-subscriptions") {
+    fun tvSubscriptions() = tvSubscriptionsShot("tv-subscriptions")
+
+    private fun tvSubscriptionsShot(name: String) = shot(name) {
         TvUi.Theme {
             TvUi.Home(HomeTab.SUBSCRIPTIONS, {}, {}) {
                 TvUi.VideoGrid(feed(), "", {}, {}, {}, takeFocus = false, onFocusTaken = {})
             }
         }
     }
+
+    /** A tela do fim do vídeo ([ytslim.player.EndScreen]) por cima do último quadro. */
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvEndScreen() = endScreenShot("tv-end-screen", tv = true)
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun phoneEndScreen() = endScreenShot("player-phone-end-screen", tv = false)
+
+    private fun endScreenShot(name: String, tv: Boolean) {
+        val end = ytslim.player.EndScreen(org.robolectric.RuntimeEnvironment.getApplication(), tv, onPlay = {}, onBack = {})
+        end.show(videos.filter { !it.isShorts && !it.isLive }.drop(2).take(ytslim.data.UpNext.MAX), playNext = false)
+        val frame = BitmapFactory.decodeFile(File(dir, "thumbs/${videos[1].id}.jpg").path).asImageBitmap()
+        shot(name) {
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                Image(frame, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                end.Content()
+            }
+        }
+    }
+
+    /** As abas da TV numa linha só, com os nomes mais compridos (espanhol e português). */
+    @Test
+    @Config(qualifiers = "es-w960dp-h540dp-land-television-xhdpi")
+    fun tvSubscriptionsSpanish() = tvSubscriptionsShot("tv-subscriptions-es")
+
+    @Test
+    @Config(qualifiers = "pt-w960dp-h540dp-land-television-xhdpi")
+    fun tvSubscriptionsPortuguese() = tvSubscriptionsShot("tv-subscriptions-pt")
+
+    /** Com a letra maior da Acessibilidade, as abas continuam numa linha só (a letra delas diminui). */
+    @Test
+    @Config(qualifiers = "es-w960dp-h540dp-land-television-xhdpi", fontScale = 1.3f)
+    fun tvSubscriptionsLargeText() = tvSubscriptionsShot("tv-subscriptions-es-large")
+
+    @Test
+    @Config(qualifiers = "pt-w960dp-h540dp-land-television-xhdpi", fontScale = 2f)
+    fun tvSubscriptionsLargestText() = tvSubscriptionsShot("tv-subscriptions-pt-largest")
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
@@ -349,7 +449,7 @@ class ScreenShots {
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
     fun phoneSettings() = shot("phone-settings") {
         MobileUi.Theme {
-            MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}) }
+            MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) }
         }
     }
 
@@ -357,7 +457,7 @@ class ScreenShots {
     @Config(qualifiers = "w411dp-h2200dp-xxhdpi")
     fun phoneSettingsLong() = shot("phone-settings-long") {
         MobileUi.Theme {
-            MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}) }
+            MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) }
         }
     }
 
@@ -406,11 +506,64 @@ class ScreenShots {
         }
     }
 
+    /** A tela de tópicos de uma instalação nova, com algumas sugestões já marcadas. */
+    private fun topicsVm(lessStep: Boolean): TopicsViewModel {
+        val vm = TopicsViewModel()
+        repeat(100) {
+            if (vm.state.value.loaded) return@repeat
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
+        listOf(SuggestedTopic.DOCUMENTARIES, SuggestedTopic.HISTORY, SuggestedTopic.SCIENCE, SuggestedTopic.SPACE, SuggestedTopic.ENGINEERING, SuggestedTopic.SLEEP)
+            .forEach(vm::toggle)
+        if (lessStep) {
+            vm.next()
+            listOf(SuggestedTopic.POLITICS, SuggestedTopic.CELEBRITIES, SuggestedTopic.REACTIONS, SuggestedTopic.PRANKS).forEach(vm::toggle)
+        }
+        return vm
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneTopics() = shot("phone-topics") { MobileUi.Theme { MobileUi.Topics(topicsVm(lessStep = false), firstRun = true) {} } }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneTopicsLess() = shot("phone-topics-less") { MobileUi.Theme { MobileUi.Topics(topicsVm(lessStep = true), firstRun = true) {} } }
+
+    @Test
+    @Config(qualifiers = "pt-w411dp-h891dp-xxhdpi")
+    fun phoneTopicsPortuguese() = shot("phone-topics-pt") { MobileUi.Theme { MobileUi.Topics(topicsVm(lessStep = false), firstRun = true) {} } }
+
+    @Test
+    @Config(qualifiers = "es-w960dp-h540dp-land-television-xhdpi")
+    fun tvTopicsSpanish() = shot("tv-topics-es") { TvUi.Theme { TvUi.Topics(topicsVm(lessStep = false), firstRun = true) {} } }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTopics() = shot("tv-topics") { TvUi.Theme { TvUi.Topics(topicsVm(lessStep = false), firstRun = true) {} } }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTopicsLess() = shot("tv-topics-less") { TvUi.Theme { TvUi.Topics(topicsVm(lessStep = true), firstRun = true) {} } }
+
+    @Test
+    @Config(qualifiers = "pt-w411dp-h891dp-xxhdpi")
+    fun phoneSubscriptionsPortuguese() = shot("phone-subscriptions-pt") {
+        MobileUi.Theme { MobileUi.Home(HomeTab.SUBSCRIPTIONS, {}, {}) { MobileUi.VideoGrid(feed(), "", {}, {}, {}) } }
+    }
+
+    @Test
+    @Config(qualifiers = "pt-w411dp-h2200dp-xxhdpi")
+    fun phoneSettingsPortuguese() = shot("phone-settings-pt") {
+        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+    }
+
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvSettings() = shot("tv-settings") {
         TvUi.Theme {
-            TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}) }
+            TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) }
         }
     }
 
@@ -438,18 +591,41 @@ class ScreenShots {
         channelFocused: Boolean = false,
         captionsAtMs: Long = 3_000,
         rolling: Boolean = false,
+        /** "opening": o vídeo acabou de ser aberto (miniatura e círculo); "buffering": parou para carregar no meio. */
+        loading: String? = null,
+        /** O painel do modo dormir aberto (brilho, o que tocar depois, desligar ao terminar). */
+        sleep: Boolean = false,
     ) {
-        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
         // O qualificador "television" não chega ao UiModeManager do Robolectric: sem isso o player
         // da TV sairia como o de toque (uma linha, botão de girar).
         if (tv) org.robolectric.Shadows.shadowOf(context.packageManager)
             .setSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK, true)
         val v = videos[1]
-        val intent = ytslim.player.PlayerActivity.intent(context, v.id, v.title)
+        val intent = ytslim.player.PlayerActivity.intent(context, v.id, v.title, published = v.published)
         val activity = org.robolectric.Robolectric.buildActivity(ytslim.player.PlayerActivity::class.java, intent).setup().get()
         val playerView = activity.findViewById<androidx.media3.ui.PlayerView>(ytslim.R.id.player_view)
         val thumb = BitmapFactory.decodeFile(File(dir, "thumbs/${v.id}.jpg").path)
-        playerView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)?.background =
+        // A tela de carregando ([PlayerLoading]): nas fotos do vídeo tocando, o primeiro quadro já veio.
+        val loadingView = activity.window.decorView.let { root ->
+            fun find(view: android.view.View): ytslim.player.PlayerLoading? = when (view) {
+                is ytslim.player.PlayerLoading -> view
+                is android.view.ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { find(view.getChildAt(it)) }
+                else -> null
+            }
+            find(root)!!
+        }
+        when (loading) {
+            // A miniatura do card (aqui não há rede para o carregador de imagens buscá-la).
+            "opening" -> (loadingView.getChildAt(0) as android.widget.ImageView).setImageBitmap(thumb)
+            "buffering" -> {
+                loadingView.stop()
+                loadingView.setBusy(true)
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(500))
+            }
+            else -> loadingView.stop()
+        }
+        if (loading != "opening") playerView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)?.background =
             android.graphics.drawable.BitmapDrawable(activity.resources, thumb)
         playerView.findViewById<android.view.View>(ytslim.R.id.player_actions)?.visibility = android.view.View.VISIBLE
         playerView.findViewById<android.view.View>(ytslim.R.id.player_save)?.visibility = android.view.View.VISIBLE
@@ -509,6 +685,10 @@ class ScreenShots {
             playerView.findViewById<android.view.View>(ytslim.R.id.player_channel).apply { isFocusableInTouchMode = true }.requestFocus()
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         }
+        if (sleep) {
+            playerView.findViewById<android.view.View>(ytslim.R.id.player_sleep).performClick()
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(600))
+        }
         if (hidden) {
             playerView.hideController()
             // O fade dos controles e a descida da legenda.
@@ -525,8 +705,19 @@ class ScreenShots {
             (ytslim.player.PlayerActivity::class.java.getDeclaredField("captionsView").apply { isAccessible = true }.get(activity) as androidx.media3.ui.SubtitleView)
                 .setCues(ytslim.player.CaptionRules.centered(cues))
         }
+        if (loading == "opening") {
+            // Como o player abre: a barra no começo, sem o que só chega com o vídeo e a página dele.
+            bar.setDuration(0); bar.setPosition(0); bar.setBufferedPosition(0); bar.setChapters(emptyList())
+            playerView.findViewById<android.widget.TextView>(androidx.media3.ui.R.id.exo_position)?.text = "0:00"
+            playerView.findViewById<android.widget.TextView>(androidx.media3.ui.R.id.exo_duration)?.text = "0:00"
+            for (id in listOf(ytslim.R.id.player_chapter, ytslim.R.id.player_actions, ytslim.R.id.player_save, ytslim.R.id.player_captions, ytslim.R.id.player_quality_button)) {
+                playerView.findViewById<android.view.View>(id)?.visibility = android.view.View.GONE
+            }
+        }
         // Sem rede, o título às vezes some quando o carregamento falha no meio da foto: fixa ele.
         playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_title)?.text = v.title
+        // A linha do canal como fica com a página do vídeo lida (o canal é o botão ao lado).
+        playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_detail)?.text = spacedDotsForViews("· ${v.published}")
         relayout(activity)
         val view = activity.window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
@@ -551,6 +742,26 @@ class ScreenShots {
     fun playerPhoneLandscape() = playerShot("player-phone-landscape")
 
     @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneOpening() = playerShot("player-phone-opening", loading = "opening")
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneOpeningClean() = playerShot("player-phone-opening-clean", loading = "opening", hidden = true)
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneBuffering() = playerShot("player-phone-buffering", loading = "buffering", hidden = true)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvOpening() = playerShot("player-tv-opening", tv = true, loading = "opening")
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvOpeningClean() = playerShot("player-tv-opening-clean", tv = true, loading = "opening", hidden = true)
+
+    @Test
     @Config(qualifiers = "w411dp-h891dp-port-xxhdpi")
     fun playerPhonePortrait() = playerShot("player-phone-portrait")
 
@@ -569,6 +780,14 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun playerTv() = playerShot("player-tv", tv = true)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvSleep() = playerShot("player-tv-sleep", tv = true, sleep = true)
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneSleep() = playerShot("player-phone-sleep", sleep = true)
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")

@@ -1,14 +1,20 @@
 package ytslim.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import ytslim.R
+import ytslim.data.EndAction
 import ytslim.data.ExternalLinks
 import ytslim.data.ResultType
 import ytslim.data.SearchDuration
 import ytslim.data.SearchFilters
 import ytslim.data.SortBy
+import ytslim.data.SuggestedTopic
+import ytslim.data.Topic
 import ytslim.data.UploadDate
 import ytslim.data.Video
 
@@ -25,6 +31,14 @@ val externalLinkOptions = listOf(
     ExternalLinks.NO_HISTORY to R.string.settings_links_no_history,
     ExternalLinks.SAVE_HISTORY to R.string.settings_links_save_history,
     ExternalLinks.ASK to R.string.settings_links_ask,
+)
+
+/** Settings > When a video ends ([ytslim.data.UpNext]). */
+val endActionOptions = listOf(
+    EndAction.SUGGESTIONS to R.string.settings_end_suggestions,
+    EndAction.BACK to R.string.settings_end_back,
+    EndAction.NEXT to R.string.settings_end_next,
+    EndAction.STAY to R.string.settings_end_stay,
 )
 
 /** Um filtro na tela (busca e Explore): o nome e as opções, cada uma já com os filtros que ela aplica. */
@@ -131,3 +145,17 @@ fun exploreFilterChoices(filters: SearchFilters, currentYear: Int = thisYear()):
         ),
     ) { filters.copy(sort = it) },
 )
+
+/** O nome de um tópico na tela: o das sugestões no idioma atual, ou o que a pessoa escreveu. */
+@Composable
+fun Topic.label(): String = SuggestedTopic.byId(id)?.let { stringResource(it.label) } ?: name
+
+/** A Activity por trás de um contexto do Compose (para trocar o idioma, que refaz a tela). */
+fun Context.findActivity(): Activity? {
+    var context: Context? = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
+}

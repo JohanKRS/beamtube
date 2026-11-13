@@ -2,19 +2,26 @@ package ytslim.player
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.app.PictureInPictureParams
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.Rect
 import android.graphics.drawable.BitmapDrawable
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Log
+import android.util.Rational
 import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.Gravity
@@ -34,6 +41,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.OptIn
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.WindowCompat
@@ -56,6 +64,7 @@ import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.size.Size as CoilSize
 import coil3.toBitmap
+import java.lang.ref.WeakReference
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -66,12 +75,18 @@ import ytslim.isTv
 import ytslim.data.AppScope
 import ytslim.data.Chapter
 import ytslim.data.Chapters
+import ytslim.data.EndAction
 import ytslim.data.ExternalLinks
 import ytslim.data.PlayQueue
+import ytslim.data.Published
 import ytslim.data.Rating
 import ytslim.data.SettingsRepository
 import ytslim.data.Storyboard
+import ytslim.data.UpNext
+import ytslim.data.Video
 import ytslim.data.VideoLinks
+import ytslim.ui.AppLanguage
+import ytslim.ui.spacedDotsForViews
 import ytslim.ui.Look
 
 /**
@@ -84,9 +99,16 @@ import ytslim.ui.Look
  *
  * No celular e no tablet: toques no vídeo como no YouTube ([TouchRules]), e a tela gira conforme
  * o vídeo (deitada para vídeo horizontal, em pé para vertical), com um botão para girar à mão.
+ * Com a tela desligada no meio do vídeo, ele continua tocando, só o som ([PlaybackService]); saindo
+ * do app com o vídeo tocando, ele fica no mini player flutuante ([MiniPlayerRules]).
  */
 @OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
+    /** O idioma escolhido em Settings ([AppLanguage]). */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(newBase)
+        AppLanguage.applyTo(this)
+    }
 
     private lateinit var controller: PlaybackController
     private lateinit var playerView: PlayerView
@@ -117,6 +139,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var queueRow: LinearLayout
     private lateinit var endRow: LinearLayout
     private lateinit var dimView: View
+    private lateinit var loading: PlayerLoading
     private lateinit var timeBar: ChapterTimeBar
     private lateinit var chapterView: TextView
     private lateinit var islandView: View
@@ -124,9 +147,19 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var previewImage: ImageView
     private lateinit var previewChapter: TextView
     private lateinit var previewTime: TextView
+    private lateinit var endScreen: EndScreen
 
     private var saveHistory = true
     private var external = false
+
+    /** Há quanto tempo o vídeo pedido foi publicado, como o card escreve ([PlaybackController.publishedHint]). */
+    private var published: String? = null
+
+    /** A miniatura do vídeo pedido (a do card), para a tela de carregando ([PlayerLoading]). */
+    private var thumbnail: String? = null
+
+    /** O vídeo cuja miniatura a tela de carregando mostra (o próximo da sequência troca). */
+    private var loadingVideo: String? = null
 
     /** Quando o card foi tocado (para o log do tempo até o primeiro quadro); 0 = agora. */
     private var requestedAtMs = 0L
@@ -183,6 +216,19 @@ class PlayerActivity : ComponentActivity() {
     /** Celular ou tablet (toques no vídeo, girar a tela, 1080p). */
     private val touch by lazy { !isTv() }
 
+    /** O aparelho tem o mini player flutuante (picture-in-picture): celular e tablet, Android 8 em diante. */
+    private val miniPlayerSupported by lazy {
+        touch && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+    }
+
+    /** O vídeo está no mini player agora. */
+    private var floating = false
+
+    /** O player abriu os ajustes de Acessibilidade (para o "When done: Turn off") e espera a volta. */
+    private var inOwnSettings = false
+    private val videoBounds = Rect()
+
     /** O sentido escolhido no botão de girar; vale até fechar o player. null = segue o vídeo. */
     private var chosenOrientation: Int? = null
 
@@ -200,6 +246,12 @@ class PlayerActivity : ComponentActivity() {
         // A cor de destaque escolhida em Settings, para os drawables do player (values/accents.xml).
         theme.applyStyle(Look.accent.playerStyle, true)
         super.onCreate(savedInstanceState)
+        if (intent.getBooleanExtra(EXTRA_BACK_TO_PLAYER, false)) {
+            // O toque na notificação, com o player numa tarefa que não é a de cima: só traz ele para a frente.
+            PlaybackService.bringPlayerToFront(this)
+            finish()
+            return
+        }
         val target = resolveTarget(intent)
         if (target == null) {
             // Um link de playlist compartilhado vai para a página da playlist.
@@ -208,6 +260,8 @@ class PlayerActivity : ComponentActivity() {
             finish()
             return
         }
+        // Um vídeo novo fecha o mini player do anterior: os dois não tocam juntos.
+        floatingPlayer?.get()?.takeIf { it !== this }?.finish()
         external = target.external
         if (savedInstanceState == null) requestedAtMs = intent.getLongExtra(EXTRA_REQUESTED_AT, 0L)
 
@@ -227,11 +281,19 @@ class PlayerActivity : ComponentActivity() {
         val restored = savedInstanceState?.containsKey(KEY_VIDEO) == true
         val title = (if (restored) savedInstanceState?.getString(KEY_TITLE) else intent.getStringExtra(EXTRA_TITLE))
             ?.takeIf { it.isNotBlank() }
+        published = if (restored) savedInstanceState?.getString(KEY_PUBLISHED) else intent.getStringExtra(EXTRA_PUBLISHED)
+        thumbnail = (if (restored) savedInstanceState?.getString(KEY_THUMBNAIL) else intent.getStringExtra(EXTRA_THUMBNAIL))
+            ?.takeIf { it.isNotBlank() }
         setContentView(buildLayout(title))
+        // Desde o primeiro instante, a miniatura do vídeo e o círculo: nunca a tela só preta
+        // (pedido do Johan, 2026-11-13). O pedido ao YouTube ainda nem começou a ser esperado.
+        loadingVideo = videoId
+        loading.start(thumbnail ?: NowPlaying.artworkUrl(videoId))
         playerView.player = controller.player
         controller.player.addListener(PlayerScreenListener())
         bindButtons()
         if (touch) bindTouchGestures()
+        if (miniPlayerSupported) bindMiniPlayer()
         bindScrubbing()
         buildSleepPanel()
         // O brilho escolhido num vídeo vale para os próximos, até fechar o app (pedido do Johan, 2026-11-03).
@@ -280,7 +342,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun start(videoId: String, startMs: Long, saveHistory: Boolean, title: String?, resumeMs: Long) {
         this.saveHistory = saveHistory
-        controller.open(videoId, startMs, saveHistory, title, resumeHintMs = resumeMs, requestedAtMs = requestedAtMs)
+        controller.open(videoId, startMs, saveHistory, title, published, resumeHintMs = resumeMs, requestedAtMs = requestedAtMs, thumbnail = thumbnail)
         requestedAtMs = 0L
     }
 
@@ -312,6 +374,30 @@ class PlayerActivity : ComponentActivity() {
                 messageView.visibility = View.VISIBLE
             }
         }
+        renderLoading()
+    }
+
+    /**
+     * A miniatura e o círculo de carregando ([PlayerLoading]). Um vídeo novo (o pedido, ou o próximo
+     * da sequência) começa com a miniatura dele; o círculo roda enquanto o vídeo é pedido ao YouTube
+     * e enquanto o player carrega ([LoadingRules.busy]); com erro na tela, some tudo.
+     */
+    private fun renderLoading() {
+        val state = controller.state.value
+        val video = controller.videoId
+        if (video != null && video != loadingVideo && state !is PlaybackController.State.Failed) {
+            loadingVideo = video
+            loading.start(controller.thumbnailHint ?: NowPlaying.artworkUrl(video))
+            return
+        }
+        if (state is PlaybackController.State.Failed) return loading.stop()
+        loading.setBusy(
+            LoadingRules.busy(
+                requesting = state is PlaybackController.State.Loading,
+                failed = false,
+                playbackState = controller.player.playbackState,
+            ),
+        )
     }
 
     /**
@@ -334,10 +420,28 @@ class PlayerActivity : ComponentActivity() {
         val channel = page?.channelName?.takeIf { page.channelId != null && it.isNotBlank() }
         channelButton.visibility = if (channel != null) View.VISIBLE else View.GONE
         channelButton.text = channel
-        val author = if (channel == null) (state as? PlaybackController.State.Playing)?.info?.author else null
+        val info = (state as? PlaybackController.State.Playing)?.info
+        val author = if (channel == null) info?.author else null
+        // Há quanto tempo foi publicado, pequeno, como nos cards (pedido do Johan, 2026-11-13). Numa live, não.
+        val age = if (info?.isLive == true) null else controller.publishedHint ?: ageOf(page?.published)
         val noHistory = if (!saveHistory) getString(R.string.player_no_history) else null
-        val rest = listOfNotNull(author, noHistory).joinToString(" · ")
-        detailView.text = if (channel != null && rest.isNotEmpty()) "· $rest" else rest
+        val rest = listOfNotNull(author, age, noHistory).joinToString(" · ")
+        detailView.text = spacedDotsForViews(if (channel != null && rest.isNotEmpty()) "· $rest" else rest)
+    }
+
+    /** A data da página do vídeo ("Nov 10, 2025") como idade ("3 days ago"); a data mesma, se não der para ler. */
+    private fun ageOf(date: String?): String? {
+        date ?: return null
+        val now = System.currentTimeMillis()
+        val today = (now + java.util.TimeZone.getDefault().getOffset(now)) / DAY_MS
+        val age = Published.age(date, today) ?: return date
+        return when (age.span) {
+            Published.Span.DAY -> if (age.count == 0) getString(R.string.published_today)
+                else resources.getQuantityString(R.plurals.published_days, age.count, age.count)
+            Published.Span.WEEK -> resources.getQuantityString(R.plurals.published_weeks, age.count, age.count)
+            Published.Span.MONTH -> resources.getQuantityString(R.plurals.published_months, age.count, age.count)
+            Published.Span.YEAR -> resources.getQuantityString(R.plurals.published_years, age.count, age.count)
+        }
     }
 
     private fun renderControls(controls: PlaybackController.Controls) {
@@ -380,8 +484,9 @@ class PlayerActivity : ComponentActivity() {
         channelButton.setOnClickListener {
             val page = controller.controls.value.page ?: return@setOnClickListener
             val channelId = page.channelId ?: return@setOnClickListener
-            startActivity(MainActivity.channelIntent(this, channelId, page.channelName.orEmpty()))
+            // Fecha antes de abrir o canal: sair assim não abre o mini player.
             finish()
+            startActivity(MainActivity.channelIntent(this, channelId, page.channelName.orEmpty()))
         }
         captionsButton.setOnClickListener { controller.toggleCaptions() }
         sleepButton.setOnClickListener { togglePanel(sleepPanel) }
@@ -568,6 +673,8 @@ class PlayerActivity : ComponentActivity() {
             // Uma vez só: o Android pede que o serviço seja ligado à mão.
             Toast.makeText(this, R.string.player_turn_off_setup, Toast.LENGTH_LONG).show()
             try {
+                // Daqui a pessoa volta para o mesmo vídeo: o player não fecha ao sair da tela.
+                inOwnSettings = true
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             } catch (_: ActivityNotFoundException) {
                 // Sem a tela de Acessibilidade: o aviso já diz onde ligar.
@@ -577,19 +684,21 @@ class PlayerActivity : ComponentActivity() {
 
     /**
      * O vídeo acabou sem próximo na sequência: a tela pode apagar e, com "Turn off", o aparelho
-     * dorme depois de alguns segundos (qualquer botão cancela). Tocar de novo volta a manter a
-     * tela acesa.
+     * dorme depois de alguns segundos (qualquer botão cancela). Sem o modo dormir, vale o que foi
+     * escolhido em Settings > When a video ends ([afterEnd]). Tocar de novo volta a manter a tela
+     * acesa.
      */
     private fun onEnded(ended: Boolean) {
         keepScreenOn(!ended)
         if (!ended) {
             endHandled = false
             cancelTurnOff(announce = false)
+            hideEndScreen()
             return
         }
         if (endHandled) return
         endHandled = true
-        if (!turnOffWhenDone || !canTurnOff) return
+        if (!turnOffWhenDone || !canTurnOff) return afterEnd()
         if (!ScreenOffService.enabled) {
             Toast.makeText(this, R.string.player_turn_off_not_allowed, Toast.LENGTH_LONG).show()
             return
@@ -600,6 +709,63 @@ class PlayerActivity : ComponentActivity() {
             turnOffJob = null
             ScreenOffService.turnOff()
         }
+    }
+
+    /**
+     * O fim sem o "Turn off" (1.0, pedido do Johan): a tela de sugestões, voltar para a tela de onde
+     * o vídeo veio, tocar a primeira sugestão ou ficar parado ([EndAction], [UpNext]). Com o modo
+     * dormir em uso (o vídeo escurecido ou um limite no "Then play"), fica parado, como sempre; na
+     * janelinha flutuante e depois de um erro, também.
+     */
+    private fun afterEnd() {
+        val queueLimited = PlayQueue.active.value && PlayQueue.left.value != PlayQueue.ALL
+        if (UpNext.sleeping(brightness, queueLimited, turnOff = false) || floating || isFinishing) return
+        if (controller.state.value is PlaybackController.State.Failed) return
+        lifecycleScope.launch {
+            val settings = SettingsRepository.current()
+            if (!controller.ended.value) return@launch
+            when (settings.endAction) {
+                EndAction.STAY -> Unit
+                EndAction.BACK -> close()
+                EndAction.SUGGESTIONS, EndAction.NEXT -> {
+                    val videoId = controller.videoId ?: return@launch
+                    val page = controller.controls.value.page
+                    val suggestions = UpNext.pick(
+                        currentId = videoId,
+                        channelId = page?.channelId,
+                        channelName = page?.channelName,
+                        related = page?.related.orEmpty(),
+                        after = UpNext.after(videoId),
+                        filters = settings.filters,
+                    )
+                    closePanel(focusButton = false)
+                    playerView.hideController()
+                    playerView.useController = false
+                    endScreen.show(suggestions, playNext = settings.endAction == EndAction.NEXT)
+                }
+            }
+        }
+    }
+
+    private fun hideEndScreen() {
+        if (!::endScreen.isInitialized || !endScreen.shown) return
+        endScreen.hide()
+        playerView.useController = !floating
+        playerView.requestFocus()
+    }
+
+    /** Uma sugestão da tela do fim: toca aqui mesmo, sozinha (fora da sequência de uma playlist). */
+    private fun playSuggestion(video: Video) {
+        hideEndScreen()
+        PlayQueue.clear()
+        published = Published.of(video)
+        thumbnail = video.thumbnailUrl
+        start(video.id, 0, saveHistory, video.title, video.resumeMs)
+    }
+
+    /** Volta para a tela de onde o vídeo foi aberto (ou para o app do link, numa tarefa só do player). */
+    private fun close() {
+        if (isTaskRoot) finishAndRemoveTask() else finish()
     }
 
     private fun cancelTurnOff(announce: Boolean) {
@@ -619,6 +785,11 @@ class PlayerActivity : ComponentActivity() {
         if (event.action == KeyEvent.ACTION_DOWN && turnOffJob != null) {
             cancelTurnOff(announce = true)
             return true
+        }
+        // Com a tela do fim aberta, as teclas são dela (e cada uma recomeça a contagem); "voltar" sai do player.
+        if (::endScreen.isInitialized && endScreen.shown) {
+            if (event.action == KeyEvent.ACTION_DOWN) endScreen.touched()
+            return super.dispatchKeyEvent(event)
         }
         hidingKey?.let { key ->
             if (event.keyCode == key) {
@@ -666,6 +837,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && turnOffJob != null) cancelTurnOff(announce = true)
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && ::endScreen.isInitialized && endScreen.shown) endScreen.touched()
         return super.dispatchTouchEvent(event)
     }
 
@@ -676,6 +848,15 @@ class PlayerActivity : ComponentActivity() {
         }
 
         override fun onVideoSizeChanged(videoSize: VideoSize) = followVideo(videoSize)
+
+        override fun onRenderedFirstFrame() = loading.firstFrame()
+
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (events.containsAny(Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_VIDEO_SIZE_CHANGED)) {
+                updateMiniPlayer()
+            }
+            if (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED)) renderLoading()
+        }
     }
 
     /** Celular e tablet: deitado para vídeo horizontal, em pé para vertical (a não ser que o botão tenha escolhido). */
@@ -692,6 +873,79 @@ class PlayerActivity : ComponentActivity() {
         val next = if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         chosenOrientation = next
         requestedOrientation = next
+    }
+
+    /**
+     * O mini player flutuante (pedido do Johan, 2026-11-11): sair do app com o vídeo tocando deixa
+     * o vídeo numa janelinha por cima dos outros apps. Nela fica só o vídeo; tocar/pausar são os do
+     * Android, pela sessão de mídia do [PlaybackService]. Fechar a janelinha fecha o vídeo, e
+     * tocar nela volta para o player.
+     */
+    private fun bindMiniPlayer() {
+        addOnPictureInPictureModeChangedListener { showFloating(it.isInPictureInPictureMode) }
+        // Onde o vídeo está na tela, para a janelinha sair dele.
+        playerView.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)
+            ?.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                if (left != oldLeft || top != oldTop || right != oldRight || bottom != oldBottom) updateMiniPlayer()
+            }
+    }
+
+    private fun showFloating(on: Boolean) {
+        floating = on
+        if (on) {
+            floatingPlayer = WeakReference(this)
+            closePanel(focusButton = false)
+            seekBadge.animate().cancel()
+            seekBadge.visibility = View.GONE
+            preview.visibility = View.GONE
+        } else {
+            if (floatingPlayer?.get() === this) floatingPlayer = null
+            // A janelinha saiu com a tela já fora de vista: foi fechada (o X ou arrastar para baixo),
+            // não aberta de volta. Fecha o vídeo, e a tarefa que o Android criou para a janelinha.
+            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                if (isTaskRoot) finishAndRemoveTask() else finish()
+            }
+        }
+        // Sem os controles da tela na janelinha (escondê-los também baixa a legenda).
+        playerView.useController = !on && !(::endScreen.isInitialized && endScreen.shown)
+    }
+
+    private fun floats() =
+        MiniPlayerRules.floats(touch, controller.player.playWhenReady, controller.player.playbackState, isFinishing)
+
+    /** A forma da janelinha, de onde ela sai e, do Android 12 em diante, se ela abre sozinha ao sair do app. */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun miniPlayerParams(): PictureInPictureParams {
+        val size = controller.player.videoSize
+        val (width, height) = MiniPlayerRules.shape(size.width, size.height, size.pixelWidthHeightRatio)
+        val params = PictureInPictureParams.Builder().setAspectRatio(Rational(width, height))
+        val video = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)
+        if (!floating && video != null && video.getGlobalVisibleRect(videoBounds) && !videoBounds.isEmpty) {
+            params.setSourceRectHint(videoBounds)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) params.setAutoEnterEnabled(floats())
+        return params.build()
+    }
+
+    private fun updateMiniPlayer() {
+        if (!miniPlayerSupported || !::controller.isInitialized || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        runCatching { setPictureInPictureParams(miniPlayerParams()) }
+            .onFailure { Log.w(TAG, "couldn't set up the mini player", it) }
+    }
+
+    /** Até o Android 11 a janelinha abre à mão, ao sair do app; do 12 em diante, sozinha ([miniPlayerParams]). */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT !in Build.VERSION_CODES.O until Build.VERSION_CODES.S) return
+        if (!miniPlayerSupported || !::controller.isInitialized || floating || !floats()) return
+        runCatching { enterPictureInPictureMode(miniPlayerParams()) }
+            .onFailure { Log.w(TAG, "couldn't open the mini player", it) }
+    }
+
+    override fun finish() {
+        super.finish()
+        // Fechando o player (voltar, ou o canal do vídeo), sair não abre a janelinha.
+        updateMiniPlayer()
     }
 
     /**
@@ -931,7 +1185,15 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        inOwnSettings = false
+        if (!::controller.isInitialized) return
         playerView.requestFocus()
+        if (touch) {
+            // O serviço que deixa o vídeo continuar com a tela desligada começa com a tela na frente.
+            controller.sessionPlayer?.let { PlaybackService.attach(this, it) }
+            controller.setBackground(false)
+            updateMiniPlayer()
+        }
     }
 
     override fun onStop() {
@@ -940,7 +1202,14 @@ class PlayerActivity : ComponentActivity() {
         // Saiu do app durante a contagem: não desliga nada.
         cancelTurnOff(announce = false)
         controller.saveProgress()
-        controller.player.pause()
+        val screenOn = getSystemService(PowerManager::class.java)?.isInteractive != false
+        // Tela desligada no meio do vídeo (celular e tablet): continua tocando (pedido do Johan, 2026-11-11).
+        if (!ScreenOffRules.keepsPlaying(touch, screenOn, controller.player.playWhenReady)) controller.player.pause()
+        // Fora da tela, sem imagem: só o som, se continuar (ou se voltar a tocar pela notificação).
+        if (touch && !isFinishing) controller.setBackground(true)
+        // Na TV, desligar a TV ou sair do app fecha o player: ao voltar, o app está na lista de onde o
+        // vídeo foi aberto, e não numa tela preta carregando o vídeo de antes (pedido do Johan, 2026-11-13).
+        if (ScreenOffRules.closesOnStop(touch, isChangingConfigurations, inOwnSettings)) finish()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -949,11 +1218,17 @@ class PlayerActivity : ComponentActivity() {
         outState.putLong(KEY_POSITION, controller.player.currentPosition)
         controller.videoId?.let { outState.putString(KEY_VIDEO, it) }
         controller.titleHint?.let { outState.putString(KEY_TITLE, it) }
+        controller.publishedHint?.let { outState.putString(KEY_PUBLISHED, it) }
+        controller.thumbnailHint?.let { outState.putString(KEY_THUMBNAIL, it) }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        if (::controller.isInitialized) controller.release()
+        if (floatingPlayer?.get() === this) floatingPlayer = null
+        if (!::controller.isInitialized) return
+        // A notificação e a sessão saem antes de o player ser solto.
+        controller.sessionPlayer?.let { PlaybackService.detach(this, it) }
+        controller.release()
     }
 
     private fun buildLayout(initialTitle: String?): View {
@@ -994,6 +1269,10 @@ class PlayerActivity : ComponentActivity() {
         queueRow = playerView.findViewById(R.id.player_sleep_queue)
         endRow = playerView.findViewById(R.id.player_sleep_end)
 
+        // A miniatura e o círculo de carregando: por cima do vídeo, por baixo do escurecer do modo dormir.
+        loading = PlayerLoading(this, tv = !touch)
+        (playerView.overlayFrameLayout ?: playerView).addView(loading, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+
         // Por cima do vídeo e da legenda, por baixo dos controles.
         dimView = View(this).apply {
             setBackgroundColor(Color.BLACK)
@@ -1006,7 +1285,7 @@ class PlayerActivity : ComponentActivity() {
         captionsView = SubtitleView(this).apply {
             setApplyEmbeddedStyles(false)
             setApplyEmbeddedFontSizes(false)
-            setStyle(CaptionRules.style(ResourcesCompat.getFont(this@PlayerActivity, R.font.figtree_semibold)))
+            setStyle(CaptionRules.style(ResourcesCompat.getFont(this@PlayerActivity, R.font.outfit_semibold)))
             setUserDefaultTextSize()
             // Uma margem pequena da borda de baixo, só para a legenda não encostar nela.
             setPadding(0, 0, 0, resources.getDimensionPixelSize(R.dimen.player_captions_bottom))
@@ -1026,7 +1305,7 @@ class PlayerActivity : ComponentActivity() {
             setBackgroundResource(R.drawable.player_badge_bg)
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.figtree_semibold)
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.outfit_semibold)
             compoundDrawableTintList = ColorStateList.valueOf(Color.WHITE)
             gravity = Gravity.CENTER
             minWidth = dp(64)
@@ -1048,10 +1327,14 @@ class PlayerActivity : ComponentActivity() {
             visibility = View.GONE
         }
 
+        // A tela do fim do vídeo ([UpNext]), por cima de tudo.
+        endScreen = EndScreen(this, tv = !touch, onPlay = ::playSuggestion, onBack = ::close)
+
         return FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             addView(playerView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
             addView(messageView, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER))
+            addView(endScreen.view, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         }
     }
 
@@ -1081,13 +1364,19 @@ class PlayerActivity : ComponentActivity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     companion object {
+        private const val TAG = "BeamTube"
         private const val EXTRA_VIDEO_ID = "video_id"
         private const val EXTRA_TITLE = "title"
+        private const val EXTRA_PUBLISHED = "published"
         private const val EXTRA_REQUESTED_AT = "requested_at"
         private const val EXTRA_RESUME = "resume_ms"
+        private const val EXTRA_BACK_TO_PLAYER = "back_to_player"
         private const val KEY_POSITION = "position"
         private const val KEY_VIDEO = "video"
         private const val KEY_TITLE = "video_title"
+        private const val KEY_PUBLISHED = "video_published"
+        private const val EXTRA_THUMBNAIL = "thumbnail"
+        private const val KEY_THUMBNAIL = "video_thumbnail"
 
         /** O mesmo show_timeout do player_view. */
         private const val CONTROLS_TIMEOUT_MS = 4000
@@ -1110,6 +1399,9 @@ class PlayerActivity : ComponentActivity() {
          */
         private var sessionBrightness = 100
 
+        /** O player que está no mini player agora, se houver (um vídeo novo o fecha). */
+        private var floatingPlayer: WeakReference<PlayerActivity>? = null
+
         /** Tempo para cancelar o "Turn off" depois que os vídeos acabam. */
         private const val TURN_OFF_DELAY_MS = 10_000L
 
@@ -1120,13 +1412,36 @@ class PlayerActivity : ComponentActivity() {
 
         /** O aviso dos toques fica este tempo e some em [FLASH_FADE_MS]. */
         private const val FLASH_MS = 450L
+        private const val DAY_MS = 86_400_000L
         private const val FLASH_FADE_MS = 250L
 
-        /** @param resumeMs onde o card do YouTube diz que o vídeo parou ([Video.resumeMs]). */
-        fun intent(context: Context, videoId: String, title: String?, resumeMs: Long = 0): Intent =
+        /**
+         * O toque na notificação do vídeo tocando com a tela desligada ([PlaybackService]). Com o
+         * player em cima da tarefa do app, o Android só a traz para a frente (SINGLE_TOP); senão, a
+         * tela nova o procura e fecha ([PlaybackService.bringPlayerToFront]).
+         */
+        fun backIntent(context: Context): Intent =
+            Intent(context, PlayerActivity::class.java)
+                .putExtra(EXTRA_BACK_TO_PLAYER, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+
+        /**
+         * @param resumeMs onde o card do YouTube diz que o vídeo parou ([Video.resumeMs]).
+         * @param thumbnail a miniatura do card, que fica na tela enquanto o vídeo carrega.
+         */
+        fun intent(
+            context: Context,
+            videoId: String,
+            title: String?,
+            resumeMs: Long = 0,
+            published: String? = null,
+            thumbnail: String? = null,
+        ): Intent =
             Intent(context, PlayerActivity::class.java)
                 .putExtra(EXTRA_VIDEO_ID, videoId)
                 .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_PUBLISHED, published)
+                .putExtra(EXTRA_THUMBNAIL, thumbnail)
                 .putExtra(EXTRA_RESUME, resumeMs)
                 .putExtra(EXTRA_REQUESTED_AT, SystemClock.elapsedRealtime())
     }

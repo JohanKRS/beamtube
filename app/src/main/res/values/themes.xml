@@ -7,8 +7,8 @@
     <style name="Theme.App.Player">
         <item name="android:windowBackground">@android:color/black</item>
         <!-- O âmbar, até o PlayerActivity aplicar a cor escolhida (values/accents.xml). -->
-        <item name="doorglowAccent">#FFFFC861</item>
-        <item name="doorglowAccentSoft">#FFFFE3A3</item>
+        <item name="beamAccent">#FFFFC861</item>
+        <item name="beamAccentSoft">#FFFFE3A3</item>
     </style>
 
     <color name="window_background">#FF18191B</color>

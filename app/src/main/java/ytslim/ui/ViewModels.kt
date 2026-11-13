@@ -3,6 +3,7 @@ package ytslim.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -19,12 +20,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import ytslim.AppVisibility
 import ytslim.data.AppIcon
 import ytslim.data.AppScope
 import ytslim.data.AppIcons
 import ytslim.data.AuthRepository
 import ytslim.data.AuthRepository.SignInEvent
 import ytslim.data.ExploreRepository
+import ytslim.data.EndAction
 import ytslim.data.ExternalLinks
 import ytslim.data.FeedCache
 import ytslim.data.ListCache
@@ -97,14 +100,20 @@ class SignInViewModel : ViewModel() {
     }
 }
 
-/** Uma lista de vídeos na tela, com paginação. */
-/** [cached]: a lista guardada no aparelho ([ListCache]), na tela até a da conta chegar. */
+/**
+ * Uma lista de vídeos na tela, com paginação.
+ *
+ * @param cached a lista guardada no aparelho ([ListCache]), na tela até a da conta chegar.
+ * @param jumpToTop muda quando a lista deve voltar ao começo (as Inscrições atualizadas sozinhas
+ * depois de o app ficar um tempo fora): a grade sobe até o primeiro vídeo.
+ */
 data class VideoListContent(
     val videos: List<Video>,
     val hasMore: Boolean,
     val loadingMore: Boolean,
     val title: String? = null,
     val cached: Boolean = false,
+    val jumpToTop: Int = 0,
 )
 
 /**
@@ -115,8 +124,17 @@ class FeedViewModel : ViewModel(), Refreshable {
     private sealed interface Raw {
         data object Loading : Raw
         data class Error(val message: String) : Raw
-        /** [cached]: o feed guardado no aparelho ([FeedCache]), na tela até o novo chegar. */
-        data class Loaded(val feed: List<Timed>, val lastPage: VideoPage, val loadingMore: Boolean, val cached: Boolean = false) : Raw
+        /**
+         * [cached]: o feed guardado no aparelho ([FeedCache]), na tela até o novo chegar.
+         * [jump]: o [VideoListContent.jumpToTop] desta lista.
+         */
+        data class Loaded(
+            val feed: List<Timed>,
+            val lastPage: VideoPage,
+            val loadingMore: Boolean,
+            val cached: Boolean = false,
+            val jump: Int = 0,
+        ) : Raw
     }
 
     private val raw = MutableStateFlow<Raw>(Raw.Loading)
@@ -137,12 +155,15 @@ class FeedViewModel : ViewModel(), Refreshable {
             val keepExtra = { t: Timed -> keep(t) && !TopicRules.isExcluded(t.video, settings.filters) }
             val complete = !raw.lastPage.hasMore && !raw.cached
             val videos = FeedMerge.merge(raw.feed.filter(keep), extras.filter(keepExtra), feedComplete = complete)
-            UiState.Ready(VideoListContent(videos, raw.lastPage.hasMore, raw.loadingMore))
+            UiState.Ready(VideoListContent(videos, raw.lastPage.hasMore, raw.loadingMore, jumpToTop = raw.jump))
         }
     }
 
     private var loadJob: Job? = null
     private var extrasJob: Job? = null
+
+    /** Quantas vezes a lista voltou ao começo sozinha ([Raw.Loaded.jump]). */
+    private var jumps = 0
     private val _refreshing = MutableStateFlow(false)
     override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
@@ -155,24 +176,37 @@ class FeedViewModel : ViewModel(), Refreshable {
             }
             load(quiet = raw.value is Raw.Loaded)
         }
+        // Depois de um tempo fora (a TV desligada, outro app), as Inscrições se atualizam sozinhas e
+        // voltam ao começo, com os vídeos novos (pedido do Johan, 2026-11-13: na TV só atualizava
+        // fechando e abrindo o app). O que estava na tela fica até a lista nova chegar.
+        viewModelScope.launch {
+            AppVisibility.returns.collect { awayMs ->
+                if (FeedRules.refreshesAfterAway(awayMs)) load(quiet = raw.value is Raw.Loaded, afterAway = true)
+            }
+        }
     }
 
     fun reload() = load(quiet = false)
 
     override fun refresh() = load(quiet = raw.value is Raw.Loaded)
 
-    private fun load(quiet: Boolean) {
+    /**
+     * @param afterAway a volta depois de um tempo fora: a lista nova sobe ao começo, e a leitura
+     * tenta de novo algumas vezes (a TV recém-ligada leva uns segundos para voltar ao Wi-Fi).
+     */
+    private fun load(quiet: Boolean, afterAway: Boolean = false) {
         loadJob?.cancel()
         extrasJob?.cancel()
         autoPages = 0
         _refreshing.value = quiet
         if (!quiet) raw.value = Raw.Loading
         loadJob = viewModelScope.launch {
-            raw.value = runCatching { FeedRepository.subscriptions() }.fold(
+            raw.value = subscriptions(retries = if (afterAway) FeedRules.AWAY_RETRIES else 0).fold(
                 { page ->
                     val feed = FeedMerge.estimate(page.videos, System.currentTimeMillis())
                     AppScope.launch { FeedCache.saveFeed(feed) }
-                    Raw.Loaded(feed, page, loadingMore = false)
+                    if (afterAway) jumps++
+                    Raw.Loaded(feed, page, loadingMore = false, jump = jumps)
                 },
                 // Sem rede, a lista que está na tela (a guardada, ou a de antes do puxar) fica.
                 { if (quiet) raw.value else Raw.Error(it.toMessage()) },
@@ -192,6 +226,17 @@ class FeedViewModel : ViewModel(), Refreshable {
         }
     }
 
+    /** O feed dos canais; sem rede, tenta de novo [retries] vezes, esperando cada vez o dobro. */
+    private suspend fun subscriptions(retries: Int): Result<VideoPage> {
+        var attempt = 0
+        while (true) {
+            val result = runCatching { FeedRepository.subscriptions() }
+            if (result.isSuccess || attempt >= retries) return result
+            delay(FeedRules.RETRY_FIRST_MS shl attempt)
+            attempt++
+        }
+    }
+
     fun loadMore() {
         val loaded = raw.value as? Raw.Loaded ?: return
         if (!loaded.lastPage.hasMore || loaded.loadingMore || _refreshing.value) return
@@ -201,7 +246,7 @@ class FeedViewModel : ViewModel(), Refreshable {
             val known = loaded.feed.mapTo(HashSet()) { it.video.id }
             val startAt = loaded.feed.lastOrNull()?.atMs ?: System.currentTimeMillis()
             val added = FeedMerge.estimate(next?.videos.orEmpty().filter { known.add(it.id) }, System.currentTimeMillis(), startAt)
-            raw.value = Raw.Loaded(loaded.feed + added, next ?: VideoPage(emptyList(), null), loadingMore = false)
+            raw.value = Raw.Loaded(loaded.feed + added, next ?: VideoPage(emptyList(), null), loadingMore = false, jump = loaded.jump)
             fillScreen()
         }
     }
@@ -586,6 +631,10 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch { SettingsRepository.setExternalLinks(value) }
     }
 
+    fun setEndAction(value: EndAction) {
+        viewModelScope.launch { SettingsRepository.setEndAction(value) }
+    }
+
     /** As playlists do usuário, para escolher a do botão "Save". Carregadas ao abrir a escolha. */
     private val _ownPlaylists = MutableStateFlow<UiState<List<OwnPlaylist>>?>(null)
     val ownPlaylists: StateFlow<UiState<List<OwnPlaylist>>?> = _ownPlaylists.asStateFlow()
@@ -625,9 +674,11 @@ class SettingsViewModel : ViewModel() {
 
     /** Cria ([index] null) ou altera um tópico. Palavras-chave separadas por vírgula. */
     fun saveTopic(list: TopicList, index: Int?, name: String, keywords: String) {
-        val topic = Topic(name.trim(), TopicRules.parseKeywords(keywords))
-        if (topic.name.isEmpty() || topic.keywords.isEmpty()) return
         val current = topics(list).toMutableList()
+        // Um tópico das sugestões continua ligado a elas se o nome não mudou (só as palavras).
+        val before = index?.let(current::getOrNull)
+        val topic = Topic(name.trim(), TopicRules.parseKeywords(keywords), id = before?.id?.takeIf { before.name == name.trim() })
+        if (topic.name.isEmpty() || topic.keywords.isEmpty()) return
         if (index != null && index in current.indices) current[index] = topic else current += topic
         setTopics(list, current)
     }

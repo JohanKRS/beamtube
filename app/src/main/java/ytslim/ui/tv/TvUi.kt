@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -48,11 +47,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.compositionLocalOf
@@ -63,11 +64,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -82,20 +85,25 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -131,26 +139,35 @@ import ytslim.R
 import ytslim.data.AppIcon
 import ytslim.data.AuthRepository
 import ytslim.data.Channel
+import ytslim.data.PlaybackRepository
 import ytslim.data.Playlist
 import ytslim.data.SavedVideos
 import ytslim.data.SearchFilters
 import ytslim.data.SearchItem
 import ytslim.data.Topic
 import ytslim.data.TopicRules
+import ytslim.data.UpNext
 import ytslim.data.Video
 import ytslim.ui.AppIconPreview
 import ytslim.ui.ChannelViewModel
 import ytslim.ui.ExploreViewModel
 import ytslim.ui.Accent
 import ytslim.ui.Accents
-import ytslim.ui.DoorGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
 import ytslim.ui.LightSlit
+import ytslim.ui.ListTop
 import ytslim.ui.MetaLine
 import ytslim.ui.metaAfterChannel
+import ytslim.ui.AppLanguage
+import ytslim.ui.Language
 import ytslim.ui.Look
+import ytslim.ui.TopicsViewModel
+import ytslim.ui.findActivity
+import ytslim.ui.label
+import ytslim.ui.TypeScale
+import ytslim.ui.Wordmark
 import ytslim.ui.Notice
 import ytslim.ui.Notices
 import ytslim.ui.PlaylistViewModel
@@ -167,11 +184,13 @@ import ytslim.ui.SettingsViewModel.TopicList
 import ytslim.ui.SignInViewModel
 import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
-import ytslim.ui.channelOf
+import ytslim.ui.openChannelOf
 import ytslim.ui.exploreFilterChoices
+import ytslim.ui.endActionOptions
 import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
 import ytslim.ui.searchFilterChoices
+import ytslim.ui.spacedDots
 import ytslim.ui.subtitleOf
 import ytslim.ui.text
 import ytslim.ui.toggleSaved
@@ -188,10 +207,20 @@ private val LocalInitialFocus = compositionLocalOf<MutableState<Boolean>> { muta
  * (achado do Johan na TV, 2026-11-04: das Inscrições ia para os Ajustes).
  */
 private fun Modifier.entersAt(selected: FocusRequester) =
-    focusProperties { onEnter = { selected.requestFocus() } }.focusGroup()
+    focusProperties {
+        onEnter = {
+            // Só se entra nas abas subindo ou descendo. Com as abas encostadas à direita, a seta para a
+            // direita no último card de uma fileira achava uma aba "mais à direita" e pulava para lá.
+            if (requestedFocusDirection == FocusDirection.Left || requestedFocusDirection == FocusDirection.Right) {
+                cancelFocusChange()
+            } else {
+                selected.requestFocus()
+            }
+        }
+    }.focusGroup()
 
 /**
- * As cores do Doorglow na TV. O foco é a luz da porta: botões e linhas focados ficam na cor de
+ * As cores do BeamTube na TV. O foco é a luz da fresta: botões e linhas focados ficam na cor de
  * destaque com texto escuro, e os cards ganham um contorno claro. Refeitas quando a cor de
  * destaque muda ([Look.accent]).
  */
@@ -223,26 +252,23 @@ private fun colors() = darkColorScheme(
     scrim = Color.Black,
 )
 
-private val Type: Typography = Typography().let { t ->
-    fun TextStyle.figtree(weight: FontWeight? = null) = copy(fontFamily = Look.Figtree, fontWeight = weight ?: fontWeight)
-    Typography(
-        displayLarge = t.displayLarge.figtree(),
-        displayMedium = t.displayMedium.figtree(),
-        displaySmall = t.displaySmall.figtree(),
-        headlineLarge = t.headlineLarge.figtree(FontWeight.SemiBold),
-        headlineMedium = t.headlineMedium.figtree(FontWeight.SemiBold),
-        headlineSmall = t.headlineSmall.figtree(FontWeight.SemiBold),
-        titleLarge = t.titleLarge.figtree(FontWeight.SemiBold),
-        titleMedium = t.titleMedium.figtree(FontWeight.SemiBold),
-        titleSmall = t.titleSmall.figtree(FontWeight.SemiBold),
-        bodyLarge = t.bodyLarge.figtree(),
-        bodyMedium = t.bodyMedium.figtree(),
-        bodySmall = t.bodySmall.figtree(),
-        labelLarge = t.labelLarge.figtree(FontWeight.SemiBold),
-        labelMedium = t.labelMedium.figtree(FontWeight.SemiBold),
-        labelSmall = t.labelSmall.figtree(FontWeight.SemiBold),
-    )
-}
+private val Type: Typography = Typography(
+    displayLarge = TypeScale.displayLarge,
+    displayMedium = TypeScale.displayMedium,
+    displaySmall = TypeScale.displaySmall,
+    headlineLarge = TypeScale.headlineLarge,
+    headlineMedium = TypeScale.headlineMedium,
+    headlineSmall = TypeScale.headlineSmall,
+    titleLarge = TypeScale.titleLarge,
+    titleMedium = TypeScale.titleMedium,
+    titleSmall = TypeScale.titleSmall,
+    bodyLarge = TypeScale.bodyLarge,
+    bodyMedium = TypeScale.bodyMedium,
+    bodySmall = TypeScale.bodySmall,
+    labelLarge = TypeScale.labelLarge,
+    labelMedium = TypeScale.labelMedium,
+    labelSmall = TypeScale.labelSmall,
+)
 
 /** Sem vidro na TV: as caixas de TV costumam ter pouca GPU, e o desfoque não compensa. */
 private val Floating = Color(0xF528292D)
@@ -256,6 +282,9 @@ private val GroupCorner = 18.dp
 object TvUi : Screens {
     private val OkKeys = setOf(android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER)
     private val GridGapX = 20.dp
+
+    /** Quantos quadros esperar pelo primeiro card antes de desistir de pôr o foco nele. */
+    private const val FOCUS_TRIES = 3
     private val GridGapY = 28.dp
     private val screenPadding = PaddingValues(horizontal = 48.dp, vertical = 26.dp)
 
@@ -305,8 +334,10 @@ object TvUi : Screens {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(stringResource(R.string.sign_in_title), style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(32.dp))
+            Wordmark(40.sp)
+            Spacer(Modifier.height(44.dp))
+            Text(stringResource(R.string.sign_in_title), style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(28.dp))
             when (val s = state) {
                 SignInViewModel.State.Requesting, SignInViewModel.State.SignedIn ->
                     Text(stringResource(R.string.sign_in_requesting), style = MaterialTheme.typography.titleMedium)
@@ -365,14 +396,17 @@ object TvUi : Screens {
         BackHandler(enabled = !tabsFocused) { runCatching { selectedTab.requestFocus() } }
 
         Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            DoorGlyph(Modifier.size(width = 15.dp, height = 22.dp))
-            Spacer(Modifier.width(24.dp))
+          // O logotipo inteiro (a fresta, o facho com a poeira e o nome), sem fundo, na mesma linha
+          // das abas (pedido do Johan, 2026-11-13), com a letra do tamanho da das abas (ele achou o de
+          // 22sp grande demais). O logotipo fica à esquerda e as abas, encostadas à direita (pedido dele
+          // do mesmo dia): o nome da última aba termina na linha da borda direita dos cards.
+          val labels = tabs.map { stringResource(it.second) }
+          LogoAndTabs(labels, logo = { Wordmark(LogoSize.toFixedSp()) }) { labelSize ->
             val selectedIndex = tabs.indexOfFirst { it.first == tab }
             TabRow(
                 selectedTabIndex = selectedIndex,
                 modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
-                separator = { Spacer(Modifier.width(4.dp)) },
+                separator = { Spacer(Modifier.width(TabSeparator)) },
                 indicator = { positions, _ -> positions.getOrNull(selectedIndex)?.let { SlitIndicator(it) } },
             ) {
                 tabs.forEach { (item, label) ->
@@ -401,11 +435,7 @@ object TvUi : Screens {
                                 false
                             },
                     ) {
-                        Text(
-                            stringResource(label),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        )
+                        TabLabel(labels[tabs.indexOfFirst { it.first == item }], selected = item == tab, size = labelSize)
                     }
                 }
             }
@@ -413,6 +443,84 @@ object TvUi : Screens {
             Spacer(Modifier.height(24.dp))
             CompositionLocalProvider(LocalInitialFocus provides initialFocus) {
                 Box(Modifier.fillMaxSize()) { content(tab) }
+            }
+        }
+    }
+
+    /**
+     * O nome de uma aba, nos dois pesos do logotipo: a escolhida em bold, as outras em light. A
+     * largura é sempre a do bold (desenhado invisível por baixo), para as abas não andarem de lado
+     * quando a escolhida muda.
+     */
+    @Composable
+    private fun TabLabel(text: String, selected: Boolean, size: TextUnit) {
+        val style = MaterialTheme.typography.titleMedium.copy(fontSize = size)
+        Box(Modifier.padding(horizontal = TabLabelPadding, vertical = 6.dp), contentAlignment = Alignment.Center) {
+            Text(text, style = style.copy(fontWeight = FontWeight.Bold), color = Color.Transparent, maxLines = 1, modifier = Modifier.clearAndSetSemantics {})
+            Text(text, style = style.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Light), maxLines = 1)
+        }
+    }
+
+    /** O espaço de cada lado do nome de uma aba. */
+    private val TabLabelPadding = 12.dp
+
+    /** O espaço entre uma aba e a outra, além do [TabLabelPadding] de cada uma. */
+    private val TabSeparator = 2.dp
+
+    /** O espaço mínimo entre o logotipo e o nome da primeira aba. */
+    private val LogoGap = 40.dp
+
+    /**
+     * A altura da letra do logotipo, a mesma das abas no tamanho normal. Ela não cresce com a letra
+     * maior da Acessibilidade ([toFixedSp]), para sobrar espaço para os nomes das abas.
+     */
+    private val LogoSize = 16.dp
+
+    @Composable
+    private fun Dp.toFixedSp(): TextUnit = with(LocalDensity.current) { this@toFixedSp.toSp() }
+
+    /**
+     * O logotipo à esquerda e as abas encostadas à direita, sempre numa linha só (pedido do Johan,
+     * 2026-11-13). Quando os nomes não cabem (num idioma de palavras mais longas, ou com a letra maior
+     * da Acessibilidade), a letra das abas diminui até caberem todas, com pelo menos [LogoGap] entre o
+     * logotipo e o nome da primeira. As abas passam [TabLabelPadding] da borda direita, para o nome da
+     * última terminar na linha dos cards. [tabs] recebe o tamanho da letra dos nomes.
+     */
+    @Composable
+    private fun LogoAndTabs(labels: List<String>, logo: @Composable () -> Unit, tabs: @Composable (TextUnit) -> Unit) {
+        val measurer = rememberTextMeasurer(cacheSize = 16)
+        // O nome escolhido fica em bold, e cada aba já tem a largura do bold ([TabLabel]).
+        val style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+        // O tamanho que coube em cada largura, para não medir os nomes de novo a cada foco.
+        val fitted = remember(labels, style, LocalDensity.current) { HashMap<Int, TextUnit>() }
+        SubcomposeLayout { constraints ->
+            val loose = constraints.copy(minWidth = 0, minHeight = 0)
+            val logoPlaceables = subcompose("logo", logo).map { it.measure(loose) }
+            val logoWidth = logoPlaceables.maxOfOrNull { it.width } ?: 0
+            val padding = TabLabelPadding.roundToPx()
+            // Cabe quando o começo do primeiro nome fica a [LogoGap] do logotipo.
+            val room = constraints.maxWidth - logoWidth - LogoGap.roundToPx() -
+                (labels.size * 2 - 2) * padding - (labels.size - 1).coerceAtLeast(0) * TabSeparator.roundToPx()
+            val size = fitted.getOrPut(room) {
+                fun width(size: TextUnit) =
+                    labels.sumOf { measurer.measure(it, style.copy(fontSize = size), maxLines = 1, softWrap = false).size.width }
+                // Diminui de pouco em pouco: com a letra maior da Acessibilidade (Android 14+), a
+                // letra pequena cresce mais que a grande, e a largura não cai na mesma proporção.
+                var size = style.fontSize
+                var width = width(size)
+                var tries = 0
+                while (width > room && size.value > style.fontSize.value * 0.4f && tries++ < 8) {
+                    size = (size.value * room / width * 0.98f).coerceAtLeast(style.fontSize.value * 0.4f).sp
+                    width = width(size)
+                }
+                size
+            }
+            val tabPlaceables = subcompose("tabs") { tabs(size) }.map { it.measure(loose) }
+            val tabsWidth = tabPlaceables.maxOfOrNull { it.width } ?: 0
+            val height = maxOf(logoPlaceables.maxOfOrNull { it.height } ?: 0, tabPlaceables.maxOfOrNull { it.height } ?: 0)
+            layout(constraints.maxWidth, height) {
+                logoPlaceables.forEach { it.placeRelative(0, (height - it.height) / 2) }
+                tabPlaceables.forEach { it.placeRelative(constraints.maxWidth - tabsWidth + padding, (height - it.height) / 2) }
             }
         }
     }
@@ -700,7 +808,7 @@ object TvUi : Screens {
     }
 
     @Composable
-    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onSignedOut: () -> Unit) {
+    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onOpenTopics: () -> Unit, onSignedOut: () -> Unit) {
         val settings by vm.settings.collectAsStateWithLifecycle()
         val playlists by vm.playlists.collectAsStateWithLifecycle()
         val ownPlaylists by vm.ownPlaylists.collectAsStateWithLifecycle()
@@ -708,11 +816,15 @@ object TvUi : Screens {
         val appIcon by vm.appIcon.collectAsStateWithLifecycle()
         var choosingTarget by rememberSaveable { mutableStateOf(false) }
         var editing by remember { mutableStateOf<Pair<TopicList, Int?>?>(null) }
+        val activity = LocalContext.current.findActivity()
+        val currentLanguage = remember { activity?.let(AppLanguage::current) ?: Language.SYSTEM }
 
         // Em cartões, como no celular (2026-11-03): o nome do grupo em cima, as linhas num cartão e a
-        // explicação embaixo. O foco continua o do ListItem (a linha fica creme).
+        // explicação embaixo. O foco continua o do ListItem (a linha fica creme). Os cartões ocupam a
+        // largura toda, como a grade dos vídeos (1.0, pedido do Johan: com 70% da largura, à
+        // esquerda, sobrava um buraco no lado direito).
         LazyColumn(
-            modifier = Modifier.fillMaxWidth(0.7f).widthIn(max = 820.dp),
+            modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(bottom = 48.dp),
         ) {
             group(
@@ -779,14 +891,39 @@ object TvUi : Screens {
             }
             group("target", R.string.settings_save_target, rows = targetRows)
 
-            topicGroup(
-                key = "excluded",
-                title = R.string.settings_excluded,
-                hint = R.string.settings_excluded_hint,
-                topics = settings.filters.excluded,
-                onEdit = { editing = TopicList.EXCLUDED to it },
-                onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
+            // O fim do vídeo (1.0, pedido do Johan): sugestões, voltar, tocar a próxima ou ficar parado.
+            group(
+                "end",
+                R.string.settings_end,
+                hint = R.string.settings_end_hint,
+                rows = endActionOptions.map { (action, label) ->
+                    row(action) {
+                        ListItem(
+                            selected = false,
+                            onClick = { vm.setEndAction(action) },
+                            headlineContent = { Text(stringResource(label)) },
+                            trailingContent = { RadioButton(selected = settings.endAction == action, onClick = null) },
+                        )
+                    }
+                },
             )
+
+            group(
+                "topics",
+                R.string.settings_topics,
+                hint = R.string.settings_topics_hint,
+                rows = listOf(
+                    row("choose") {
+                        ListItem(
+                            selected = false,
+                            onClick = onOpenTopics,
+                            headlineContent = { Text(stringResource(R.string.settings_topics_choose)) },
+                            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                        )
+                    },
+                ),
+            )
+
             topicGroup(
                 key = "preferred",
                 title = R.string.settings_preferred,
@@ -794,6 +931,14 @@ object TvUi : Screens {
                 topics = settings.filters.preferred,
                 onEdit = { editing = TopicList.PREFERRED to it },
                 onRemove = { vm.removeTopic(TopicList.PREFERRED, it) },
+            )
+            topicGroup(
+                key = "excluded",
+                title = R.string.settings_excluded,
+                hint = R.string.settings_excluded_hint,
+                topics = settings.filters.excluded,
+                onEdit = { editing = TopicList.EXCLUDED to it },
+                onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
             )
 
             group(
@@ -857,7 +1002,7 @@ object TvUi : Screens {
                                             selected = false,
                                             onClick = { onOpenPlaylist(item.playlist) },
                                             headlineContent = { Text(item.playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                            supportingContent = item.playlist.info?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                                            supportingContent = item.playlist.info?.let { { Text(spacedDots(it), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
                                             modifier = Modifier.weight(1f),
                                         )
                                         Spacer(Modifier.width(12.dp))
@@ -872,6 +1017,22 @@ object TvUi : Screens {
                 }
             }
             group("playlists", R.string.settings_playlists, hint = R.string.settings_playlists_hint, rows = playlistRows)
+
+            // O idioma do app (pedido do Johan, 2026-11-13); cada um com o nome na própria língua.
+            group(
+                "language",
+                R.string.settings_language,
+                rows = Language.entries.map { language ->
+                    row(language.name) {
+                        ListItem(
+                            selected = false,
+                            onClick = { activity?.let { AppLanguage.select(it, language) } },
+                            headlineContent = { Text(language.native ?: stringResource(language.label ?: R.string.language_system)) },
+                            trailingContent = { RadioButton(selected = currentLanguage == language, onClick = null) },
+                        )
+                    }
+                },
+            )
 
             group(
                 "icon",
@@ -954,7 +1115,7 @@ object TvUi : Screens {
                             ListItem(
                                 selected = false,
                                 onClick = { onEdit(index) },
-                                headlineContent = { Text(topic.name) },
+                                headlineContent = { Text(topic.label()) },
                                 supportingContent = { Text(topic.keywords.joinToString(", "), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 modifier = Modifier.weight(1f),
                             )
@@ -1033,6 +1194,9 @@ object TvUi : Screens {
             LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
         }
     }
+
+    @Composable
+    override fun Topics(vm: TopicsViewModel, firstRun: Boolean, onDone: () -> Unit) = TvTopics(vm, firstRun, onDone)
 
     @Composable
     override fun PlaylistPage(
@@ -1399,13 +1563,24 @@ object TvUi : Screens {
         val firstFocus = remember { FocusRequester() }
         val saved by SavedVideos.ids.collectAsStateWithLifecycle()
         val grid = rememberLazyGridState()
+        var inGrid by remember { mutableStateOf(false) }
         PrefetchThumbnails(content.videos, grid)
+        // De volta ao começo com vídeos novos: o foco que estava na grade vai para o primeiro deles.
+        ListTop(grid, content) {
+            if (!inGrid) return@ListTop
+            // O primeiro card só existe depois que a grade mede a lista nova.
+            repeat(FOCUS_TRIES) {
+                withFrameNanos { }
+                if (runCatching { firstFocus.requestFocus() }.getOrElse { false } != false) return@ListTop
+            }
+        }
         LazyVerticalGrid(
             state = grid,
             columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
             verticalArrangement = Arrangement.spacedBy(GridGapY),
             contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
+            modifier = Modifier.onFocusChanged { inGrid = it.hasFocus },
         ) {
             if (content.videos.isEmpty() && !content.loadingMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -1421,7 +1596,7 @@ object TvUi : Screens {
                     onOpenChannel = onOpenChannel,
                     onRemove = onRemove?.let { remove -> removeLabel?.let { it to remove } },
                     modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
-                ) { onPlay(video) }
+                ) { UpNext.opened(content.videos, video); onPlay(video) }
             }
             // Parou com mais páginas (os filtros esvaziaram várias seguidas): um botão para continuar.
             if (content.hasMore && !content.loadingMore) {
@@ -1464,10 +1639,17 @@ object TvUi : Screens {
         // primeira opção) e o card ficaria esperando um soltar que não vem.
         var menuFocusable by remember { mutableStateOf(false) }
         val res = LocalContext.current.resources
-        val channel = channelOf(video)?.takeIf { onOpenChannel != null }
+        val scope = rememberCoroutineScope()
+        // Com o foco parado no card, o vídeo é pedido ao YouTube antes do OK ([PlaybackRepository.focused]).
+        // Uma live ou uma estreia marcada, não: o que o YouTube entrega para elas muda a cada instante.
+        val ahead = !video.isLive && !video.isUpcoming
+        if (ahead) DisposableEffect(video.id) { onDispose { PlaybackRepository.unfocused(video.id) } }
         Column(modifier) {
             Box(
-                Modifier.onPreviewKeyEvent { event ->
+                Modifier.onFocusChanged { focus ->
+                    if (!ahead) return@onFocusChanged
+                    if (focus.hasFocus) PlaybackRepository.focused(video.id) else PlaybackRepository.unfocused(video.id)
+                }.onPreviewKeyEvent { event ->
                     if (menu && !menuFocusable && event.type == KeyEventType.KeyUp && event.nativeKeyEvent.keyCode in OkKeys) {
                         menuFocusable = true
                     }
@@ -1514,7 +1696,7 @@ object TvUi : Screens {
                 if (menu) {
                     VideoMenu(
                         saved = saved,
-                        channelName = channel?.title,
+                        channelName = video.channelName?.takeIf { it.isNotBlank() },
                         focusable = menuFocusable,
                         onDismiss = { menu = false },
                         onSave = if (showSaved) {
@@ -1522,7 +1704,8 @@ object TvUi : Screens {
                         } else {
                             null
                         },
-                        onChannel = channel?.let { c -> { onOpenChannel?.invoke(c) } },
+                        // Sempre, também sem o ID do canal no card (as Recomendações): ele é procurado na hora.
+                        onChannel = onOpenChannel?.let { open -> { scope.openChannelOf(video, res, open) } },
                         remove = onRemove?.let { (label, remove) -> label to { remove(video) } },
                     )
                 }
@@ -1727,34 +1910,47 @@ object TvUi : Screens {
         val name = video.channelName?.takeIf { it.isNotBlank() }
         if (video.fromPlaylist != null || name == null) return CardText(video.title, subtitleOf(video))
         CardText(video.title, null)
-        val style = MaterialTheme.typography.bodySmall
         val rest = metaAfterChannel(video.info, name, video.published)
         MetaLine(
-            channel = { Text(name, style = style, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            rest = rest?.let { { Text(rest, style = style, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
-            separator = { Text(" · ", style = style, color = Look.Sub) },
-            modifier = Modifier.padding(top = 2.dp, start = 2.dp, end = 2.dp),
+            channel = { Text(name, style = CardMeta, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            rest = rest?.let { { Text(spacedDots(rest), style = CardMeta, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            separator = { Text(" · ", style = CardMeta, color = Look.Sub) },
+            modifier = Modifier.padding(top = CardMetaGap, start = 2.dp, end = 2.dp),
             stacked = true,
         )
     }
+
+    /**
+     * Os textos dos cards (pedido do Johan, 2026-11-13): o título um pouco menor, para caber mais
+     * dele, com as duas linhas mais juntas, e um respiro maior entre ele e o canal. Antes era o
+     * titleSmall (14 sp, linhas de 20 sp), com o canal colado, e as linhas do título ficavam tão
+     * longe uma da outra quanto do canal.
+     */
+    private val CardTitle: TextStyle
+        @Composable get() = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 17.sp)
+
+    private val CardMeta: TextStyle
+        @Composable get() = MaterialTheme.typography.bodySmall.copy(lineHeight = 15.sp)
+
+    private val CardMetaGap = 5.dp
 
     @Composable
     private fun CardText(title: String, subtitle: String?) {
         Text(
             title,
-            style = MaterialTheme.typography.titleSmall,
+            style = CardTitle,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 12.dp, start = 2.dp, end = 2.dp),
+            modifier = Modifier.padding(top = 11.dp, start = 2.dp, end = 2.dp),
         )
         if (subtitle != null) {
             Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
+                spacedDots(subtitle),
+                style = CardMeta,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 color = Look.Sub,
-                modifier = Modifier.padding(top = 2.dp, start = 2.dp, end = 2.dp),
+                modifier = Modifier.padding(top = CardMetaGap, start = 2.dp, end = 2.dp),
             )
         }
     }
@@ -1809,7 +2005,7 @@ object TvUi : Screens {
             )
             channel.info?.let {
                 Text(
-                    it,
+                    spacedDots(it),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

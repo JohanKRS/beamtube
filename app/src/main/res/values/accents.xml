@@ -2,46 +2,46 @@
 <!--
   A cor de destaque no player (Views), a mesma de ytslim.ui.Accent: o PlayerActivity aplica o
   estilo da cor escolhida no tema antes de montar a tela, e os drawables e cores do player leem
-  ?attr/doorglowAccent (cheia) e ?attr/doorglowAccentSoft (clara).
+  ?attr/beamAccent (cheia) e ?attr/beamAccentSoft (clara).
 -->
 <resources>
-    <attr name="doorglowAccent" format="color" />
-    <attr name="doorglowAccentSoft" format="color" />
+    <attr name="beamAccent" format="color" />
+    <attr name="beamAccentSoft" format="color" />
 
     <style name="PlayerAccent" />
 
     <style name="PlayerAccent.Amber">
-        <item name="doorglowAccent">#FFFFC861</item>
-        <item name="doorglowAccentSoft">#FFFFE3A3</item>
+        <item name="beamAccent">#FFFFC861</item>
+        <item name="beamAccentSoft">#FFFFE3A3</item>
     </style>
 
     <style name="PlayerAccent.Silver">
-        <item name="doorglowAccent">#FFBDC7DB</item>
-        <item name="doorglowAccentSoft">#FFDEE3ED</item>
+        <item name="beamAccent">#FFBDC7DB</item>
+        <item name="beamAccentSoft">#FFDEE3ED</item>
     </style>
 
     <style name="PlayerAccent.Teal">
-        <item name="doorglowAccent">#FF3BBFCE</item>
-        <item name="doorglowAccentSoft">#FF9DDFE6</item>
+        <item name="beamAccent">#FF3BBFCE</item>
+        <item name="beamAccentSoft">#FF9DDFE6</item>
     </style>
 
     <style name="PlayerAccent.Plum">
-        <item name="doorglowAccent">#FFCC90D5</item>
-        <item name="doorglowAccentSoft">#FFE6C8EA</item>
+        <item name="beamAccent">#FFCC90D5</item>
+        <item name="beamAccentSoft">#FFE6C8EA</item>
     </style>
 
     <style name="PlayerAccent.Mustard">
-        <item name="doorglowAccent">#FFDD962C</item>
-        <item name="doorglowAccentSoft">#FFEECB95</item>
+        <item name="beamAccent">#FFDD962C</item>
+        <item name="beamAccentSoft">#FFEECB95</item>
     </style>
 
     <style name="PlayerAccent.Vivid">
-        <item name="doorglowAccent">#FFE873C7</item>
-        <item name="doorglowAccentSoft">#FFF3B9E3</item>
+        <item name="beamAccent">#FFE873C7</item>
+        <item name="beamAccentSoft">#FFF3B9E3</item>
     </style>
 
     <style name="PlayerAccent.Red">
-        <item name="doorglowAccent">#FFFF0000</item>
-        <item name="doorglowAccentSoft">#FFFF8080</item>
+        <item name="beamAccent">#FFFF0000</item>
+        <item name="beamAccentSoft">#FFFF8080</item>
     </style>
 </resources>
