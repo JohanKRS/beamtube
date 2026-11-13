@@ -1,7 +1,8 @@
 name: Release
 
 # Um merge no main com um app.versionName (gradle.properties) que ainda não tem release gera a
-# release com o APK assinado. O Johan acompanha estas releases pelo Obtainium.
+# release com o APK assinado, com o texto de release-notes/v<versão>.md. O Johan acompanha estas
+# releases pelo Obtainium.
 on:
   push:
     branches: [main]
@@ -81,7 +82,27 @@ jobs:
         run: |
           name=${{ steps.version.outputs.name }}
           cp app/build/outputs/apk/app/release/app-app-release.apk "beamtube-$name.apk"
+          notes="release-notes/v$name.md"
+          if [ -f "$notes" ]; then
+            notes_args=(--notes-file "$notes")
+          else
+            echo "::warning::Sem $notes; a release sai com as notas automáticas do GitHub."
+            notes_args=(--generate-notes)
+          fi
           gh release create "v$name" "beamtube-$name.apk" \
             --title "BeamTube $name" \
             --target "$GITHUB_SHA" \
-            --generate-notes
+            "${notes_args[@]}"
+
+      # Os textos das releases (em inglês) ficam em release-notes/vX.Y.Z.md. Corrigir um arquivo e
+      # mesclar no main atualiza o texto da release, inclusive das antigas.
+      - name: Textos das releases
+        run: |
+          for file in release-notes/v*.md; do
+            tag=$(basename "$file" .md)
+            current=$(gh release view "$tag" --json body -q .body 2>/dev/null) || continue
+            if [ "$(printf '%s' "$current" | tr -d '\r')" != "$(tr -d '\r' < "$file")" ]; then
+              echo "Atualizando o texto de $tag"
+              gh release edit "$tag" --notes-file "$file"
+            fi
+          done

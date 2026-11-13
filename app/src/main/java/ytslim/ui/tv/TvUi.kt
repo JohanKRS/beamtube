@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -48,6 +47,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
@@ -85,21 +85,25 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -142,6 +146,7 @@ import ytslim.data.SearchFilters
 import ytslim.data.SearchItem
 import ytslim.data.Topic
 import ytslim.data.TopicRules
+import ytslim.data.UpNext
 import ytslim.data.Video
 import ytslim.ui.AppIconPreview
 import ytslim.ui.ChannelViewModel
@@ -155,7 +160,12 @@ import ytslim.ui.LightSlit
 import ytslim.ui.ListTop
 import ytslim.ui.MetaLine
 import ytslim.ui.metaAfterChannel
+import ytslim.ui.AppLanguage
+import ytslim.ui.Language
 import ytslim.ui.Look
+import ytslim.ui.TopicsViewModel
+import ytslim.ui.findActivity
+import ytslim.ui.label
 import ytslim.ui.TypeScale
 import ytslim.ui.Wordmark
 import ytslim.ui.Notice
@@ -176,6 +186,7 @@ import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
 import ytslim.ui.openChannelOf
 import ytslim.ui.exploreFilterChoices
+import ytslim.ui.endActionOptions
 import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
 import ytslim.ui.searchFilterChoices
@@ -389,14 +400,13 @@ object TvUi : Screens {
           // das abas (pedido do Johan, 2026-11-13), com a letra do tamanho da das abas (ele achou o de
           // 22sp grande demais). O logotipo fica à esquerda e as abas, encostadas à direita (pedido dele
           // do mesmo dia): o nome da última aba termina na linha da borda direita dos cards.
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Wordmark(16.sp)
-            Spacer(Modifier.weight(1f))
+          val labels = tabs.map { stringResource(it.second) }
+          LogoAndTabs(labels, logo = { Wordmark(LogoSize.toFixedSp()) }) { labelSize ->
             val selectedIndex = tabs.indexOfFirst { it.first == tab }
             TabRow(
                 selectedTabIndex = selectedIndex,
-                modifier = Modifier.offset(x = TabLabelPadding).onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
-                separator = { Spacer(Modifier.width(2.dp)) },
+                modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
+                separator = { Spacer(Modifier.width(TabSeparator)) },
                 indicator = { positions, _ -> positions.getOrNull(selectedIndex)?.let { SlitIndicator(it) } },
             ) {
                 tabs.forEach { (item, label) ->
@@ -425,7 +435,7 @@ object TvUi : Screens {
                                 false
                             },
                     ) {
-                        TabLabel(stringResource(label), selected = item == tab)
+                        TabLabel(labels[tabs.indexOfFirst { it.first == item }], selected = item == tab, size = labelSize)
                     }
                 }
             }
@@ -443,8 +453,8 @@ object TvUi : Screens {
      * quando a escolhida muda.
      */
     @Composable
-    private fun TabLabel(text: String, selected: Boolean) {
-        val style = MaterialTheme.typography.titleMedium
+    private fun TabLabel(text: String, selected: Boolean, size: TextUnit) {
+        val style = MaterialTheme.typography.titleMedium.copy(fontSize = size)
         Box(Modifier.padding(horizontal = TabLabelPadding, vertical = 6.dp), contentAlignment = Alignment.Center) {
             Text(text, style = style.copy(fontWeight = FontWeight.Bold), color = Color.Transparent, maxLines = 1, modifier = Modifier.clearAndSetSemantics {})
             Text(text, style = style.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Light), maxLines = 1)
@@ -453,6 +463,67 @@ object TvUi : Screens {
 
     /** O espaço de cada lado do nome de uma aba. */
     private val TabLabelPadding = 12.dp
+
+    /** O espaço entre uma aba e a outra, além do [TabLabelPadding] de cada uma. */
+    private val TabSeparator = 2.dp
+
+    /** O espaço mínimo entre o logotipo e o nome da primeira aba. */
+    private val LogoGap = 40.dp
+
+    /**
+     * A altura da letra do logotipo, a mesma das abas no tamanho normal. Ela não cresce com a letra
+     * maior da Acessibilidade ([toFixedSp]), para sobrar espaço para os nomes das abas.
+     */
+    private val LogoSize = 16.dp
+
+    @Composable
+    private fun Dp.toFixedSp(): TextUnit = with(LocalDensity.current) { this@toFixedSp.toSp() }
+
+    /**
+     * O logotipo à esquerda e as abas encostadas à direita, sempre numa linha só (pedido do Johan,
+     * 2026-11-13). Quando os nomes não cabem (num idioma de palavras mais longas, ou com a letra maior
+     * da Acessibilidade), a letra das abas diminui até caberem todas, com pelo menos [LogoGap] entre o
+     * logotipo e o nome da primeira. As abas passam [TabLabelPadding] da borda direita, para o nome da
+     * última terminar na linha dos cards. [tabs] recebe o tamanho da letra dos nomes.
+     */
+    @Composable
+    private fun LogoAndTabs(labels: List<String>, logo: @Composable () -> Unit, tabs: @Composable (TextUnit) -> Unit) {
+        val measurer = rememberTextMeasurer(cacheSize = 16)
+        // O nome escolhido fica em bold, e cada aba já tem a largura do bold ([TabLabel]).
+        val style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+        // O tamanho que coube em cada largura, para não medir os nomes de novo a cada foco.
+        val fitted = remember(labels, style, LocalDensity.current) { HashMap<Int, TextUnit>() }
+        SubcomposeLayout { constraints ->
+            val loose = constraints.copy(minWidth = 0, minHeight = 0)
+            val logoPlaceables = subcompose("logo", logo).map { it.measure(loose) }
+            val logoWidth = logoPlaceables.maxOfOrNull { it.width } ?: 0
+            val padding = TabLabelPadding.roundToPx()
+            // Cabe quando o começo do primeiro nome fica a [LogoGap] do logotipo.
+            val room = constraints.maxWidth - logoWidth - LogoGap.roundToPx() -
+                (labels.size * 2 - 2) * padding - (labels.size - 1).coerceAtLeast(0) * TabSeparator.roundToPx()
+            val size = fitted.getOrPut(room) {
+                fun width(size: TextUnit) =
+                    labels.sumOf { measurer.measure(it, style.copy(fontSize = size), maxLines = 1, softWrap = false).size.width }
+                // Diminui de pouco em pouco: com a letra maior da Acessibilidade (Android 14+), a
+                // letra pequena cresce mais que a grande, e a largura não cai na mesma proporção.
+                var size = style.fontSize
+                var width = width(size)
+                var tries = 0
+                while (width > room && size.value > style.fontSize.value * 0.4f && tries++ < 8) {
+                    size = (size.value * room / width * 0.98f).coerceAtLeast(style.fontSize.value * 0.4f).sp
+                    width = width(size)
+                }
+                size
+            }
+            val tabPlaceables = subcompose("tabs") { tabs(size) }.map { it.measure(loose) }
+            val tabsWidth = tabPlaceables.maxOfOrNull { it.width } ?: 0
+            val height = maxOf(logoPlaceables.maxOfOrNull { it.height } ?: 0, tabPlaceables.maxOfOrNull { it.height } ?: 0)
+            layout(constraints.maxWidth, height) {
+                logoPlaceables.forEach { it.placeRelative(0, (height - it.height) / 2) }
+                tabPlaceables.forEach { it.placeRelative(constraints.maxWidth - tabsWidth + padding, (height - it.height) / 2) }
+            }
+        }
+    }
 
     /** A fresta de luz embaixo da aba escolhida, que anda junto quando a aba muda. */
     @Composable
@@ -737,7 +808,7 @@ object TvUi : Screens {
     }
 
     @Composable
-    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onSignedOut: () -> Unit) {
+    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onOpenTopics: () -> Unit, onSignedOut: () -> Unit) {
         val settings by vm.settings.collectAsStateWithLifecycle()
         val playlists by vm.playlists.collectAsStateWithLifecycle()
         val ownPlaylists by vm.ownPlaylists.collectAsStateWithLifecycle()
@@ -745,11 +816,15 @@ object TvUi : Screens {
         val appIcon by vm.appIcon.collectAsStateWithLifecycle()
         var choosingTarget by rememberSaveable { mutableStateOf(false) }
         var editing by remember { mutableStateOf<Pair<TopicList, Int?>?>(null) }
+        val activity = LocalContext.current.findActivity()
+        val currentLanguage = remember { activity?.let(AppLanguage::current) ?: Language.SYSTEM }
 
         // Em cartões, como no celular (2026-11-03): o nome do grupo em cima, as linhas num cartão e a
-        // explicação embaixo. O foco continua o do ListItem (a linha fica creme).
+        // explicação embaixo. O foco continua o do ListItem (a linha fica creme). Os cartões ocupam a
+        // largura toda, como a grade dos vídeos (1.0, pedido do Johan: com 70% da largura, à
+        // esquerda, sobrava um buraco no lado direito).
         LazyColumn(
-            modifier = Modifier.fillMaxWidth(0.7f).widthIn(max = 820.dp),
+            modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(bottom = 48.dp),
         ) {
             group(
@@ -816,14 +891,39 @@ object TvUi : Screens {
             }
             group("target", R.string.settings_save_target, rows = targetRows)
 
-            topicGroup(
-                key = "excluded",
-                title = R.string.settings_excluded,
-                hint = R.string.settings_excluded_hint,
-                topics = settings.filters.excluded,
-                onEdit = { editing = TopicList.EXCLUDED to it },
-                onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
+            // O fim do vídeo (1.0, pedido do Johan): sugestões, voltar, tocar a próxima ou ficar parado.
+            group(
+                "end",
+                R.string.settings_end,
+                hint = R.string.settings_end_hint,
+                rows = endActionOptions.map { (action, label) ->
+                    row(action) {
+                        ListItem(
+                            selected = false,
+                            onClick = { vm.setEndAction(action) },
+                            headlineContent = { Text(stringResource(label)) },
+                            trailingContent = { RadioButton(selected = settings.endAction == action, onClick = null) },
+                        )
+                    }
+                },
             )
+
+            group(
+                "topics",
+                R.string.settings_topics,
+                hint = R.string.settings_topics_hint,
+                rows = listOf(
+                    row("choose") {
+                        ListItem(
+                            selected = false,
+                            onClick = onOpenTopics,
+                            headlineContent = { Text(stringResource(R.string.settings_topics_choose)) },
+                            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                        )
+                    },
+                ),
+            )
+
             topicGroup(
                 key = "preferred",
                 title = R.string.settings_preferred,
@@ -831,6 +931,14 @@ object TvUi : Screens {
                 topics = settings.filters.preferred,
                 onEdit = { editing = TopicList.PREFERRED to it },
                 onRemove = { vm.removeTopic(TopicList.PREFERRED, it) },
+            )
+            topicGroup(
+                key = "excluded",
+                title = R.string.settings_excluded,
+                hint = R.string.settings_excluded_hint,
+                topics = settings.filters.excluded,
+                onEdit = { editing = TopicList.EXCLUDED to it },
+                onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
             )
 
             group(
@@ -909,6 +1017,22 @@ object TvUi : Screens {
                 }
             }
             group("playlists", R.string.settings_playlists, hint = R.string.settings_playlists_hint, rows = playlistRows)
+
+            // O idioma do app (pedido do Johan, 2026-11-13); cada um com o nome na própria língua.
+            group(
+                "language",
+                R.string.settings_language,
+                rows = Language.entries.map { language ->
+                    row(language.name) {
+                        ListItem(
+                            selected = false,
+                            onClick = { activity?.let { AppLanguage.select(it, language) } },
+                            headlineContent = { Text(language.native ?: stringResource(language.label ?: R.string.language_system)) },
+                            trailingContent = { RadioButton(selected = currentLanguage == language, onClick = null) },
+                        )
+                    }
+                },
+            )
 
             group(
                 "icon",
@@ -991,7 +1115,7 @@ object TvUi : Screens {
                             ListItem(
                                 selected = false,
                                 onClick = { onEdit(index) },
-                                headlineContent = { Text(topic.name) },
+                                headlineContent = { Text(topic.label()) },
                                 supportingContent = { Text(topic.keywords.joinToString(", "), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 modifier = Modifier.weight(1f),
                             )
@@ -1070,6 +1194,9 @@ object TvUi : Screens {
             LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
         }
     }
+
+    @Composable
+    override fun Topics(vm: TopicsViewModel, firstRun: Boolean, onDone: () -> Unit) = TvTopics(vm, firstRun, onDone)
 
     @Composable
     override fun PlaylistPage(
@@ -1469,7 +1596,7 @@ object TvUi : Screens {
                     onOpenChannel = onOpenChannel,
                     onRemove = onRemove?.let { remove -> removeLabel?.let { it to remove } },
                     modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
-                ) { onPlay(video) }
+                ) { UpNext.opened(content.videos, video); onPlay(video) }
             }
             // Parou com mais páginas (os filtros esvaziaram várias seguidas): um botão para continuar.
             if (content.hasMore && !content.loadingMore) {

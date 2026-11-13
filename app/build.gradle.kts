@@ -103,6 +103,35 @@ android {
     testOptions.unitTests.isIncludeAndroidResources = true
 }
 
+// As licenças vão dentro do APK, em assets/licenses/: a nossa (LICENSE), a lista das bibliotecas
+// (THIRD_PARTY_NOTICES.md) e os textos completos (licenses/). Nenhuma tela mostra; elas só precisam
+// ir junto com o app.
+abstract class LicenseAssets : DefaultTask() {
+    @get:InputFiles abstract val sources: ConfigurableFileCollection
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val out = outputDir.get().asFile.resolve("licenses")
+        out.deleteRecursively()
+        out.mkdirs()
+        sources.files.forEach { source ->
+            val files = if (source.isDirectory) source.listFiles().orEmpty().toList() else listOf(source)
+            files.filter { it.isFile }.forEach { it.copyTo(out.resolve(it.name), overwrite = true) }
+        }
+    }
+}
+
+val licenseAssets = tasks.register<LicenseAssets>("licenseAssets") {
+    sources.from(rootProject.file("LICENSE"), rootProject.file("THIRD_PARTY_NOTICES.md"), rootProject.file("licenses"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(licenseAssets, LicenseAssets::outputDir)
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)

@@ -3,6 +3,7 @@ package ytslim
 import android.app.Application
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.util.Log
 import androidx.profileinstaller.ProfileVerifier
 import coil3.ImageLoader
@@ -17,20 +18,24 @@ import ytslim.data.Engine
 import ytslim.data.EngineWarmup
 import ytslim.data.ExploreRepository
 import ytslim.data.FeedCache
+import ytslim.data.FirstRun
 import ytslim.data.ListCache
 import ytslim.data.PlaylistSubscriptions
 import ytslim.data.WatchPositions
 import ytslim.data.SettingsRepository
 import ytslim.player.ScreenOffService
 import ytslim.ui.Accents
+import ytslim.ui.AppLanguage
 import ytslim.ui.ImageHttp
 
 class App : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
+        AppLanguage.init(this)
         AppVisibility.init(this)
         Engine.init(this)
         SettingsRepository.init(this)
+        FirstRun.init(this)
         PlaylistSubscriptions.init(this)
         ExploreRepository.init(this)
         FeedCache.init(this)
@@ -44,6 +49,11 @@ class App : Application(), SingletonImageLoader.Factory {
         AppScope.launch { AppVisibility.returns.collect { if (Engine.signIn.isSigned) EngineWarmup.start() } }
         if (!isTv()) removeScreenOffService()
         logCompilation()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        AppLanguage.onAppConfigurationChanged(this, newConfig)
     }
 
     /** As miniaturas e as fotos dos canais vêm pelo carregador do app ([ImageHttp]). */

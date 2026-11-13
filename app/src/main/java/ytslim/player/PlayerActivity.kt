@@ -75,13 +75,17 @@ import ytslim.isTv
 import ytslim.data.AppScope
 import ytslim.data.Chapter
 import ytslim.data.Chapters
+import ytslim.data.EndAction
 import ytslim.data.ExternalLinks
 import ytslim.data.PlayQueue
 import ytslim.data.Published
 import ytslim.data.Rating
 import ytslim.data.SettingsRepository
 import ytslim.data.Storyboard
+import ytslim.data.UpNext
+import ytslim.data.Video
 import ytslim.data.VideoLinks
+import ytslim.ui.AppLanguage
 import ytslim.ui.spacedDotsForViews
 import ytslim.ui.Look
 
@@ -100,6 +104,11 @@ import ytslim.ui.Look
  */
 @OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
+    /** O idioma escolhido em Settings ([AppLanguage]). */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(newBase)
+        AppLanguage.applyTo(this)
+    }
 
     private lateinit var controller: PlaybackController
     private lateinit var playerView: PlayerView
@@ -138,6 +147,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var previewImage: ImageView
     private lateinit var previewChapter: TextView
     private lateinit var previewTime: TextView
+    private lateinit var endScreen: EndScreen
 
     private var saveHistory = true
     private var external = false
@@ -674,19 +684,21 @@ class PlayerActivity : ComponentActivity() {
 
     /**
      * O vídeo acabou sem próximo na sequência: a tela pode apagar e, com "Turn off", o aparelho
-     * dorme depois de alguns segundos (qualquer botão cancela). Tocar de novo volta a manter a
-     * tela acesa.
+     * dorme depois de alguns segundos (qualquer botão cancela). Sem o modo dormir, vale o que foi
+     * escolhido em Settings > When a video ends ([afterEnd]). Tocar de novo volta a manter a tela
+     * acesa.
      */
     private fun onEnded(ended: Boolean) {
         keepScreenOn(!ended)
         if (!ended) {
             endHandled = false
             cancelTurnOff(announce = false)
+            hideEndScreen()
             return
         }
         if (endHandled) return
         endHandled = true
-        if (!turnOffWhenDone || !canTurnOff) return
+        if (!turnOffWhenDone || !canTurnOff) return afterEnd()
         if (!ScreenOffService.enabled) {
             Toast.makeText(this, R.string.player_turn_off_not_allowed, Toast.LENGTH_LONG).show()
             return
@@ -697,6 +709,63 @@ class PlayerActivity : ComponentActivity() {
             turnOffJob = null
             ScreenOffService.turnOff()
         }
+    }
+
+    /**
+     * O fim sem o "Turn off" (1.0, pedido do Johan): a tela de sugestões, voltar para a tela de onde
+     * o vídeo veio, tocar a primeira sugestão ou ficar parado ([EndAction], [UpNext]). Com o modo
+     * dormir em uso (o vídeo escurecido ou um limite no "Then play"), fica parado, como sempre; na
+     * janelinha flutuante e depois de um erro, também.
+     */
+    private fun afterEnd() {
+        val queueLimited = PlayQueue.active.value && PlayQueue.left.value != PlayQueue.ALL
+        if (UpNext.sleeping(brightness, queueLimited, turnOff = false) || floating || isFinishing) return
+        if (controller.state.value is PlaybackController.State.Failed) return
+        lifecycleScope.launch {
+            val settings = SettingsRepository.current()
+            if (!controller.ended.value) return@launch
+            when (settings.endAction) {
+                EndAction.STAY -> Unit
+                EndAction.BACK -> close()
+                EndAction.SUGGESTIONS, EndAction.NEXT -> {
+                    val videoId = controller.videoId ?: return@launch
+                    val page = controller.controls.value.page
+                    val suggestions = UpNext.pick(
+                        currentId = videoId,
+                        channelId = page?.channelId,
+                        channelName = page?.channelName,
+                        related = page?.related.orEmpty(),
+                        after = UpNext.after(videoId),
+                        filters = settings.filters,
+                    )
+                    closePanel(focusButton = false)
+                    playerView.hideController()
+                    playerView.useController = false
+                    endScreen.show(suggestions, playNext = settings.endAction == EndAction.NEXT)
+                }
+            }
+        }
+    }
+
+    private fun hideEndScreen() {
+        if (!::endScreen.isInitialized || !endScreen.shown) return
+        endScreen.hide()
+        playerView.useController = !floating
+        playerView.requestFocus()
+    }
+
+    /** Uma sugestão da tela do fim: toca aqui mesmo, sozinha (fora da sequência de uma playlist). */
+    private fun playSuggestion(video: Video) {
+        hideEndScreen()
+        PlayQueue.clear()
+        published = Published.of(video)
+        thumbnail = video.thumbnailUrl
+        start(video.id, 0, saveHistory, video.title, video.resumeMs)
+    }
+
+    /** Volta para a tela de onde o vídeo foi aberto (ou para o app do link, numa tarefa só do player). */
+    private fun close() {
+        if (isTaskRoot) finishAndRemoveTask() else finish()
     }
 
     private fun cancelTurnOff(announce: Boolean) {
@@ -716,6 +785,11 @@ class PlayerActivity : ComponentActivity() {
         if (event.action == KeyEvent.ACTION_DOWN && turnOffJob != null) {
             cancelTurnOff(announce = true)
             return true
+        }
+        // Com a tela do fim aberta, as teclas são dela (e cada uma recomeça a contagem); "voltar" sai do player.
+        if (::endScreen.isInitialized && endScreen.shown) {
+            if (event.action == KeyEvent.ACTION_DOWN) endScreen.touched()
+            return super.dispatchKeyEvent(event)
         }
         hidingKey?.let { key ->
             if (event.keyCode == key) {
@@ -763,6 +837,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && turnOffJob != null) cancelTurnOff(announce = true)
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && ::endScreen.isInitialized && endScreen.shown) endScreen.touched()
         return super.dispatchTouchEvent(event)
     }
 
@@ -832,7 +907,7 @@ class PlayerActivity : ComponentActivity() {
             }
         }
         // Sem os controles da tela na janelinha (escondê-los também baixa a legenda).
-        playerView.useController = !on
+        playerView.useController = !on && !(::endScreen.isInitialized && endScreen.shown)
     }
 
     private fun floats() =
@@ -1252,10 +1327,14 @@ class PlayerActivity : ComponentActivity() {
             visibility = View.GONE
         }
 
+        // A tela do fim do vídeo ([UpNext]), por cima de tudo.
+        endScreen = EndScreen(this, tv = !touch, onPlay = ::playSuggestion, onBack = ::close)
+
         return FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             addView(playerView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
             addView(messageView, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER))
+            addView(endScreen.view, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         }
     }
 

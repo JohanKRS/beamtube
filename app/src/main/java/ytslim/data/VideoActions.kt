@@ -15,6 +15,8 @@ data class VideoState(
     val rating: Rating,
     /** A data de publicação por extenso ("Nov 10, 2025"); o player mostra como idade ([Published.age]). */
     val published: String? = null,
+    /** Os vídeos relacionados da página do vídeo, para a tela do fim ([UpNext]). Sem mixes. */
+    val related: List<Video> = emptyList(),
 )
 
 /** Like/dislike e inscrever/cancelar inscrição no canal do vídeo. */
@@ -33,6 +35,10 @@ object VideoActions {
                 else -> Rating.NONE
             },
             published = m.publishedDate?.takeIf { it.isNotBlank() },
+            related = m.suggestions.orEmpty()
+                .flatMap { group -> group.mediaItems.orEmpty().mapNotNull { it.toVideo() } }
+                // Os mixes ("RD…") são listas sem fim, não um vídeo.
+                .filter { it.playlistId?.startsWith("RD") != true },
         )
     }
 

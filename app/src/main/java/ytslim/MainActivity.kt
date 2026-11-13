@@ -16,10 +16,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import kotlinx.coroutines.flow.MutableStateFlow
 import ytslim.data.VideoLinks
+import ytslim.ui.AppLanguage
 import ytslim.ui.AppRoot
 import ytslim.ui.Link
 
 class MainActivity : ComponentActivity() {
+    /** O idioma escolhido em Settings ([AppLanguage]). */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(newBase)
+        AppLanguage.applyTo(this)
+    }
+
     /** Página pedida de fora da navegação: link de playlist de outro app, ou o canal a partir do player. */
     private val links = MutableStateFlow<Link?>(null)
 

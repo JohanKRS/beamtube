@@ -29,7 +29,7 @@ class FeedRulesTest {
     }
 
     @Test
-    fun readsRelativeTimesInEnglishAndPortuguese() {
+    fun readsRelativeTimesInEnglishPortugueseAndSpanish() {
         val hour = 3_600_000L
         assertEquals(3 * hour, RelativeTime.agoMs("3 hours ago"))
         assertEquals(3 * hour, RelativeTime.agoMs("há 3 horas"))
@@ -37,6 +37,9 @@ class FeedRulesTest {
         assertEquals(24 * hour, RelativeTime.agoMs("1 dia atrás"))
         assertEquals(2 * 30 * 24 * hour, RelativeTime.agoMs("há 2 meses"))
         assertEquals(5 * 60_000L, RelativeTime.agoMs("5 minutes ago"))
+        assertEquals(3 * 24 * hour, RelativeTime.agoMs("hace 3 días"))
+        assertEquals(2 * 365 * 24 * hour, RelativeTime.agoMs("Canal • 1,2 M de visualizaciones • hace 2 años"))
+        assertEquals(7 * 24 * hour, RelativeTime.agoMs("hace 1 semana"))
         // Visualizações não são tempo.
         assertEquals(4 * 7 * 24 * hour, RelativeTime.agoMs("Canal • 12 mil visualizações • há 4 semanas"))
         assertEquals(hour, RelativeTime.agoMs("Channel • 1.2M views • 1 hour ago"))

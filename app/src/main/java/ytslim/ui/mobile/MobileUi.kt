@@ -59,6 +59,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.filled.Add
@@ -173,6 +174,7 @@ import ytslim.data.SearchFilters
 import ytslim.data.SearchItem
 import ytslim.data.Topic
 import ytslim.data.TopicRules
+import ytslim.data.UpNext
 import ytslim.data.Video
 import ytslim.ui.AppIconPreview
 import ytslim.ui.ChannelViewModel
@@ -187,7 +189,12 @@ import ytslim.ui.LightSlit
 import ytslim.ui.MetaLine
 import ytslim.ui.ListMotion
 import ytslim.ui.ListTop
+import ytslim.ui.AppLanguage
+import ytslim.ui.Language
 import ytslim.ui.Look
+import ytslim.ui.TopicsViewModel
+import ytslim.ui.findActivity
+import ytslim.ui.label
 import ytslim.ui.TypeScale
 import ytslim.ui.Wordmark
 import ytslim.ui.spacedDots
@@ -210,6 +217,7 @@ import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
 import ytslim.ui.openChannelOf
 import ytslim.ui.exploreFilterChoices
+import ytslim.ui.endActionOptions
 import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
 import ytslim.ui.metaAfterChannel
@@ -937,7 +945,7 @@ object MobileUi : Screens {
     }
 
     @Composable
-    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onSignedOut: () -> Unit) {
+    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onOpenTopics: () -> Unit, onSignedOut: () -> Unit) {
         val settings by vm.settings.collectAsStateWithLifecycle()
         val playlists by vm.playlists.collectAsStateWithLifecycle()
         val ownPlaylists by vm.ownPlaylists.collectAsStateWithLifecycle()
@@ -1010,15 +1018,15 @@ object MobileUi : Screens {
                 }
             }
 
-            item(key = "excluded") {
-                TopicGroup(
-                    title = R.string.settings_excluded,
-                    hint = R.string.settings_excluded_hint,
-                    topics = settings.filters.excluded,
-                    onEdit = { editing = TopicList.EXCLUDED to it },
-                    onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
-                )
+            item(key = "topics") {
+                SettingsGroup(stringResource(R.string.settings_topics), hint = stringResource(R.string.settings_topics_hint)) {
+                    SettingsRow(
+                        title = stringResource(R.string.settings_topics_choose),
+                        modifier = Modifier.clickable(onClick = onOpenTopics),
+                    ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Look.Sub) }
+                }
             }
+
             item(key = "preferred") {
                 TopicGroup(
                     title = R.string.settings_preferred,
@@ -1026,6 +1034,15 @@ object MobileUi : Screens {
                     topics = settings.filters.preferred,
                     onEdit = { editing = TopicList.PREFERRED to it },
                     onRemove = { vm.removeTopic(TopicList.PREFERRED, it) },
+                )
+            }
+            item(key = "excluded") {
+                TopicGroup(
+                    title = R.string.settings_excluded,
+                    hint = R.string.settings_excluded_hint,
+                    topics = settings.filters.excluded,
+                    onEdit = { editing = TopicList.EXCLUDED to it },
+                    onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
                 )
             }
 
@@ -1037,6 +1054,20 @@ object MobileUi : Screens {
                         SettingsRow(title = channel.name.ifBlank { channel.id }) {
                             TextButton(onClick = { vm.unblock(channel.id) }) { Text(stringResource(R.string.unblock)) }
                         }
+                    }
+                }
+            }
+
+            // O fim do vídeo (1.0, pedido do Johan): sugestões, voltar, tocar a próxima ou ficar parado.
+            item(key = "end") {
+                SettingsGroup(stringResource(R.string.settings_end), hint = stringResource(R.string.settings_end_hint)) {
+                    endActionOptions.forEachIndexed { i, (action, label) ->
+                        if (i > 0) RowDivider()
+                        val selected = settings.endAction == action
+                        SettingsRow(
+                            title = stringResource(label),
+                            modifier = Modifier.selectable(selected = selected, role = Role.RadioButton) { vm.setEndAction(action) },
+                        ) { if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(20.dp)) }
                     }
                 }
             }
@@ -1088,6 +1119,23 @@ object MobileUi : Screens {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            item(key = "language") {
+                val activity = LocalContext.current.findActivity()
+                val current = remember { activity?.let(AppLanguage::current) ?: Language.SYSTEM }
+                SettingsGroup(stringResource(R.string.settings_language)) {
+                    Language.entries.forEachIndexed { i, language ->
+                        if (i > 0) RowDivider()
+                        val selected = current == language
+                        SettingsRow(
+                            title = language.native ?: stringResource(language.label ?: R.string.language_system),
+                            modifier = Modifier.selectable(selected = selected, role = Role.RadioButton) {
+                                activity?.let { AppLanguage.select(it, language) }
+                            },
+                        ) { if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(20.dp)) }
                     }
                 }
             }
@@ -1252,7 +1300,7 @@ object MobileUi : Screens {
             topics.forEachIndexed { index, topic ->
                 if (index > 0) RowDivider()
                 SettingsRow(
-                    title = topic.name,
+                    title = topic.label(),
                     subtitle = topic.keywords.joinToString(", "),
                     modifier = Modifier.clickable { onEdit(index) },
                 ) {
@@ -1305,6 +1353,9 @@ object MobileUi : Screens {
             dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
         )
     }
+
+    @Composable
+    override fun Topics(vm: TopicsViewModel, firstRun: Boolean, onDone: () -> Unit) = MobileTopics(vm, firstRun, onDone)
 
     @Composable
     override fun PlaylistPage(
@@ -1581,7 +1632,7 @@ object MobileUi : Screens {
                 }
             }
             items(content.videos, key = { it.rowKey }) { video ->
-                VideoCard(video, cards, onPlay, onOpenChannel, listMotion(motion))
+                VideoCard(video, cards, { UpNext.opened(content.videos, it); onPlay(it) }, onOpenChannel, listMotion(motion))
             }
             listEnd(content, onNearEnd)
         }

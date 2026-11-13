@@ -10,6 +10,13 @@ data object SignInRoute
 @Serializable
 data object HomeRoute
 
+/**
+ * Os tópicos sugeridos, para ver mais e ver menos. [firstRun]: a tela do primeiro uso, depois do
+ * login, que leva ao início; fora dela, aberta pelos Ajustes, volta para eles.
+ */
+@Serializable
+data class TopicsRoute(val firstRun: Boolean)
+
 @Serializable
 data class PlaylistRoute(
     val browseId: String,

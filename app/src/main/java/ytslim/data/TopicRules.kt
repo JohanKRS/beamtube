@@ -3,9 +3,12 @@ package ytslim.data
 import kotlinx.serialization.Serializable
 import java.text.Normalizer
 
-/** Um tópico: um nome e as palavras-chave que o identificam no título ou no nome do canal. */
+/**
+ * Um tópico: um nome e as palavras-chave que o identificam no título ou no nome do canal.
+ * [id] é o de um [SuggestedTopic] quando ele veio das sugestões; null nos criados à mão.
+ */
 @Serializable
-data class Topic(val name: String, val keywords: List<String>)
+data class Topic(val name: String, val keywords: List<String>, val id: String? = null)
 
 /** Um canal bloqueado: some das recomendações, da busca e dos vídeos de playlists inscritas. */
 @Serializable
@@ -13,8 +16,8 @@ data class BlockedChannel(val id: String, val name: String)
 
 /** O que decide o que aparece nas Recomendações (e o que fica de fora em outros lugares). */
 data class ContentFilters(
-    val excluded: List<Topic> = TopicRules.DEFAULT_EXCLUDED,
-    val preferred: List<Topic> = TopicRules.DEFAULT_PREFERRED,
+    val excluded: List<Topic> = emptyList(),
+    val preferred: List<Topic> = emptyList(),
     val blocked: List<BlockedChannel> = emptyList(),
 ) {
     val blockedIds: Set<String> by lazy { blocked.mapTo(HashSet()) { it.id } }
@@ -33,57 +36,6 @@ data class ContentFilters(
  * A comparação ignora maiúsculas e acentos e só casa palavras inteiras ("ai" não casa com "aim").
  */
 object TopicRules {
-    val DEFAULT_EXCLUDED = listOf(
-        Topic(
-            "Sports",
-            listOf(
-                "sports", "esporte", "esportes", "futebol", "football", "soccer", "nba", "nfl", "mlb", "nhl", "ufc", "fifa",
-                "brasileirao", "libertadores", "copa do mundo", "world cup", "champions league", "premier league",
-                "la liga", "formula 1", "f1", "olympics", "olimpiadas", "basquete", "basketball", "volei", "volleyball",
-                "baseball", "flamengo", "corinthians", "palmeiras", "sao paulo fc", "gremio", "real madrid",
-            ),
-        ),
-        Topic(
-            "Politics",
-            listOf(
-                "politics", "politica", "political", "eleicao", "eleicoes", "election", "elections", "lula", "bolsonaro",
-                "trump", "biden", "congresso", "congress", "senado", "senate", "stf", "deputado", "senador",
-                "democrats", "republicans", "governo federal", "white house", "planalto",
-            ),
-        ),
-    )
-
-    val DEFAULT_PREFERRED = listOf(
-        Topic(
-            "Engineering",
-            listOf(
-                "engineering", "engenharia", "engineer", "engenheiro", "mechanical", "mecanica", "machining", "cnc",
-                "3d printing", "impressao 3d", "electronics", "eletronica", "circuit", "circuito", "pcb", "arduino",
-                "robotics", "robotica", "robot", "robo",
-            ),
-        ),
-        Topic(
-            "Technology",
-            listOf("technology", "tecnologia", "tech", "hardware", "semiconductor", "chip", "chips", "linux", "gadget"),
-        ),
-        Topic(
-            "Computing",
-            listOf(
-                "programming", "programacao", "programar", "coding", "software", "computer", "computers", "computador",
-                "computacao", "python", "javascript", "typescript", "kotlin", "rust", "java", "c++", "algorithm",
-                "algoritmo", "developer", "desenvolvedor", "database", "compiler", "operating system",
-            ),
-        ),
-        Topic(
-            "AI",
-            listOf(
-                "ai", "a i", "artificial intelligence", "inteligencia artificial", "ia generativa", "machine learning",
-                "deep learning", "neural network", "redes neurais", "llm", "llms", "gpt", "chatgpt", "openai",
-                "anthropic", "claude", "gemini",
-            ),
-        ),
-    )
-
     /** Minúsculas, sem acentos, só letras e números separados por um espaço. "+" vira palavra ("c++"). */
     fun normalize(text: String): String {
         val noAccents = Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD).replace(DIACRITICS, "")

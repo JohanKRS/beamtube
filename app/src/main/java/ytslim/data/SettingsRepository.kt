@@ -18,6 +18,13 @@ import kotlinx.serialization.json.Json
 /** O que fazer com um vídeo aberto por link de outro app (WhatsApp, navegador, Compartilhar). */
 enum class ExternalLinks { NO_HISTORY, SAVE_HISTORY, ASK }
 
+/**
+ * O que o player faz quando o vídeo acaba sem próximo na sequência (1.0, pedido do Johan): a tela
+ * de sugestões, que volta sozinha depois de um tempo ([UpNext]); voltar direto para a tela de onde
+ * o vídeo foi aberto; tocar a primeira sugestão; ou ficar parado no fim, como até a 0.7.1.
+ */
+enum class EndAction { SUGGESTIONS, BACK, NEXT, STAY }
+
 data class Settings(
     /** Lives e agendados no feed de Inscrições. Desligado por padrão. */
     val showLives: Boolean = false,
@@ -30,6 +37,8 @@ data class Settings(
     val saveTarget: SaveTarget = SaveTarget(),
     /** Painel de dormir do player: desligar a TV (ou apagar a tela) quando os vídeos acabarem. */
     val turnOffWhenDone: Boolean = false,
+    /** Settings > When a video ends. */
+    val endAction: EndAction = EndAction.SUGGESTIONS,
 )
 
 /** A playlist do botão "Save": "Assistir mais tarde" por padrão. */
@@ -52,6 +61,7 @@ object SettingsRepository {
     private val SAVE_TARGET_ID = stringPreferencesKey("save_target_id")
     private val SAVE_TARGET_TITLE = stringPreferencesKey("save_target_title")
     private val TURN_OFF_WHEN_DONE = booleanPreferencesKey("turn_off_when_done")
+    private val END_ACTION = stringPreferencesKey("end_action")
 
     /** A Explore já explicou o que é (o aviso que aparece só na primeira vez). */
     private val EXPLORE_INTRO_SEEN = booleanPreferencesKey("explore_intro_seen")
@@ -84,13 +94,14 @@ object SettingsRepository {
                     ?: ExternalLinks.NO_HISTORY,
                 captionsOn = p[CAPTIONS_ON] ?: false,
                 filters = ContentFilters(
-                    // Sem nada salvo, valem as listas padrão; uma lista vazia salva é uma escolha.
-                    excluded = p[EXCLUDED_TOPICS]?.let { decode(it, topics) } ?: TopicRules.DEFAULT_EXCLUDED,
-                    preferred = p[PREFERRED_TOPICS]?.let { decode(it, topics) } ?: TopicRules.DEFAULT_PREFERRED,
+                    // Desde a 1.0 não há tópicos prontos: cada um escolhe os seus ([SuggestedTopic]).
+                    excluded = p[EXCLUDED_TOPICS]?.let { decode(it, topics) }.orEmpty(),
+                    preferred = p[PREFERRED_TOPICS]?.let { decode(it, topics) }.orEmpty(),
                     blocked = p[BLOCKED_CHANNELS]?.let { decode(it, channels) }.orEmpty(),
                 ),
                 saveTarget = p[SAVE_TARGET_ID]?.let { SaveTarget(it, p[SAVE_TARGET_TITLE]) } ?: SaveTarget(),
                 turnOffWhenDone = p[TURN_OFF_WHEN_DONE] ?: false,
+                endAction = p[END_ACTION]?.let { runCatching { EndAction.valueOf(it) }.getOrNull() } ?: EndAction.SUGGESTIONS,
             )
         }
 
@@ -107,6 +118,8 @@ object SettingsRepository {
 
     suspend fun setTurnOffWhenDone(value: Boolean) = store.edit { it[TURN_OFF_WHEN_DONE] = value }
 
+    suspend fun setEndAction(value: EndAction) = store.edit { it[END_ACTION] = value.name }
+
     /** true depois que o aviso da primeira vez na Explore foi fechado. */
     val exploreIntroSeen: Flow<Boolean>
         get() = store.data.map { it[EXPLORE_INTRO_SEEN] ?: false }
@@ -116,6 +129,12 @@ object SettingsRepository {
     suspend fun setExcludedTopics(value: List<Topic>) = store.edit { it[EXCLUDED_TOPICS] = json.encodeToString(topics, value) }
 
     suspend fun setPreferredTopics(value: List<Topic>) = store.edit { it[PREFERRED_TOPICS] = json.encodeToString(topics, value) }
+
+    /** Grava as duas listas de uma vez (a tela de tópicos). */
+    suspend fun setTopics(preferred: List<Topic>, excluded: List<Topic>) = store.edit {
+        it[PREFERRED_TOPICS] = json.encodeToString(topics, preferred)
+        it[EXCLUDED_TOPICS] = json.encodeToString(topics, excluded)
+    }
 
     suspend fun block(channel: BlockedChannel) = store.edit { p ->
         val current = p[BLOCKED_CHANNELS]?.let { decode(it, channels) }.orEmpty()

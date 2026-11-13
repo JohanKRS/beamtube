@@ -27,6 +27,7 @@ import ytslim.data.AppIcons
 import ytslim.data.AuthRepository
 import ytslim.data.AuthRepository.SignInEvent
 import ytslim.data.ExploreRepository
+import ytslim.data.EndAction
 import ytslim.data.ExternalLinks
 import ytslim.data.FeedCache
 import ytslim.data.ListCache
@@ -630,6 +631,10 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch { SettingsRepository.setExternalLinks(value) }
     }
 
+    fun setEndAction(value: EndAction) {
+        viewModelScope.launch { SettingsRepository.setEndAction(value) }
+    }
+
     /** As playlists do usuário, para escolher a do botão "Save". Carregadas ao abrir a escolha. */
     private val _ownPlaylists = MutableStateFlow<UiState<List<OwnPlaylist>>?>(null)
     val ownPlaylists: StateFlow<UiState<List<OwnPlaylist>>?> = _ownPlaylists.asStateFlow()
@@ -669,9 +674,11 @@ class SettingsViewModel : ViewModel() {
 
     /** Cria ([index] null) ou altera um tópico. Palavras-chave separadas por vírgula. */
     fun saveTopic(list: TopicList, index: Int?, name: String, keywords: String) {
-        val topic = Topic(name.trim(), TopicRules.parseKeywords(keywords))
-        if (topic.name.isEmpty() || topic.keywords.isEmpty()) return
         val current = topics(list).toMutableList()
+        // Um tópico das sugestões continua ligado a elas se o nome não mudou (só as palavras).
+        val before = index?.let(current::getOrNull)
+        val topic = Topic(name.trim(), TopicRules.parseKeywords(keywords), id = before?.id?.takeIf { before.name == name.trim() })
+        if (topic.name.isEmpty() || topic.keywords.isEmpty()) return
         if (index != null && index in current.indices) current[index] = topic else current += topic
         setTopics(list, current)
     }
