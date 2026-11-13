@@ -48,7 +48,7 @@ sealed interface PlaybackResult {
 
 /** Obtém os streams de um vídeo pelo motor e escolhe o formato que o Media3 toca. */
 object PlaybackRepository {
-    private const val TAG = "Doorglow"
+    private const val TAG = "BeamTube"
 
     /** Quantos clientes do YouTube tentar quando um só entrega formatos que não tocamos. */
     private const val MAX_CLIENT_SWITCHES = 6

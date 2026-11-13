@@ -83,3 +83,33 @@ fun metaAfterChannel(info: String?, channelName: String?, published: String?): S
     val rest = parts.filterNot { channelName != null && it.equals(channelName.trim(), ignoreCase = true) }
     return rest.joinToString(" · ").ifEmpty { published?.takeIf { it.isNotBlank() } }
 }
+
+/**
+ * A Outfit tem o espaço e o "·" estreitos, e "12K views · 2 hours ago" saía com o ponto apertado
+ * entre as palavras. Aqui o ponto e os espaços em volta dele ganham um pouco de ar. Vale para toda
+ * linha de detalhes das listas (vídeos, playlists e canais).
+ */
+fun spacedDots(raw: String): androidx.compose.ui.text.AnnotatedString = androidx.compose.ui.text.buildAnnotatedString {
+    // O YouTube separa com "•" (as playlists chegam assim): um ponto só no app inteiro.
+    val text = raw.replace(" • ", DOT)
+    append(text)
+    var at = text.indexOf(DOT)
+    while (at >= 0) {
+        addStyle(androidx.compose.ui.text.SpanStyle(letterSpacing = androidx.compose.ui.unit.TextUnit(0.1f, androidx.compose.ui.unit.TextUnitType.Em)), at, at + DOT.length)
+        at = text.indexOf(DOT, at + DOT.length)
+    }
+}
+
+private const val DOT = " · "
+
+/**
+ * O mesmo respiro do [spacedDots] para um TextView (o player): os espaços em volta de cada "·"
+ * ficam com o dobro da largura.
+ */
+fun spacedDotsForViews(text: String): CharSequence = android.text.SpannableString(text).apply {
+    text.forEachIndexed { i, c ->
+        if (c == ' ' && (text.getOrNull(i - 1) == '·' || text.getOrNull(i + 1) == '·')) {
+            setSpan(android.text.style.ScaleXSpan(2f), i, i + 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+}

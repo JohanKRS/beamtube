@@ -82,6 +82,7 @@ import ytslim.data.Rating
 import ytslim.data.SettingsRepository
 import ytslim.data.Storyboard
 import ytslim.data.VideoLinks
+import ytslim.ui.spacedDotsForViews
 import ytslim.ui.Look
 
 /**
@@ -378,7 +379,7 @@ class PlayerActivity : ComponentActivity() {
         val age = if (info?.isLive == true) null else controller.publishedHint ?: ageOf(page?.published)
         val noHistory = if (!saveHistory) getString(R.string.player_no_history) else null
         val rest = listOfNotNull(author, age, noHistory).joinToString(" · ")
-        detailView.text = if (channel != null && rest.isNotEmpty()) "· $rest" else rest
+        detailView.text = spacedDotsForViews(if (channel != null && rest.isNotEmpty()) "· $rest" else rest)
     }
 
     /** A data da página do vídeo ("Nov 10, 2025") como idade ("3 days ago"); a data mesma, se não der para ler. */
@@ -1164,7 +1165,7 @@ class PlayerActivity : ComponentActivity() {
         captionsView = SubtitleView(this).apply {
             setApplyEmbeddedStyles(false)
             setApplyEmbeddedFontSizes(false)
-            setStyle(CaptionRules.style(ResourcesCompat.getFont(this@PlayerActivity, R.font.figtree_semibold)))
+            setStyle(CaptionRules.style(ResourcesCompat.getFont(this@PlayerActivity, R.font.outfit_semibold)))
             setUserDefaultTextSize()
             // Uma margem pequena da borda de baixo, só para a legenda não encostar nela.
             setPadding(0, 0, 0, resources.getDimensionPixelSize(R.dimen.player_captions_bottom))
@@ -1184,7 +1185,7 @@ class PlayerActivity : ComponentActivity() {
             setBackgroundResource(R.drawable.player_badge_bg)
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.figtree_semibold)
+            typeface = ResourcesCompat.getFont(this@PlayerActivity, R.font.outfit_semibold)
             compoundDrawableTintList = ColorStateList.valueOf(Color.WHITE)
             gravity = Gravity.CENTER
             minWidth = dp(64)
@@ -1239,7 +1240,7 @@ class PlayerActivity : ComponentActivity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     companion object {
-        private const val TAG = "Doorglow"
+        private const val TAG = "BeamTube"
         private const val EXTRA_VIDEO_ID = "video_id"
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_PUBLISHED = "published"

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gerado por tools/make_icons.py; não editar à mão. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M57,33L90,26.4L90,81.6L57,75Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="57"
+                android:startY="54"
+                android:endX="90"
+                android:endY="54"
+                android:type="linear">
+                <item android:color="#9EFFFFFF" android:offset="0" />
+                <item android:color="#57FFFFFF" android:offset="0.5" />
+                <item android:color="#1AFFFFFF" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#E6FFFFFF"
+        android:pathData="M65.0679,54.5588a0.9,0.9 0,1 0,1.8,0a0.9,0.9 0,1 0,-1.8,0z" />
+    <path
+        android:fillColor="#E6FFFFFF"
+        android:pathData="M63.9946,47.4444a0.9,0.9 0,1 0,1.8,0a0.9,0.9 0,1 0,-1.8,0z" />
+    <path
+        android:fillColor="#E6FFFFFF"
+        android:pathData="M63.7936,51.892a0.9,0.9 0,1 0,1.8,0a0.9,0.9 0,1 0,-1.8,0z" />
+    <path
+        android:fillColor="#E6FFFFFF"
+        android:pathData="M62.907,53.4146a0.9,0.9 0,1 0,1.8,0a0.9,0.9 0,1 0,-1.8,0z" />
+    <path
+        android:fillColor="#E6FFFFFF"
+        android:pathData="M67.8235,50.9188a0.9,0.9 0,1 0,1.8,0a0.9,0.9 0,1 0,-1.8,0z" />
+    <path
+        android:fillColor="#E6FFFFFF"
+        android:pathData="M73.6312,72.834a0.9,0.9 0,1 0,1.8,0a0.9,0.9 0,1 0,-1.8,0z" />
+    <path
+        android:fillColor="#E6FFFFFF"
+        android:pathData="M64.8212,57.4266a0.9,0.9 0,1 0,1.8,0a0.9,0.9 0,1 0,-1.8,0z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M52,32h4a1,1 0,0 1,1 1v42a1,1 0,0 1,-1 1h-4a1,1 0,0 1,-1 -1v-42a1,1 0,0 1,1 -1z" />
+</vector>

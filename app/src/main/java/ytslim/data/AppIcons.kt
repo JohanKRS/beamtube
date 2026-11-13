@@ -9,7 +9,7 @@ import androidx.annotation.StringRes
 import ytslim.R
 
 /**
- * As cores do ícone do app. O desenho é sempre a porta; muda só a cor.
+ * As cores do ícone do app. O desenho é sempre a fresta com o facho de luz; muda só a cor.
  * Cada uma é um activity-alias no AndroidManifest.xml (`alias`), com o ícone e o banner da TV dela.
  * Os recursos saem de tools/make_icons.py.
  */

@@ -1,8 +1,8 @@
-# Perfil de compilação do Doorglow. O Android compila para código de máquina o que está aqui (além do
+# Perfil de compilação do BeamTube. O Android compila para código de máquina o que está aqui (além do
 # que as bibliotecas já trazem, como o Compose), em vez de interpretar ou esperar o JIT: o app e o
 # motor inteiros, que são pequenos perto das bibliotecas. O perfil vai no APK, o ProfileInstaller o
 # entrega ao sistema na primeira abertura, e o Android compila quando o aparelho fica parado (ou na
-# hora, com: adb shell cmd package compile -m speed-profile -f app.doorglow).
+# hora, com: adb shell cmd package compile -m speed-profile -f app.beamtube).
 HSPLytslim/**;->**(**)**
 Lytslim/**;
 HSPLcom/liskovsoft/**;->**(**)**

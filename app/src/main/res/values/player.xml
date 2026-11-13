@@ -90,7 +90,7 @@
         <item name="android:gravity">center_vertical</item>
         <item name="android:textColor">@color/player_icon</item>
         <item name="android:textSize">14sp</item>
-        <item name="android:fontFamily">@font/figtree_semibold</item>
+        <item name="android:fontFamily">@font/outfit_semibold</item>
     </style>
 
     <!-- Uma linha do painel: o nome em cima, as opções num trilho embaixo. -->
@@ -107,7 +107,7 @@
         <item name="android:layout_marginBottom">6dp</item>
         <item name="android:textColor">#A7A8AD</item>
         <item name="android:textSize">12sp</item>
-        <item name="android:fontFamily">@font/figtree_medium</item>
+        <item name="android:fontFamily">@font/outfit_medium</item>
     </style>
 
     <!-- Os trilhos de um painel ficam da mesma largura (sameWidth, no PlayerActivity). -->
@@ -129,7 +129,7 @@
         <item name="android:background">@drawable/player_segment_bg</item>
         <item name="android:textColor">@color/player_segment_text</item>
         <item name="android:textSize">13sp</item>
-        <item name="android:fontFamily">@font/figtree_semibold</item>
+        <item name="android:fontFamily">@font/outfit_semibold</item>
         <item name="android:fontFeatureSettings">tnum</item>
         <item name="android:focusable">true</item>
         <item name="android:clickable">true</item>
@@ -142,7 +142,7 @@
         <item name="android:paddingEnd">6dp</item>
         <item name="android:textColor">@color/player_icon</item>
         <item name="android:textSize">13sp</item>
-        <item name="android:fontFamily">@font/figtree_medium</item>
+        <item name="android:fontFamily">@font/outfit_medium</item>
         <item name="android:fontFeatureSettings">tnum</item>
     </style>
 </resources>

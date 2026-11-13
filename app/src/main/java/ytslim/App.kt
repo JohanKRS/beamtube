@@ -48,7 +48,7 @@ class App : Application(), SingletonImageLoader.Factory {
     /**
      * Se o Android já compilou o app com o perfil (ver baseline-prof.txt). Depois de cada atualização
      * ele volta a rodar sem compilar até o aparelho ficar parado um tempo; isto diz em que pé está
-     * (tag Doorglow), para não medir desempenho num app ainda sem compilar.
+     * (tag BeamTube), para não medir desempenho num app ainda sem compilar.
      */
     private fun logCompilation() {
         AppScope.launch(Dispatchers.IO) {
@@ -56,7 +56,7 @@ class App : Application(), SingletonImageLoader.Factory {
             runCatching {
                 val status = ProfileVerifier.getCompilationStatusAsync().get()
                 Log.i(
-                    "Doorglow",
+                    "BeamTube",
                     "compilation: compiled with profile ${status.isCompiledWithProfile}, " +
                         "profile waiting for compilation ${status.hasProfileEnqueuedForCompilation()}, " +
                         "install result ${status.profileInstallResultCode}",
