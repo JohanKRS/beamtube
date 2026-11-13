@@ -63,6 +63,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -148,6 +149,7 @@ import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
 import ytslim.ui.LightSlit
+import ytslim.ui.ListTop
 import ytslim.ui.MetaLine
 import ytslim.ui.metaAfterChannel
 import ytslim.ui.Look
@@ -167,7 +169,7 @@ import ytslim.ui.SettingsViewModel.TopicList
 import ytslim.ui.SignInViewModel
 import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
-import ytslim.ui.channelOf
+import ytslim.ui.openChannelOf
 import ytslim.ui.exploreFilterChoices
 import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
@@ -256,6 +258,9 @@ private val GroupCorner = 18.dp
 object TvUi : Screens {
     private val OkKeys = setOf(android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER)
     private val GridGapX = 20.dp
+
+    /** Quantos quadros esperar pelo primeiro card antes de desistir de pôr o foco nele. */
+    private const val FOCUS_TRIES = 3
     private val GridGapY = 28.dp
     private val screenPadding = PaddingValues(horizontal = 48.dp, vertical = 26.dp)
 
@@ -1399,13 +1404,24 @@ object TvUi : Screens {
         val firstFocus = remember { FocusRequester() }
         val saved by SavedVideos.ids.collectAsStateWithLifecycle()
         val grid = rememberLazyGridState()
+        var inGrid by remember { mutableStateOf(false) }
         PrefetchThumbnails(content.videos, grid)
+        // De volta ao começo com vídeos novos: o foco que estava na grade vai para o primeiro deles.
+        ListTop(grid, content) {
+            if (!inGrid) return@ListTop
+            // O primeiro card só existe depois que a grade mede a lista nova.
+            repeat(FOCUS_TRIES) {
+                withFrameNanos { }
+                if (runCatching { firstFocus.requestFocus() }.getOrElse { false } != false) return@ListTop
+            }
+        }
         LazyVerticalGrid(
             state = grid,
             columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
             verticalArrangement = Arrangement.spacedBy(GridGapY),
             contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
+            modifier = Modifier.onFocusChanged { inGrid = it.hasFocus },
         ) {
             if (content.videos.isEmpty() && !content.loadingMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -1464,7 +1480,7 @@ object TvUi : Screens {
         // primeira opção) e o card ficaria esperando um soltar que não vem.
         var menuFocusable by remember { mutableStateOf(false) }
         val res = LocalContext.current.resources
-        val channel = channelOf(video)?.takeIf { onOpenChannel != null }
+        val scope = rememberCoroutineScope()
         Column(modifier) {
             Box(
                 Modifier.onPreviewKeyEvent { event ->
@@ -1514,7 +1530,7 @@ object TvUi : Screens {
                 if (menu) {
                     VideoMenu(
                         saved = saved,
-                        channelName = channel?.title,
+                        channelName = video.channelName?.takeIf { it.isNotBlank() },
                         focusable = menuFocusable,
                         onDismiss = { menu = false },
                         onSave = if (showSaved) {
@@ -1522,7 +1538,8 @@ object TvUi : Screens {
                         } else {
                             null
                         },
-                        onChannel = channel?.let { c -> { onOpenChannel?.invoke(c) } },
+                        // Sempre, também sem o ID do canal no card (as Recomendações): ele é procurado na hora.
+                        onChannel = onOpenChannel?.let { open -> { scope.openChannelOf(video, res, open) } },
                         remove = onRemove?.let { (label, remove) -> label to { remove(video) } },
                     )
                 }
@@ -1727,34 +1744,47 @@ object TvUi : Screens {
         val name = video.channelName?.takeIf { it.isNotBlank() }
         if (video.fromPlaylist != null || name == null) return CardText(video.title, subtitleOf(video))
         CardText(video.title, null)
-        val style = MaterialTheme.typography.bodySmall
         val rest = metaAfterChannel(video.info, name, video.published)
         MetaLine(
-            channel = { Text(name, style = style, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            rest = rest?.let { { Text(rest, style = style, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
-            separator = { Text(" · ", style = style, color = Look.Sub) },
-            modifier = Modifier.padding(top = 2.dp, start = 2.dp, end = 2.dp),
+            channel = { Text(name, style = CardMeta, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            rest = rest?.let { { Text(rest, style = CardMeta, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            separator = { Text(" · ", style = CardMeta, color = Look.Sub) },
+            modifier = Modifier.padding(top = CardMetaGap, start = 2.dp, end = 2.dp),
             stacked = true,
         )
     }
+
+    /**
+     * Os textos dos cards (pedido do Johan, 2026-11-13): o título um pouco menor, para caber mais
+     * dele, com as duas linhas mais juntas, e um respiro maior entre ele e o canal. Antes era o
+     * titleSmall (14 sp, linhas de 20 sp), com o canal colado, e as linhas do título ficavam tão
+     * longe uma da outra quanto do canal.
+     */
+    private val CardTitle: TextStyle
+        @Composable get() = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp, lineHeight = 17.sp)
+
+    private val CardMeta: TextStyle
+        @Composable get() = MaterialTheme.typography.bodySmall.copy(lineHeight = 15.sp)
+
+    private val CardMetaGap = 5.dp
 
     @Composable
     private fun CardText(title: String, subtitle: String?) {
         Text(
             title,
-            style = MaterialTheme.typography.titleSmall,
+            style = CardTitle,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 12.dp, start = 2.dp, end = 2.dp),
+            modifier = Modifier.padding(top = 11.dp, start = 2.dp, end = 2.dp),
         )
         if (subtitle != null) {
             Text(
                 subtitle,
-                style = MaterialTheme.typography.bodySmall,
+                style = CardMeta,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 color = Look.Sub,
-                modifier = Modifier.padding(top = 2.dp, start = 2.dp, end = 2.dp),
+                modifier = Modifier.padding(top = CardMetaGap, start = 2.dp, end = 2.dp),
             )
         }
     }

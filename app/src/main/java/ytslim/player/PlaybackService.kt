@@ -131,8 +131,17 @@ internal object ScreenOffRules {
      * Continua tocando (só o som) quando a tela do celular ou do tablet apaga no meio do vídeo.
      * Sair do app para outro (Home, outro app) com o vídeo tocando abre o mini player
      * ([MiniPlayerRules]), e a tela do player não sai de vista; sem ele, pausa, como antes. Na TV,
-     * apagar a tela é desligar a TV, e o vídeo pausa.
+     * apagar a tela é desligar a TV, e o player fecha ([closesOnStop]).
      */
     fun keepsPlaying(touch: Boolean, screenOn: Boolean, playWhenReady: Boolean): Boolean =
         touch && !screenOn && playWhenReady
+
+    /**
+     * Na TV, o player fecha quando sai da tela (a TV desligada, Home, outro app): ao voltar, o app
+     * está na lista de onde o vídeo foi aberto (pedido do Johan, 2026-11-13). Antes ele voltava no
+     * player, numa tela preta carregando o vídeo de antes. Fica aberto quando a tela só é recriada e
+     * enquanto o próprio player mostra os ajustes de Acessibilidade (o "When done: Turn off").
+     */
+    fun closesOnStop(touch: Boolean, changingConfigurations: Boolean, inOwnSettings: Boolean): Boolean =
+        !touch && !changingConfigurations && !inOwnSettings
 }

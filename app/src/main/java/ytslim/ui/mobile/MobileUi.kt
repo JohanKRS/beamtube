@@ -110,6 +110,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -184,6 +185,7 @@ import ytslim.ui.HomeTab
 import ytslim.ui.LightSlit
 import ytslim.ui.MetaLine
 import ytslim.ui.ListMotion
+import ytslim.ui.ListTop
 import ytslim.ui.Look
 import ytslim.ui.Notice
 import ytslim.ui.NoticeAction
@@ -202,7 +204,7 @@ import ytslim.ui.SettingsViewModel.TopicList
 import ytslim.ui.SignInViewModel
 import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
-import ytslim.ui.channelOf
+import ytslim.ui.openChannelOf
 import ytslim.ui.exploreFilterChoices
 import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
@@ -1557,6 +1559,7 @@ object MobileUi : Screens {
         val grid = rememberLazyGridState()
         NearEnd(grid, content.videos.size, onNearEnd)
         PrefetchThumbnails(content.videos, grid)
+        ListTop(grid, content)
         val cards = rememberCardState()
         val motion = rememberListMotion(content.videos)
         LazyVerticalGrid(
@@ -1784,14 +1787,16 @@ object MobileUi : Screens {
         val rest = video.fromPlaylist?.let { stringResource(R.string.from_playlist_short, it) }
             ?: metaAfterChannel(video.info, video.channelName, video.published)
         val name = video.channelName?.takeIf { it.isNotBlank() }
-        val channel = channelOf(video)
+        val scope = rememberCoroutineScope()
+        val res = LocalContext.current.resources
         // O canal e o resto numa linha só quando cabem; senão o resto desce, inteiro (MetaLine).
         MetaLine(
             channel = name?.let {
                 {
-                    val open = if (onOpenChannel != null && channel != null) {
+                    // Sempre, também sem o ID do canal no card (as Recomendações): ele é procurado na hora.
+                    val open = if (onOpenChannel != null) {
                         val label = stringResource(R.string.video_open_channel, name)
-                        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = label) { onOpenChannel(channel) }
+                        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = label) { scope.openChannelOf(video, res, onOpenChannel) }
                     } else {
                         Modifier
                     }

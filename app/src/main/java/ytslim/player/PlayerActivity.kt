@@ -77,6 +77,7 @@ import ytslim.data.Chapter
 import ytslim.data.Chapters
 import ytslim.data.ExternalLinks
 import ytslim.data.PlayQueue
+import ytslim.data.Published
 import ytslim.data.Rating
 import ytslim.data.SettingsRepository
 import ytslim.data.Storyboard
@@ -138,6 +139,9 @@ class PlayerActivity : ComponentActivity() {
 
     private var saveHistory = true
     private var external = false
+
+    /** Há quanto tempo o vídeo pedido foi publicado, como o card escreve ([PlaybackController.publishedHint]). */
+    private var published: String? = null
 
     /** Quando o card foi tocado (para o log do tempo até o primeiro quadro); 0 = agora. */
     private var requestedAtMs = 0L
@@ -202,6 +206,9 @@ class PlayerActivity : ComponentActivity() {
 
     /** O vídeo está no mini player agora. */
     private var floating = false
+
+    /** O player abriu os ajustes de Acessibilidade (para o "When done: Turn off") e espera a volta. */
+    private var inOwnSettings = false
     private val videoBounds = Rect()
 
     /** O sentido escolhido no botão de girar; vale até fechar o player. null = segue o vídeo. */
@@ -256,6 +263,7 @@ class PlayerActivity : ComponentActivity() {
         val restored = savedInstanceState?.containsKey(KEY_VIDEO) == true
         val title = (if (restored) savedInstanceState?.getString(KEY_TITLE) else intent.getStringExtra(EXTRA_TITLE))
             ?.takeIf { it.isNotBlank() }
+        published = if (restored) savedInstanceState?.getString(KEY_PUBLISHED) else intent.getStringExtra(EXTRA_PUBLISHED)
         setContentView(buildLayout(title))
         playerView.player = controller.player
         controller.player.addListener(PlayerScreenListener())
@@ -310,7 +318,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun start(videoId: String, startMs: Long, saveHistory: Boolean, title: String?, resumeMs: Long) {
         this.saveHistory = saveHistory
-        controller.open(videoId, startMs, saveHistory, title, resumeHintMs = resumeMs, requestedAtMs = requestedAtMs)
+        controller.open(videoId, startMs, saveHistory, title, published, resumeHintMs = resumeMs, requestedAtMs = requestedAtMs)
         requestedAtMs = 0L
     }
 
@@ -364,10 +372,28 @@ class PlayerActivity : ComponentActivity() {
         val channel = page?.channelName?.takeIf { page.channelId != null && it.isNotBlank() }
         channelButton.visibility = if (channel != null) View.VISIBLE else View.GONE
         channelButton.text = channel
-        val author = if (channel == null) (state as? PlaybackController.State.Playing)?.info?.author else null
+        val info = (state as? PlaybackController.State.Playing)?.info
+        val author = if (channel == null) info?.author else null
+        // Há quanto tempo foi publicado, pequeno, como nos cards (pedido do Johan, 2026-11-13). Numa live, não.
+        val age = if (info?.isLive == true) null else controller.publishedHint ?: ageOf(page?.published)
         val noHistory = if (!saveHistory) getString(R.string.player_no_history) else null
-        val rest = listOfNotNull(author, noHistory).joinToString(" · ")
+        val rest = listOfNotNull(author, age, noHistory).joinToString(" · ")
         detailView.text = if (channel != null && rest.isNotEmpty()) "· $rest" else rest
+    }
+
+    /** A data da página do vídeo ("Nov 10, 2025") como idade ("3 days ago"); a data mesma, se não der para ler. */
+    private fun ageOf(date: String?): String? {
+        date ?: return null
+        val now = System.currentTimeMillis()
+        val today = (now + java.util.TimeZone.getDefault().getOffset(now)) / DAY_MS
+        val age = Published.age(date, today) ?: return date
+        return when (age.span) {
+            Published.Span.DAY -> if (age.count == 0) getString(R.string.published_today)
+                else resources.getQuantityString(R.plurals.published_days, age.count, age.count)
+            Published.Span.WEEK -> resources.getQuantityString(R.plurals.published_weeks, age.count, age.count)
+            Published.Span.MONTH -> resources.getQuantityString(R.plurals.published_months, age.count, age.count)
+            Published.Span.YEAR -> resources.getQuantityString(R.plurals.published_years, age.count, age.count)
+        }
     }
 
     private fun renderControls(controls: PlaybackController.Controls) {
@@ -599,6 +625,8 @@ class PlayerActivity : ComponentActivity() {
             // Uma vez só: o Android pede que o serviço seja ligado à mão.
             Toast.makeText(this, R.string.player_turn_off_setup, Toast.LENGTH_LONG).show()
             try {
+                // Daqui a pessoa volta para o mesmo vídeo: o player não fecha ao sair da tela.
+                inOwnSettings = true
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             } catch (_: ActivityNotFoundException) {
                 // Sem a tela de Acessibilidade: o aviso já diz onde ligar.
@@ -1041,6 +1069,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        inOwnSettings = false
         if (!::controller.isInitialized) return
         playerView.requestFocus()
         if (touch) {
@@ -1062,6 +1091,9 @@ class PlayerActivity : ComponentActivity() {
         if (!ScreenOffRules.keepsPlaying(touch, screenOn, controller.player.playWhenReady)) controller.player.pause()
         // Fora da tela, sem imagem: só o som, se continuar (ou se voltar a tocar pela notificação).
         if (touch && !isFinishing) controller.setBackground(true)
+        // Na TV, desligar a TV ou sair do app fecha o player: ao voltar, o app está na lista de onde o
+        // vídeo foi aberto, e não numa tela preta carregando o vídeo de antes (pedido do Johan, 2026-11-13).
+        if (ScreenOffRules.closesOnStop(touch, isChangingConfigurations, inOwnSettings)) finish()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1070,6 +1102,7 @@ class PlayerActivity : ComponentActivity() {
         outState.putLong(KEY_POSITION, controller.player.currentPosition)
         controller.videoId?.let { outState.putString(KEY_VIDEO, it) }
         controller.titleHint?.let { outState.putString(KEY_TITLE, it) }
+        controller.publishedHint?.let { outState.putString(KEY_PUBLISHED, it) }
     }
 
     override fun onDestroy() {
@@ -1209,12 +1242,14 @@ class PlayerActivity : ComponentActivity() {
         private const val TAG = "Doorglow"
         private const val EXTRA_VIDEO_ID = "video_id"
         private const val EXTRA_TITLE = "title"
+        private const val EXTRA_PUBLISHED = "published"
         private const val EXTRA_REQUESTED_AT = "requested_at"
         private const val EXTRA_RESUME = "resume_ms"
         private const val EXTRA_BACK_TO_PLAYER = "back_to_player"
         private const val KEY_POSITION = "position"
         private const val KEY_VIDEO = "video"
         private const val KEY_TITLE = "video_title"
+        private const val KEY_PUBLISHED = "video_published"
 
         /** O mesmo show_timeout do player_view. */
         private const val CONTROLS_TIMEOUT_MS = 4000
@@ -1250,6 +1285,7 @@ class PlayerActivity : ComponentActivity() {
 
         /** O aviso dos toques fica este tempo e some em [FLASH_FADE_MS]. */
         private const val FLASH_MS = 450L
+        private const val DAY_MS = 86_400_000L
         private const val FLASH_FADE_MS = 250L
 
         /**
@@ -1263,10 +1299,11 @@ class PlayerActivity : ComponentActivity() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
         /** @param resumeMs onde o card do YouTube diz que o vídeo parou ([Video.resumeMs]). */
-        fun intent(context: Context, videoId: String, title: String?, resumeMs: Long = 0): Intent =
+        fun intent(context: Context, videoId: String, title: String?, resumeMs: Long = 0, published: String? = null): Intent =
             Intent(context, PlayerActivity::class.java)
                 .putExtra(EXTRA_VIDEO_ID, videoId)
                 .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_PUBLISHED, published)
                 .putExtra(EXTRA_RESUME, resumeMs)
                 .putExtra(EXTRA_REQUESTED_AT, SystemClock.elapsedRealtime())
     }

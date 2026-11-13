@@ -7,6 +7,15 @@ object FeedRules {
     /** Shorts nunca aparecem; lives e agendados só com o toggle das configurações ligado. */
     fun keep(video: Video, showLives: Boolean): Boolean =
         !video.isShorts && (showLives || (!video.isLive && !video.isUpcoming))
+
+    /** Fora da tela por pelo menos isto (TV desligada, outro app), as Inscrições se atualizam ao voltar. */
+    const val AWAY_REFRESH_MS = 10 * 60_000L
+
+    fun refreshesAfterAway(awayMs: Long): Boolean = awayMs >= AWAY_REFRESH_MS
+
+    /** Na volta, sem rede (a TV recém-ligada ainda achando o Wi-Fi), tenta de novo depois de 2, 4, 8 e 16 s. */
+    const val AWAY_RETRIES = 4
+    const val RETRY_FIRST_MS = 2_000L
 }
 
 /** Um vídeo com a data (estimada) em que ele entrou no feed. */

@@ -27,6 +27,7 @@ import ytslim.ui.ImageHttp
 class App : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
+        AppVisibility.init(this)
         Engine.init(this)
         SettingsRepository.init(this)
         PlaylistSubscriptions.init(this)

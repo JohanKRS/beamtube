@@ -445,7 +445,7 @@ class ScreenShots {
         if (tv) org.robolectric.Shadows.shadowOf(context.packageManager)
             .setSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK, true)
         val v = videos[1]
-        val intent = ytslim.player.PlayerActivity.intent(context, v.id, v.title)
+        val intent = ytslim.player.PlayerActivity.intent(context, v.id, v.title, published = v.published)
         val activity = org.robolectric.Robolectric.buildActivity(ytslim.player.PlayerActivity::class.java, intent).setup().get()
         val playerView = activity.findViewById<androidx.media3.ui.PlayerView>(ytslim.R.id.player_view)
         val thumb = BitmapFactory.decodeFile(File(dir, "thumbs/${v.id}.jpg").path)
@@ -527,6 +527,8 @@ class ScreenShots {
         }
         // Sem rede, o título às vezes some quando o carregamento falha no meio da foto: fixa ele.
         playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_title)?.text = v.title
+        // A linha do canal como fica com a página do vídeo lida (o canal é o botão ao lado).
+        playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_detail)?.text = "· ${v.published}"
         relayout(activity)
         val view = activity.window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
