@@ -69,6 +69,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -193,7 +194,17 @@ private val LocalInitialFocus = compositionLocalOf<MutableState<Boolean>> { muta
  * (achado do Johan na TV, 2026-11-04: das Inscrições ia para os Ajustes).
  */
 private fun Modifier.entersAt(selected: FocusRequester) =
-    focusProperties { onEnter = { selected.requestFocus() } }.focusGroup()
+    focusProperties {
+        onEnter = {
+            // Só se entra nas abas subindo ou descendo. Com as abas encostadas à direita, a seta para a
+            // direita no último card de uma fileira achava uma aba "mais à direita" e pulava para lá.
+            if (requestedFocusDirection == FocusDirection.Left || requestedFocusDirection == FocusDirection.Right) {
+                cancelFocusChange()
+            } else {
+                selected.requestFocus()
+            }
+        }
+    }.focusGroup()
 
 /**
  * As cores do BeamTube na TV. O foco é a luz da fresta: botões e linhas focados ficam na cor de
