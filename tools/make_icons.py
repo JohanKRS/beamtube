@@ -14,7 +14,8 @@ Para cada cor de PALETTE saem:
   - drawable/ic_launcher_<cor>_foreground.xml (a mesma porta em camadas chapadas, para o Android 6);
   - mipmap-anydpi-v26/ic_launcher_<cor>.xml (ícone adaptativo) e mipmap-anydpi/ic_launcher_<cor>.xml (Android 6 e 7);
   - drawable-v24/tv_banner_<cor>.xml e drawable/tv_banner_<cor>.xml (banner da TV, 320x180dp, vetor).
-E também drawable/ic_launcher_monochrome.xml (ícones temáticos do Android 13+).
+E também drawable/ic_launcher_monochrome.xml (ícones temáticos do Android 13+) e
+drawable/ic_notification.xml (o ícone pequeno da notificação do player com a tela desligada).
 
 Cada cor tem um activity-alias no AndroidManifest.xml e uma entrada em ytslim.data.AppIcon.
 
@@ -297,6 +298,14 @@ def monochrome():
     write(RES / "drawable/ic_launcher_monochrome.xml", vector(108, 108, 108, 108, vector_shapes(shapes), False))
 
 
+def notification_icon():
+    # O mesmo desenho do monocromático, recortado em volta da porta: o ícone pequeno da barra de
+    # status tem 24dp, e na grade de 108 a porta ficaria minúscula. A fresta vai de 30 a 74 e a luz
+    # no chão até 84; o quadrado de 54 em volta dela começa em (27, 30).
+    shapes = [Shape(polygon(FLOOR), ("solid", "#FFFFFF", 0.45)), Shape(rounded(*SLIT), ("solid", "#FFFFFF", 1.0))]
+    write(RES / "drawable/ic_notification.xml", vector(24, 24, 54, 54, group(vector_shapes(shapes), -27, -30, 1), False))
+
+
 # O banner da TV: 320x180dp. A porta (com o brilho) e o nome, centralizados como um bloco.
 BANNER_W, BANNER_H = 320, 180
 DOOR_SCALE = 1.75  # grade de 108 -> dp
@@ -373,6 +382,7 @@ def main():
         return
     colors()
     monochrome()
+    notification_icon()
     for key, (top, bottom, diagonal, light, glow) in PALETTE.items():
         icon(key, top, bottom, diagonal, light, glow)
         tv_banner(key, top, bottom, diagonal, light, glow)
