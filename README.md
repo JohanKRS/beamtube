@@ -232,9 +232,6 @@ service: Settings > Accessibility > BeamTube. The service only puts the device t
 for the remote's YouTube button; it doesn't read the screen. On Android 13 and newer, an app
 installed outside the Play Store may need "Allow restricted settings" first (App info > ⋮).
 
-**Coming from Doorglow?** That was BeamTube's name before 1.0. BeamTube installs as a separate app:
-add it to Obtainium again, sign in, pick your topics, and then uninstall Doorglow.
-
 ## Privacy
 
 - BeamTube has no servers, no ads, no analytics and no crash reporting of its own. It sends
