@@ -12,14 +12,12 @@ val appVersionCode = providers.gradleProperty("app.versionCode").get().toInt()
 val appVersionName = providers.gradleProperty("app.versionName").get()
 
 // Chave das releases. Precisa ser sempre a mesma, senão o Android recusa a atualização.
-// Local: -Pdoorglow.keystore=/caminho/doorglow.keystore. No GitHub Actions: DOORGLOW_KEYSTORE.
-// (A chave e os nomes dela vêm de quando o app se chamava Doorglow; ficam como estão, para os
-// secrets do repositório continuarem valendo.)
-val releaseKeystore: String? = providers.gradleProperty("doorglow.keystore").orNull
-    ?: providers.environmentVariable("DOORGLOW_KEYSTORE").orNull
+// Local: -Pbeamtube.keystore=/caminho/beamtube.keystore. No GitHub Actions: BEAMTUBE_KEYSTORE.
+val releaseKeystore: String? = providers.gradleProperty("beamtube.keystore").orNull
+    ?: providers.environmentVariable("BEAMTUBE_KEYSTORE").orNull
 fun signingValue(name: String, default: String): String =
-    providers.gradleProperty("doorglow.$name").orNull
-        ?: providers.environmentVariable("DOORGLOW_${name.uppercase().replace('.', '_')}").orNull
+    providers.gradleProperty("beamtube.$name").orNull
+        ?: providers.environmentVariable("BEAMTUBE_${name.uppercase().replace('.', '_')}").orNull
         ?: default
 
 android {
