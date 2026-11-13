@@ -487,6 +487,8 @@ class ScreenShots {
         channelFocused: Boolean = false,
         captionsAtMs: Long = 3_000,
         rolling: Boolean = false,
+        /** "opening": o vídeo acabou de ser aberto (miniatura e círculo); "buffering": parou para carregar no meio. */
+        loading: String? = null,
     ) {
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         // O qualificador "television" não chega ao UiModeManager do Robolectric: sem isso o player
@@ -498,7 +500,26 @@ class ScreenShots {
         val activity = org.robolectric.Robolectric.buildActivity(ytslim.player.PlayerActivity::class.java, intent).setup().get()
         val playerView = activity.findViewById<androidx.media3.ui.PlayerView>(ytslim.R.id.player_view)
         val thumb = BitmapFactory.decodeFile(File(dir, "thumbs/${v.id}.jpg").path)
-        playerView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)?.background =
+        // A tela de carregando ([PlayerLoading]): nas fotos do vídeo tocando, o primeiro quadro já veio.
+        val loadingView = activity.window.decorView.let { root ->
+            fun find(view: android.view.View): ytslim.player.PlayerLoading? = when (view) {
+                is ytslim.player.PlayerLoading -> view
+                is android.view.ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { find(view.getChildAt(it)) }
+                else -> null
+            }
+            find(root)!!
+        }
+        when (loading) {
+            // A miniatura do card (aqui não há rede para o carregador de imagens buscá-la).
+            "opening" -> (loadingView.getChildAt(0) as android.widget.ImageView).setImageBitmap(thumb)
+            "buffering" -> {
+                loadingView.stop()
+                loadingView.setBusy(true)
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(500))
+            }
+            else -> loadingView.stop()
+        }
+        if (loading != "opening") playerView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)?.background =
             android.graphics.drawable.BitmapDrawable(activity.resources, thumb)
         playerView.findViewById<android.view.View>(ytslim.R.id.player_actions)?.visibility = android.view.View.VISIBLE
         playerView.findViewById<android.view.View>(ytslim.R.id.player_save)?.visibility = android.view.View.VISIBLE
@@ -574,6 +595,15 @@ class ScreenShots {
             (ytslim.player.PlayerActivity::class.java.getDeclaredField("captionsView").apply { isAccessible = true }.get(activity) as androidx.media3.ui.SubtitleView)
                 .setCues(ytslim.player.CaptionRules.centered(cues))
         }
+        if (loading == "opening") {
+            // Como o player abre: a barra no começo, sem o que só chega com o vídeo e a página dele.
+            bar.setDuration(0); bar.setPosition(0); bar.setBufferedPosition(0); bar.setChapters(emptyList())
+            playerView.findViewById<android.widget.TextView>(androidx.media3.ui.R.id.exo_position)?.text = "0:00"
+            playerView.findViewById<android.widget.TextView>(androidx.media3.ui.R.id.exo_duration)?.text = "0:00"
+            for (id in listOf(ytslim.R.id.player_chapter, ytslim.R.id.player_actions, ytslim.R.id.player_save, ytslim.R.id.player_captions, ytslim.R.id.player_quality_button)) {
+                playerView.findViewById<android.view.View>(id)?.visibility = android.view.View.GONE
+            }
+        }
         // Sem rede, o título às vezes some quando o carregamento falha no meio da foto: fixa ele.
         playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_title)?.text = v.title
         // A linha do canal como fica com a página do vídeo lida (o canal é o botão ao lado).
@@ -600,6 +630,26 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
     fun playerPhoneLandscape() = playerShot("player-phone-landscape")
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneOpening() = playerShot("player-phone-opening", loading = "opening")
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneOpeningClean() = playerShot("player-phone-opening-clean", loading = "opening", hidden = true)
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneBuffering() = playerShot("player-phone-buffering", loading = "buffering", hidden = true)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvOpening() = playerShot("player-tv-opening", tv = true, loading = "opening")
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvOpeningClean() = playerShot("player-tv-opening-clean", tv = true, loading = "opening", hidden = true)
 
     @Test
     @Config(qualifiers = "w411dp-h891dp-port-xxhdpi")

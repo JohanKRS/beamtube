@@ -53,6 +53,7 @@ import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.compositionLocalOf
@@ -134,6 +135,7 @@ import ytslim.R
 import ytslim.data.AppIcon
 import ytslim.data.AuthRepository
 import ytslim.data.Channel
+import ytslim.data.PlaybackRepository
 import ytslim.data.Playlist
 import ytslim.data.SavedVideos
 import ytslim.data.SearchFilters
@@ -1511,9 +1513,16 @@ object TvUi : Screens {
         var menuFocusable by remember { mutableStateOf(false) }
         val res = LocalContext.current.resources
         val scope = rememberCoroutineScope()
+        // Com o foco parado no card, o vídeo é pedido ao YouTube antes do OK ([PlaybackRepository.focused]).
+        // Uma live ou uma estreia marcada, não: o que o YouTube entrega para elas muda a cada instante.
+        val ahead = !video.isLive && !video.isUpcoming
+        if (ahead) DisposableEffect(video.id) { onDispose { PlaybackRepository.unfocused(video.id) } }
         Column(modifier) {
             Box(
-                Modifier.onPreviewKeyEvent { event ->
+                Modifier.onFocusChanged { focus ->
+                    if (!ahead) return@onFocusChanged
+                    if (focus.hasFocus) PlaybackRepository.focused(video.id) else PlaybackRepository.unfocused(video.id)
+                }.onPreviewKeyEvent { event ->
                     if (menu && !menuFocusable && event.type == KeyEventType.KeyUp && event.nativeKeyEvent.keyCode in OkKeys) {
                         menuFocusable = true
                     }

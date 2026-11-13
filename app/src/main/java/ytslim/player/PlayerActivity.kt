@@ -130,6 +130,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var queueRow: LinearLayout
     private lateinit var endRow: LinearLayout
     private lateinit var dimView: View
+    private lateinit var loading: PlayerLoading
     private lateinit var timeBar: ChapterTimeBar
     private lateinit var chapterView: TextView
     private lateinit var islandView: View
@@ -143,6 +144,12 @@ class PlayerActivity : ComponentActivity() {
 
     /** Há quanto tempo o vídeo pedido foi publicado, como o card escreve ([PlaybackController.publishedHint]). */
     private var published: String? = null
+
+    /** A miniatura do vídeo pedido (a do card), para a tela de carregando ([PlayerLoading]). */
+    private var thumbnail: String? = null
+
+    /** O vídeo cuja miniatura a tela de carregando mostra (o próximo da sequência troca). */
+    private var loadingVideo: String? = null
 
     /** Quando o card foi tocado (para o log do tempo até o primeiro quadro); 0 = agora. */
     private var requestedAtMs = 0L
@@ -265,7 +272,13 @@ class PlayerActivity : ComponentActivity() {
         val title = (if (restored) savedInstanceState?.getString(KEY_TITLE) else intent.getStringExtra(EXTRA_TITLE))
             ?.takeIf { it.isNotBlank() }
         published = if (restored) savedInstanceState?.getString(KEY_PUBLISHED) else intent.getStringExtra(EXTRA_PUBLISHED)
+        thumbnail = (if (restored) savedInstanceState?.getString(KEY_THUMBNAIL) else intent.getStringExtra(EXTRA_THUMBNAIL))
+            ?.takeIf { it.isNotBlank() }
         setContentView(buildLayout(title))
+        // Desde o primeiro instante, a miniatura do vídeo e o círculo: nunca a tela só preta
+        // (pedido do Johan, 2026-11-13). O pedido ao YouTube ainda nem começou a ser esperado.
+        loadingVideo = videoId
+        loading.start(thumbnail ?: NowPlaying.artworkUrl(videoId))
         playerView.player = controller.player
         controller.player.addListener(PlayerScreenListener())
         bindButtons()
@@ -319,7 +332,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun start(videoId: String, startMs: Long, saveHistory: Boolean, title: String?, resumeMs: Long) {
         this.saveHistory = saveHistory
-        controller.open(videoId, startMs, saveHistory, title, published, resumeHintMs = resumeMs, requestedAtMs = requestedAtMs)
+        controller.open(videoId, startMs, saveHistory, title, published, resumeHintMs = resumeMs, requestedAtMs = requestedAtMs, thumbnail = thumbnail)
         requestedAtMs = 0L
     }
 
@@ -351,6 +364,30 @@ class PlayerActivity : ComponentActivity() {
                 messageView.visibility = View.VISIBLE
             }
         }
+        renderLoading()
+    }
+
+    /**
+     * A miniatura e o círculo de carregando ([PlayerLoading]). Um vídeo novo (o pedido, ou o próximo
+     * da sequência) começa com a miniatura dele; o círculo roda enquanto o vídeo é pedido ao YouTube
+     * e enquanto o player carrega ([LoadingRules.busy]); com erro na tela, some tudo.
+     */
+    private fun renderLoading() {
+        val state = controller.state.value
+        val video = controller.videoId
+        if (video != null && video != loadingVideo && state !is PlaybackController.State.Failed) {
+            loadingVideo = video
+            loading.start(controller.thumbnailHint ?: NowPlaying.artworkUrl(video))
+            return
+        }
+        if (state is PlaybackController.State.Failed) return loading.stop()
+        loading.setBusy(
+            LoadingRules.busy(
+                requesting = state is PlaybackController.State.Loading,
+                failed = false,
+                playbackState = controller.player.playbackState,
+            ),
+        )
     }
 
     /**
@@ -737,10 +774,13 @@ class PlayerActivity : ComponentActivity() {
 
         override fun onVideoSizeChanged(videoSize: VideoSize) = followVideo(videoSize)
 
+        override fun onRenderedFirstFrame() = loading.firstFrame()
+
         override fun onEvents(player: Player, events: Player.Events) {
             if (events.containsAny(Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_VIDEO_SIZE_CHANGED)) {
                 updateMiniPlayer()
             }
+            if (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED)) renderLoading()
         }
     }
 
@@ -1104,6 +1144,7 @@ class PlayerActivity : ComponentActivity() {
         controller.videoId?.let { outState.putString(KEY_VIDEO, it) }
         controller.titleHint?.let { outState.putString(KEY_TITLE, it) }
         controller.publishedHint?.let { outState.putString(KEY_PUBLISHED, it) }
+        controller.thumbnailHint?.let { outState.putString(KEY_THUMBNAIL, it) }
     }
 
     override fun onDestroy() {
@@ -1152,6 +1193,10 @@ class PlayerActivity : ComponentActivity() {
         brightnessRow = playerView.findViewById(R.id.player_sleep_brightness)
         queueRow = playerView.findViewById(R.id.player_sleep_queue)
         endRow = playerView.findViewById(R.id.player_sleep_end)
+
+        // A miniatura e o círculo de carregando: por cima do vídeo, por baixo do escurecer do modo dormir.
+        loading = PlayerLoading(this, tv = !touch)
+        (playerView.overlayFrameLayout ?: playerView).addView(loading, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
         // Por cima do vídeo e da legenda, por baixo dos controles.
         dimView = View(this).apply {
@@ -1251,6 +1296,8 @@ class PlayerActivity : ComponentActivity() {
         private const val KEY_VIDEO = "video"
         private const val KEY_TITLE = "video_title"
         private const val KEY_PUBLISHED = "video_published"
+        private const val EXTRA_THUMBNAIL = "thumbnail"
+        private const val KEY_THUMBNAIL = "video_thumbnail"
 
         /** O mesmo show_timeout do player_view. */
         private const val CONTROLS_TIMEOUT_MS = 4000
@@ -1299,12 +1346,23 @@ class PlayerActivity : ComponentActivity() {
                 .putExtra(EXTRA_BACK_TO_PLAYER, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
-        /** @param resumeMs onde o card do YouTube diz que o vídeo parou ([Video.resumeMs]). */
-        fun intent(context: Context, videoId: String, title: String?, resumeMs: Long = 0, published: String? = null): Intent =
+        /**
+         * @param resumeMs onde o card do YouTube diz que o vídeo parou ([Video.resumeMs]).
+         * @param thumbnail a miniatura do card, que fica na tela enquanto o vídeo carrega.
+         */
+        fun intent(
+            context: Context,
+            videoId: String,
+            title: String?,
+            resumeMs: Long = 0,
+            published: String? = null,
+            thumbnail: String? = null,
+        ): Intent =
             Intent(context, PlayerActivity::class.java)
                 .putExtra(EXTRA_VIDEO_ID, videoId)
                 .putExtra(EXTRA_TITLE, title)
                 .putExtra(EXTRA_PUBLISHED, published)
+                .putExtra(EXTRA_THUMBNAIL, thumbnail)
                 .putExtra(EXTRA_RESUME, resumeMs)
                 .putExtra(EXTRA_REQUESTED_AT, SystemClock.elapsedRealtime())
     }

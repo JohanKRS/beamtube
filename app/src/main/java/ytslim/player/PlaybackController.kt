@@ -198,9 +198,16 @@ class PlaybackController(
     /** O primeiro quadro do vídeo atual já apareceu (ou ele falhou): os extras esperam por isto. */
     private val started = MutableStateFlow(false)
 
-    /** Para o log do tempo até o primeiro quadro: quando o vídeo foi pedido, e em quantos ms ficou pronto. */
+    /**
+     * Para o log do tempo até o primeiro quadro: quando o vídeo foi pedido, e em quantos ms o motor
+     * respondeu ([readyInMs]), o player recebeu o vídeo ([preparedInMs]), as faixas foram escolhidas
+     * ([tracksInMs]) e havia vídeo bastante para começar ([bufferedInMs]). -1 = ainda não.
+     */
     private var requestedAt = 0L
     private var readyInMs = -1L
+    private var preparedInMs = -1L
+    private var tracksInMs = -1L
+    private var bufferedInMs = -1L
     private var firstFrameLogged = false
 
     /** A qualidade do início foi trocada pelo app depois da escolha do Media3 (deveria ser raro agora). */
@@ -222,6 +229,13 @@ class PlaybackController(
     var publishedHint: String? = null
         private set
 
+    /**
+     * A miniatura que veio com o vídeo (do card ou da sequência), para a tela mostrar enquanto ele
+     * carrega ([PlayerLoading]); null quando o vídeo veio sem (link de outro app).
+     */
+    var thumbnailHint: String? = null
+        private set
+
     /** O vídeo atual foi aberto pela sequência (e não pelo usuário)? */
     private var fromQueue = false
 
@@ -241,9 +255,11 @@ class PlaybackController(
         resumeHintMs: Long = 0L,
         /** Quando o card foi tocado ([SystemClock.elapsedRealtime]); 0 = agora. Só para o log de tempos. */
         requestedAtMs: Long = 0L,
+        /** A miniatura do card, para a tela de carregando. */
+        thumbnail: String? = null,
     ) {
         nextJob?.cancel()
-        start(videoId, startPositionMs, saveHistory, title, published, fromQueue = false, resumeHintMs, requestedAtMs)
+        start(videoId, startPositionMs, saveHistory, title, published, fromQueue = false, resumeHintMs, requestedAtMs, thumbnail)
     }
 
     private fun start(
@@ -255,9 +271,13 @@ class PlaybackController(
         fromQueue: Boolean,
         resumeHintMs: Long,
         requestedAtMs: Long = 0L,
+        thumbnail: String? = null,
     ) {
         requestedAt = requestedAtMs.takeIf { it > 0 } ?: SystemClock.elapsedRealtime()
         readyInMs = -1L
+        preparedInMs = -1L
+        tracksInMs = -1L
+        bufferedInMs = -1L
         firstFrameLogged = false
         switchedAtStart = false
         started.value = false
@@ -266,6 +286,7 @@ class PlaybackController(
         this.saveHistory = saveHistory
         this.titleHint = title?.takeIf { it.isNotBlank() }
         this.publishedHint = published?.takeIf { it.isNotBlank() }
+        this.thumbnailHint = thumbnail?.takeIf { it.isNotBlank() }
         this.fromQueue = fromQueue
         _ended.value = false
         errorRetries = 0
@@ -293,7 +314,7 @@ class PlaybackController(
                 _ended.value = true
                 return@launch
             }
-            start(next.id, 0, saveHistory, next.title, Published.of(next), fromQueue = true, resumeHintMs = next.resumeMs)
+            start(next.id, 0, saveHistory, next.title, Published.of(next), fromQueue = true, resumeHintMs = next.resumeMs, thumbnail = next.thumbnailUrl)
         }
     }
 
@@ -376,6 +397,7 @@ class PlaybackController(
         )
         player.setMediaSource(buildSource(result, caption), startPositionMs)
         player.prepare()
+        if (preparedInMs < 0) preparedInMs = SystemClock.elapsedRealtime() - requestedAt
         // Daqui em diante, o próprio player segura o processador enquanto toca.
         letSleep()
         _controls.update { it.copy(captionsAvailable = caption != null, captionsOn = captionsOn) }
@@ -574,10 +596,18 @@ class PlaybackController(
             firstFrameLogged = true
             val total = SystemClock.elapsedRealtime() - requestedAt
             val first = player.videoFormat?.let(::heightOf)
-            Log.i(TAG, "first frame of $videoId in $total ms (stream ready in $readyInMs ms, ${first}p going to ${playingHeight ?: _quality.value.playing}p, quality switched at start: $switchedAtStart)")
+            Log.i(
+                TAG,
+                "first frame of $videoId in $total ms (stream ready in $readyInMs ms, player prepared in $preparedInMs ms, " +
+                    "tracks in $tracksInMs ms, buffered in $bufferedInMs ms, ${first}p going to ${playingHeight ?: _quality.value.playing}p, " +
+                    "quality switched at start: $switchedAtStart)",
+            )
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_READY && bufferedInMs < 0 && preparedInMs >= 0) {
+                bufferedInMs = SystemClock.elapsedRealtime() - requestedAt
+            }
             watchRebuffering(playbackState)
             when (playbackState) {
                 Player.STATE_ENDED -> {
@@ -604,6 +634,7 @@ class PlaybackController(
         }
 
         override fun onTracksChanged(tracks: Tracks) {
+            if (tracksInMs < 0 && preparedInMs >= 0 && !tracks.isEmpty) tracksInMs = SystemClock.elapsedRealtime() - requestedAt
             enforceOriginalAudio(tracks)
             pickQuality(tracks)
             selectedHeight(tracks)?.let { height -> _quality.update { it.copy(playing = height) } }
