@@ -60,6 +60,9 @@ object PlaybackRepository {
     /** TV: quanto o foco fica parado num card antes de o vídeo dele ser pedido ([focused]). */
     private const val FOCUS_DWELL_MS = 600L
 
+    /** TV: depois de um pedido adiantado que não trouxe o vídeo, quanto tempo sem adiantar outros. */
+    private const val GUESS_PAUSE_MS = 5 * 60_000L
+
     val userAgent: String get() = DefaultHeaders.APP_USER_AGENT
 
     /** Os vídeos pedidos antes de a tela do player precisar deles ([EarlyRequests]). */
@@ -69,9 +72,11 @@ object PlaybackRepository {
         maxAgeMs = EARLY_MAX_AGE_MS,
         kept = EARLY_KEPT,
         dwellMs = FOCUS_DWELL_MS,
+        pauseMs = GUESS_PAUSE_MS,
         // Um palpite só vale se trouxe o vídeo em DASH ou HLS; o resto, o pedido de verdade resolve.
         usable = { it is PlaybackResult.Ready && it.stream !is Stream.Progressive },
         request = { id, guess -> fetch(id, guess) },
+        onPaused = { id -> Log.i(TAG, "video $id (ahead of the OK) didn't come: no requests ahead of the OK for ${GUESS_PAUSE_MS / 60_000} min") },
     )
 
     /**

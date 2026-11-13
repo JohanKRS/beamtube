@@ -24,7 +24,9 @@ import kotlinx.coroutines.launch
  *
  * Um palpite de cada vez: o motor atende um pedido por vez, e uma fila de palpites atrasaria o
  * vídeo que o usuário escolher de verdade. Um palpite que não deu certo (rede, cliente do YouTube)
- * não vale como resposta: o pedido de verdade tenta de novo.
+ * não vale como resposta: o pedido de verdade tenta de novo. E depois de um palpite que falhou, os
+ * palpites param por [pauseMs]: se o YouTube começou a recusar pedidos (ou a rede caiu), insistir só
+ * pioraria, e o vídeo volta a ser pedido só no OK (pergunta do Johan, 2026-11-13).
  */
 internal class EarlyRequests<T : Any>(
     private val scope: CoroutineScope,
@@ -32,10 +34,14 @@ internal class EarlyRequests<T : Any>(
     private val maxAgeMs: Long,
     private val kept: Int,
     private val dwellMs: Long,
+    /** Quanto os palpites ficam parados depois de um que falhou. */
+    private val pauseMs: Long,
     /** Um palpite com este resultado pode ser usado? (false = pedir de novo) */
     private val usable: (T) -> Boolean,
     /** O pedido ao motor; guess = true quando é um palpite (o foco parado), e não o usuário pedindo. */
     private val request: suspend (id: String, guess: Boolean) -> T,
+    /** Um palpite falhou e os palpites pararam por [pauseMs] (para o log). */
+    private val onPaused: (id: String) -> Unit = {},
 ) {
     private class Early<T>(val atMs: Long, val result: Deferred<T>, val guess: Boolean)
 
@@ -43,6 +49,9 @@ internal class EarlyRequests<T : Any>(
     private val early = LinkedHashMap<String, Early<T>>()
     private var dwell: Job? = null
     private var dwellId: String? = null
+
+    /** Até quando os palpites ficam parados ([pauseMs]); 0 = não estão. */
+    private var pausedUntilMs = 0L
 
     /** O último vídeo que o usuário pediu: de volta do player, o foco cai no card dele, e isso não é um palpite. */
     private var lastAsked: String? = null
@@ -60,7 +69,7 @@ internal class EarlyRequests<T : Any>(
     fun focused(id: String) {
         synchronized(this) {
             cancelDwell()
-            if (id == lastAsked) return
+            if (id == lastAsked || paused()) return
             dwellId = id
             dwell = scope.launch {
                 delay(dwellMs)
@@ -68,7 +77,7 @@ internal class EarlyRequests<T : Any>(
                 val running = synchronized(this@EarlyRequests) { early.entries.firstOrNull { it.value.result.isActive } }
                 if (running != null && running.key != id) running.value.result.join()
                 synchronized(this@EarlyRequests) {
-                    if (dwellId == id && valid(id) == null) put(id, guess = true)
+                    if (dwellId == id && !paused() && valid(id) == null) put(id, guess = true)
                 }
             }
         }
@@ -117,8 +126,26 @@ internal class EarlyRequests<T : Any>(
         return null
     }
 
+    private fun paused() = now() < pausedUntilMs
+
+    @OptIn(ExperimentalCoroutinesApi::class)
     private fun put(id: String, guess: Boolean) {
-        early[id] = Early(now(), scope.async { request(id, guess) }, guess)
+        val result = scope.async { request(id, guess) }
+        if (guess) {
+            result.invokeOnCompletion { error ->
+                // Cancelado (o usuário escolheu outro vídeo, ou saiu da lista de guardados) não é falha.
+                val failed = when (error) {
+                    null -> !usable(result.getCompleted())
+                    is CancellationException -> false
+                    else -> true
+                }
+                if (failed) {
+                    synchronized(this) { pausedUntilMs = now() + pauseMs }
+                    onPaused(id)
+                }
+            }
+        }
+        early[id] = Early(now(), result, guess)
         while (early.size > kept) {
             val oldest = early.entries.first()
             early.remove(oldest.key)

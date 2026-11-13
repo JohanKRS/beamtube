@@ -32,6 +32,7 @@ class EarlyRequestsTest {
         maxAgeMs = MAX_AGE_MS,
         kept = kept,
         dwellMs = DWELL_MS,
+        pauseMs = PAUSE_MS,
         usable = { it.startsWith("ok") },
         request = { id, guess ->
             requests += id to guess
@@ -136,6 +137,48 @@ class EarlyRequestsTest {
     }
 
     @Test
+    fun afterAGuessFailsTheGuessesStopForAWhile() = runTest {
+        val early = early()
+        held["a"] = CompletableDeferred<String>().apply { complete("unplayable") }
+        early.focused("a")
+        advanceTimeBy(DWELL_MS + 1)
+        runCurrent()
+        early.unfocused("a")
+        // O YouTube pode estar recusando pedidos: os outros cards não são adiantados.
+        early.focused("b")
+        advanceTimeBy(DWELL_MS * 3)
+        runCurrent()
+        early.unfocused("b")
+        assertEquals(listOf("a" to true), requests)
+        // O OK continua pedindo na hora.
+        early.asked("b")
+        runCurrent()
+        assertEquals("ok b", early.take("b"))
+        // Passado o tempo, os palpites voltam.
+        advanceTimeBy(PAUSE_MS)
+        early.focused("c")
+        advanceTimeBy(DWELL_MS + 1)
+        runCurrent()
+        assertEquals(listOf("a" to true, "b" to false, "c" to true), requests)
+    }
+
+    @Test
+    fun aGuessReplacedByOthersDoesNotStopTheGuesses() = runTest {
+        val early = early(kept = 1)
+        held["a"] = CompletableDeferred()
+        early.focused("a")
+        advanceTimeBy(DWELL_MS + 1)
+        runCurrent()
+        // O usuário abriu outro vídeo: o palpite de "a" sai da lista, cancelado. Não é falha.
+        early.asked("b")
+        runCurrent()
+        early.focused("c")
+        advanceTimeBy(DWELL_MS + 1)
+        runCurrent()
+        assertEquals(listOf("a" to true, "b" to false, "c" to true), requests)
+    }
+
+    @Test
     fun whatTheUserAskedForComesAsItIs() = runTest {
         val early = early()
         held["a"] = CompletableDeferred<String>().apply { complete("unplayable") }
@@ -217,5 +260,6 @@ class EarlyRequestsTest {
     private companion object {
         const val DWELL_MS = 600L
         const val MAX_AGE_MS = 60_000L
+        const val PAUSE_MS = 300_000L
     }
 }
