@@ -88,19 +88,30 @@ def argb(hex_color, alpha=1.0):
 
 # ---- o desenho, como formas que viram vetor do Android ou SVG ------------------------------------
 
+def num(v):
+    """Um número para o vetor, como o {:g}, mas nunca em notação científica nem "-0". O Android recusa
+    o desenho inteiro por um número só: o "--1.15463e-14" que a conta da largura da fresta dava (1.0.1)
+    deixou o banner da TV e o ícone sem abrir fora do app, e o launcher ficava sem o cartão."""
+    text = f"{v:g}"
+    if "e" in text:
+        text = f"{v:.6f}".rstrip("0").rstrip(".")
+    return "0" if text in ("-0", "") else text
+
+
 def rounded(x0, y0, x1, y1, r):
-    f = lambda v: f"{v:g}"
-    w, h = x1 - x0 - 2 * r, y1 - y0 - 2 * r
-    return (f"M{f(x0 + r)},{f(y0)}h{f(w)}a{f(r)},{f(r)} 0,0 1,{f(r)} {f(r)}v{f(h)}a{f(r)},{f(r)} 0,0 1,-{f(r)} {f(r)}"
-            f"h-{f(w)}a{f(r)},{f(r)} 0,0 1,-{f(r)} -{f(r)}v-{f(h)}a{f(r)},{f(r)} 0,0 1,{f(r)} -{f(r)}z")
+    f = num
+    # A fresta tem a largura do dobro do raio: a conta dá um resto como -1e-14, que vira 0.
+    w, h = max(0.0, x1 - x0 - 2 * r), max(0.0, y1 - y0 - 2 * r)
+    return (f"M{f(x0 + r)},{f(y0)}h{f(w)}a{f(r)},{f(r)} 0,0 1,{f(r)} {f(r)}v{f(h)}a{f(r)},{f(r)} 0,0 1,{f(-r)} {f(r)}"
+            f"h{f(-w)}a{f(r)},{f(r)} 0,0 1,{f(-r)} {f(-r)}v{f(-h)}a{f(r)},{f(r)} 0,0 1,{f(r)} {f(-r)}z")
 
 
 def polygon(points):
-    return "M" + "L".join(f"{x:g},{y:g}" for x, y in points) + "Z"
+    return "M" + "L".join(f"{num(x)},{num(y)}" for x, y in points) + "Z"
 
 
 def circle(cx, cy, r):
-    return f"M{cx - r:g},{cy:g}a{r:g},{r:g} 0,1 0,{2 * r:g},0a{r:g},{r:g} 0,1 0,-{2 * r:g},0z"
+    return f"M{num(cx - r)},{num(cy)}a{num(r)},{num(r)} 0,1 0,{num(2 * r)},0a{num(r)},{num(r)} 0,1 0,{num(-2 * r)},0z"
 
 
 class Shape:
@@ -253,16 +264,16 @@ def vector_fill(fill, indent):
         _, color, alpha = fill
         return f'{indent}android:fillColor="{argb(color, alpha)}"', ""
     stops = fill[-1]
-    items = "".join(f'{indent}        <item android:color="{argb(c, a)}" android:offset="{o:g}" />\n' for o, c, a in stops)
+    items = "".join(f'{indent}        <item android:color="{argb(c, a)}" android:offset="{num(o)}" />\n' for o, c, a in stops)
     if kind == "linear":
         _, x1, y1, x2, y2, _ = fill
-        geometry = (f'{indent}        android:startX="{x1:g}"\n{indent}        android:startY="{y1:g}"\n'
-                    f'{indent}        android:endX="{x2:g}"\n{indent}        android:endY="{y2:g}"\n'
+        geometry = (f'{indent}        android:startX="{num(x1)}"\n{indent}        android:startY="{num(y1)}"\n'
+                    f'{indent}        android:endX="{num(x2)}"\n{indent}        android:endY="{num(y2)}"\n'
                     f'{indent}        android:type="linear"')
     else:
         _, cx, cy, r, _ = fill
-        geometry = (f'{indent}        android:centerX="{cx:g}"\n{indent}        android:centerY="{cy:g}"\n'
-                    f'{indent}        android:gradientRadius="{r:g}"\n{indent}        android:type="radial"')
+        geometry = (f'{indent}        android:centerX="{num(cx)}"\n{indent}        android:centerY="{num(cy)}"\n'
+                    f'{indent}        android:gradientRadius="{num(r)}"\n{indent}        android:type="radial"')
     body = (f'{indent}<aapt:attr name="android:fillColor">\n{indent}    <gradient\n{geometry}>\n'
             f"{items}{indent}    </gradient>\n{indent}</aapt:attr>\n")
     return None, body
@@ -274,7 +285,7 @@ def vector_shapes(shapes, indent="    "):
         inner = indent
         if s.squash:
             cx, cy, k = s.squash
-            out += f'{indent}<group\n{indent}    android:pivotX="{cx:g}"\n{indent}    android:pivotY="{cy:g}"\n{indent}    android:scaleY="{k:.4f}">\n'
+            out += f'{indent}<group\n{indent}    android:pivotX="{num(cx)}"\n{indent}    android:pivotY="{num(cy)}"\n{indent}    android:scaleY="{k:.4f}">\n'
             inner = indent + "    "
         attr, body = vector_fill(s.fill, inner + "    ")
         if body:
@@ -290,7 +301,7 @@ def vector(width, height, viewport_w, viewport_h, body, uses_gradient):
     ns = ' xmlns:aapt="http://schemas.android.com/aapt"' if uses_gradient else ""
     return (HEADER + f'<vector xmlns:android="http://schemas.android.com/apk/res/android"{ns}\n'
             f'    android:width="{width}dp"\n    android:height="{height}dp"\n'
-            f'    android:viewportWidth="{viewport_w:g}"\n    android:viewportHeight="{viewport_h:g}">\n' + body + "</vector>\n")
+            f'    android:viewportWidth="{num(viewport_w)}"\n    android:viewportHeight="{num(viewport_h)}">\n' + body + "</vector>\n")
 
 
 def group(body, tx, ty, s):
@@ -361,7 +372,7 @@ def background(top, bottom, diagonal, w, h):
         fill = ("linear", 0, 0, w, h, [(0, top, 1), (1, bottom, 1)])
     else:
         fill = ("linear", 0, 0, 0, h, [(0, top, 1), (1, bottom, 1)])
-    return Shape(f"M0,0h{w:g}v{h:g}h-{w:g}z", fill)
+    return Shape(f"M0,0h{num(w)}v{num(h)}h{num(-w)}z", fill)
 
 
 def icon(key, top, bottom, diagonal, light, glow):
