@@ -3,18 +3,18 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="54"
-    android:viewportHeight="54">
+    android:viewportWidth="48"
+    android:viewportHeight="48">
     <group
-        android:translateX="-27.000"
+        android:translateX="-46.000"
         android:translateY="-30.000"
         android:scaleX="1.0000"
         android:scaleY="1.0000">
         <path
-            android:fillColor="#73FFFFFF"
-            android:pathData="M51,74L57,74L71,84L37,84Z" />
+            android:fillColor="#66FFFFFF"
+            android:pathData="M57,33L90,26.4L90,81.6L57,75Z" />
         <path
             android:fillColor="#FFFFFFFF"
-            android:pathData="M52,30h4a1,1 0,0 1,1 1v42a1,1 0,0 1,-1 1h-4a1,1 0,0 1,-1 -1v-42a1,1 0,0 1,1 -1z" />
+            android:pathData="M52,32h4a1,1 0,0 1,1 1v42a1,1 0,0 1,-1 1h-4a1,1 0,0 1,-1 -1v-42a1,1 0,0 1,1 -1z" />
     </group>
 </vector>

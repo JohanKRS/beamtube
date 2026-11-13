@@ -7,12 +7,12 @@ import androidx.annotation.StyleRes
 import ytslim.R
 
 /**
- * A cor de destaque do Doorglow: a aba ativa, o progresso, o foco da TV, os botões ligados e a
+ * A cor de destaque do BeamTube: a aba ativa, o progresso, o foco da TV, os botões ligados e a
  * barra do player. Escolhida em Settings, como a cor do ícone (pedido do Johan, 2026-11-03).
  *
  * São as cores do ícone, na mesma ordem ([ytslim.data.AppIcon]); onde o ícone é escuro demais para
  * aparecer no cinza do fundo, um tom próximo e mais claro (pedido do Johan, 2026-11-03): o âmbar é a
- * luz da porta do ícone azul-noite (o padrão), o prata faz par com o preto, e o verde-azulado, a
+ * luz da fresta do ícone azul-noite (o padrão), o prata faz par com o preto, e o verde-azulado, a
  * ameixa e a mostarda são o fundo do ícone clareado. O "vivo" é o meio do degradê do ícone, e o
  * vermelho é o do YouTube. Todas aparecem no fundo e aceitam o texto escuro em cima
  * ([Look.OnGlow]), com contraste de pelo menos 4,4:1.

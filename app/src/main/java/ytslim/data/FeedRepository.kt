@@ -10,7 +10,7 @@ import okio.ByteString.Companion.decodeBase64
 
 /** Feed de Inscrições (canais) e a lista de canais inscritos. */
 object FeedRepository {
-    private const val TAG = "Doorglow"
+    private const val TAG = "BeamTube"
     private const val SUBSCRIPTIONS = "\"browseId\":\"FEsubscriptions\""
 
     /** Primeira página do feed dos canais inscritos, do mais novo para o mais antigo. */

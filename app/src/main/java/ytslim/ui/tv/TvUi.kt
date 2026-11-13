@@ -89,6 +89,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -146,7 +147,6 @@ import ytslim.ui.ChannelViewModel
 import ytslim.ui.ExploreViewModel
 import ytslim.ui.Accent
 import ytslim.ui.Accents
-import ytslim.ui.DoorGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
@@ -155,6 +155,8 @@ import ytslim.ui.ListTop
 import ytslim.ui.MetaLine
 import ytslim.ui.metaAfterChannel
 import ytslim.ui.Look
+import ytslim.ui.TypeScale
+import ytslim.ui.Wordmark
 import ytslim.ui.Notice
 import ytslim.ui.Notices
 import ytslim.ui.PlaylistViewModel
@@ -176,6 +178,7 @@ import ytslim.ui.exploreFilterChoices
 import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
 import ytslim.ui.searchFilterChoices
+import ytslim.ui.spacedDots
 import ytslim.ui.subtitleOf
 import ytslim.ui.text
 import ytslim.ui.toggleSaved
@@ -195,7 +198,7 @@ private fun Modifier.entersAt(selected: FocusRequester) =
     focusProperties { onEnter = { selected.requestFocus() } }.focusGroup()
 
 /**
- * As cores do Doorglow na TV. O foco é a luz da porta: botões e linhas focados ficam na cor de
+ * As cores do BeamTube na TV. O foco é a luz da fresta: botões e linhas focados ficam na cor de
  * destaque com texto escuro, e os cards ganham um contorno claro. Refeitas quando a cor de
  * destaque muda ([Look.accent]).
  */
@@ -227,26 +230,23 @@ private fun colors() = darkColorScheme(
     scrim = Color.Black,
 )
 
-private val Type: Typography = Typography().let { t ->
-    fun TextStyle.figtree(weight: FontWeight? = null) = copy(fontFamily = Look.Figtree, fontWeight = weight ?: fontWeight)
-    Typography(
-        displayLarge = t.displayLarge.figtree(),
-        displayMedium = t.displayMedium.figtree(),
-        displaySmall = t.displaySmall.figtree(),
-        headlineLarge = t.headlineLarge.figtree(FontWeight.SemiBold),
-        headlineMedium = t.headlineMedium.figtree(FontWeight.SemiBold),
-        headlineSmall = t.headlineSmall.figtree(FontWeight.SemiBold),
-        titleLarge = t.titleLarge.figtree(FontWeight.SemiBold),
-        titleMedium = t.titleMedium.figtree(FontWeight.SemiBold),
-        titleSmall = t.titleSmall.figtree(FontWeight.SemiBold),
-        bodyLarge = t.bodyLarge.figtree(),
-        bodyMedium = t.bodyMedium.figtree(),
-        bodySmall = t.bodySmall.figtree(),
-        labelLarge = t.labelLarge.figtree(FontWeight.SemiBold),
-        labelMedium = t.labelMedium.figtree(FontWeight.SemiBold),
-        labelSmall = t.labelSmall.figtree(FontWeight.SemiBold),
-    )
-}
+private val Type: Typography = Typography(
+    displayLarge = TypeScale.displayLarge,
+    displayMedium = TypeScale.displayMedium,
+    displaySmall = TypeScale.displaySmall,
+    headlineLarge = TypeScale.headlineLarge,
+    headlineMedium = TypeScale.headlineMedium,
+    headlineSmall = TypeScale.headlineSmall,
+    titleLarge = TypeScale.titleLarge,
+    titleMedium = TypeScale.titleMedium,
+    titleSmall = TypeScale.titleSmall,
+    bodyLarge = TypeScale.bodyLarge,
+    bodyMedium = TypeScale.bodyMedium,
+    bodySmall = TypeScale.bodySmall,
+    labelLarge = TypeScale.labelLarge,
+    labelMedium = TypeScale.labelMedium,
+    labelSmall = TypeScale.labelSmall,
+)
 
 /** Sem vidro na TV: as caixas de TV costumam ter pouca GPU, e o desfoque não compensa. */
 private val Floating = Color(0xF528292D)
@@ -312,8 +312,10 @@ object TvUi : Screens {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(stringResource(R.string.sign_in_title), style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(32.dp))
+            Wordmark(40.sp)
+            Spacer(Modifier.height(44.dp))
+            Text(stringResource(R.string.sign_in_title), style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(28.dp))
             when (val s = state) {
                 SignInViewModel.State.Requesting, SignInViewModel.State.SignedIn ->
                     Text(stringResource(R.string.sign_in_requesting), style = MaterialTheme.typography.titleMedium)
@@ -372,14 +374,16 @@ object TvUi : Screens {
         BackHandler(enabled = !tabsFocused) { runCatching { selectedTab.requestFocus() } }
 
         Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
+          // O logotipo inteiro (a fresta, o facho com a poeira e o nome), sem fundo, na mesma linha
+          // das abas (pedido do Johan, 2026-11-13). O facho passa um pouco da caixa, por trás das abas.
           Row(verticalAlignment = Alignment.CenterVertically) {
-            DoorGlyph(Modifier.size(width = 15.dp, height = 22.dp))
-            Spacer(Modifier.width(24.dp))
+            Wordmark(22.sp, Modifier.offset(y = (-2).dp))
+            Spacer(Modifier.width(6.dp))
             val selectedIndex = tabs.indexOfFirst { it.first == tab }
             TabRow(
                 selectedTabIndex = selectedIndex,
                 modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
-                separator = { Spacer(Modifier.width(4.dp)) },
+                separator = { Spacer(Modifier.width(2.dp)) },
                 indicator = { positions, _ -> positions.getOrNull(selectedIndex)?.let { SlitIndicator(it) } },
             ) {
                 tabs.forEach { (item, label) ->
@@ -408,11 +412,7 @@ object TvUi : Screens {
                                 false
                             },
                     ) {
-                        Text(
-                            stringResource(label),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        )
+                        TabLabel(stringResource(label), selected = item == tab)
                     }
                 }
             }
@@ -421,6 +421,20 @@ object TvUi : Screens {
             CompositionLocalProvider(LocalInitialFocus provides initialFocus) {
                 Box(Modifier.fillMaxSize()) { content(tab) }
             }
+        }
+    }
+
+    /**
+     * O nome de uma aba, nos dois pesos do logotipo: a escolhida em bold, as outras em light. A
+     * largura é sempre a do bold (desenhado invisível por baixo), para as abas não andarem de lado
+     * quando a escolhida muda.
+     */
+    @Composable
+    private fun TabLabel(text: String, selected: Boolean) {
+        val style = MaterialTheme.typography.titleMedium
+        Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+            Text(text, style = style.copy(fontWeight = FontWeight.Bold), color = Color.Transparent, maxLines = 1, modifier = Modifier.clearAndSetSemantics {})
+            Text(text, style = style.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Light), maxLines = 1)
         }
     }
 
@@ -864,7 +878,7 @@ object TvUi : Screens {
                                             selected = false,
                                             onClick = { onOpenPlaylist(item.playlist) },
                                             headlineContent = { Text(item.playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                            supportingContent = item.playlist.info?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                                            supportingContent = item.playlist.info?.let { { Text(spacedDots(it), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
                                             modifier = Modifier.weight(1f),
                                         )
                                         Spacer(Modifier.width(12.dp))
@@ -1756,7 +1770,7 @@ object TvUi : Screens {
         val rest = metaAfterChannel(video.info, name, video.published)
         MetaLine(
             channel = { Text(name, style = CardMeta, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            rest = rest?.let { { Text(rest, style = CardMeta, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            rest = rest?.let { { Text(spacedDots(rest), style = CardMeta, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             separator = { Text(" · ", style = CardMeta, color = Look.Sub) },
             modifier = Modifier.padding(top = CardMetaGap, start = 2.dp, end = 2.dp),
             stacked = true,
@@ -1770,7 +1784,7 @@ object TvUi : Screens {
      * longe uma da outra quanto do canal.
      */
     private val CardTitle: TextStyle
-        @Composable get() = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp, lineHeight = 17.sp)
+        @Composable get() = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 17.sp)
 
     private val CardMeta: TextStyle
         @Composable get() = MaterialTheme.typography.bodySmall.copy(lineHeight = 15.sp)
@@ -1788,7 +1802,7 @@ object TvUi : Screens {
         )
         if (subtitle != null) {
             Text(
-                subtitle,
+                spacedDots(subtitle),
                 style = CardMeta,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1848,7 +1862,7 @@ object TvUi : Screens {
             )
             channel.info?.let {
                 Text(
-                    it,
+                    spacedDots(it),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

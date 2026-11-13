@@ -198,7 +198,7 @@ class ExploreDraw(val channels: List<ChannelVideos>, val ids: List<String>, val 
  * de cada canal sorteado, que traz os vídeos recentes e as prateleiras com os mais antigos.
  */
 object ExploreRepository {
-    private const val TAG = "Doorglow"
+    private const val TAG = "BeamTube"
     /** Canais inscritos lidos de uma vez antes do primeiro sorteio (até [FIRST_BATCHES] vezes, até ter [MIN_CANDIDATES]). */
     private const val FIRST_SCAN = 12
     private const val FIRST_BATCHES = 3

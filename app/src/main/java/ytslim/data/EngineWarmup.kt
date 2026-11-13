@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
  * espera a peça que estiver em andamento, como já esperaria.
  */
 object EngineWarmup {
-    private const val TAG = "Doorglow"
+    private const val TAG = "BeamTube"
 
     /**
      * Quanto esperar depois que as listas aparecem: o WebView do poToken é criado na thread da tela,

@@ -2,7 +2,21 @@ package ytslim.ui
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import ytslim.R
+import ytslim.data.AppIcon
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -13,6 +27,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.annotation.ExperimentalCoilApi
 import coil3.asImage
 import coil3.compose.AsyncImagePreviewHandler
@@ -160,6 +175,40 @@ class ScreenShots {
         playerShot("player-phone-accent-red")
     }
 
+    /** A marca como o Android a desenha: o ícone de cada cor (no recorte redondo) e o banner da TV. */
+    @Test
+    @Config(qualifiers = "w1060dp-h1080dp-xhdpi")
+    fun brand() = shot("brand") {
+        val banners = listOf(
+            R.drawable.tv_banner_night, R.drawable.tv_banner_black, R.drawable.tv_banner_teal, R.drawable.tv_banner_plum,
+            R.drawable.tv_banner_mustard, R.drawable.tv_banner_vivid, R.drawable.tv_banner_red,
+        )
+        Column(Modifier.fillMaxSize().background(Color(0xFF202124)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                AppIcon.entries.forEach { AppIconPreview(it, 120.dp) }
+            }
+            banners.chunked(3).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    row.forEach { Image(painterResource(it), contentDescription = null, modifier = Modifier.size(320.dp, 180.dp).clip(RoundedCornerShape(12.dp))) }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                Image(painterResource(R.drawable.ic_launcher_monochrome), contentDescription = null, modifier = Modifier.size(108.dp))
+                Image(painterResource(R.drawable.ic_notification), contentDescription = null, modifier = Modifier.size(48.dp))
+            }
+            // O logotipo desenhado pelo app (a barra de cima da TV, o login e o trilho do tablet).
+            Row(
+                Modifier.background(Look.Ground).padding(horizontal = 32.dp, vertical = 28.dp),
+                horizontalArrangement = Arrangement.spacedBy(72.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Wordmark(40.sp)
+                Wordmark(22.sp)
+                BeamGlyph(Modifier.size(width = 40.dp, height = 30.dp))
+            }
+        }
+    }
+
     @Test
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
     fun phoneSubscriptions() = shot("phone-subscriptions") {
@@ -253,7 +302,7 @@ class ScreenShots {
         MobileUi.Theme {
             MobileUi.DetailFrame("Essence of linear algebra", navigation = { MobileUi.BackButton {} }) {
                 MobileUi.VideoRows(
-                    feed(videos.filter { it.channelName == "3Blue1Brown" } + videos.take(6)), {}, {}, {}, showSaved = true,
+                    feed((videos.filter { it.channelName == "3Blue1Brown" } + videos.take(6)).distinctBy { it.id }), {}, {}, {}, showSaved = true,
                     header = { MobileUi.SubscribeHeader(Subscription.Shown(subscribed = true)) {} },
                 )
             }
@@ -558,7 +607,7 @@ class ScreenShots {
         // Sem rede, o título às vezes some quando o carregamento falha no meio da foto: fixa ele.
         playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_title)?.text = v.title
         // A linha do canal como fica com a página do vídeo lida (o canal é o botão ao lado).
-        playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_detail)?.text = "· ${v.published}"
+        playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_detail)?.text = spacedDotsForViews("· ${v.published}")
         relayout(activity)
         val view = activity.window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)

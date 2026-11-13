@@ -4,7 +4,7 @@ import android.view.KeyEvent
 
 /**
  * O botão YouTube do controle da TV, para o serviço de Acessibilidade ([ScreenOffService]) abrir o
- * Doorglow no lugar do YouTube.
+ * BeamTube no lugar do YouTube.
  *
  * O botão não manda um link: a TV entrega a tecla a um componente fixo do sistema, que abre o app do
  * YouTube direto. A única saída sem root é segurar a tecla antes, no filtro de teclas da
@@ -34,7 +34,7 @@ class YouTubeButton(learned: Set<Int> = emptySet()) {
 
     /**
      * Uma janela do app do YouTube apareceu. Se a última tecla foi uma fora das comuns, há pouco,
-     * ela é o botão: devolve o código (já guardado aqui) para o serviço gravar e abrir o Doorglow.
+     * ela é o botão: devolve o código (já guardado aqui) para o serviço gravar e abrir o BeamTube.
      */
     fun onYouTubeShown(now: Long): Int? {
         val key = lastKey ?: return null

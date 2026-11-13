@@ -161,7 +161,7 @@ class PlaybackController(
      */
     private val loadingLock: PowerManager.WakeLock? = if (tv) null else
         app.getSystemService(PowerManager::class.java)
-            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Doorglow:next video")
+            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "BeamTube:next video")
             ?.apply { setReferenceCounted(false) }
 
     /** A qualidade deste vídeo já foi escolhida ([pickQuality]). */
@@ -881,7 +881,7 @@ class PlaybackController(
     }
 
     private companion object {
-        const val TAG = "Doorglow"
+        const val TAG = "BeamTube"
         const val MAX_ERROR_RETRIES = 3
 
         /** Erros do decodificador (ERROR_CODE_DECODER_INIT_FAILED até DECODING_FORMAT_UNSUPPORTED). */
