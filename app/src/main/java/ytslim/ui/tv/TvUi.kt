@@ -373,9 +373,10 @@ object TvUi : Screens {
 
         Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
           // O logotipo inteiro (a fresta, o facho com a poeira e o nome), sem fundo, na mesma linha
-          // das abas (pedido do Johan, 2026-11-13). O facho passa um pouco da caixa, por trás das abas.
+          // das abas (pedido do Johan, 2026-11-13), com a letra do tamanho da das abas (ele achou o de
+          // 22sp grande demais). O facho passa um pouco da caixa, por trás das abas.
           Row(verticalAlignment = Alignment.CenterVertically) {
-            Wordmark(22.sp, Modifier.offset(y = (-2).dp))
+            Wordmark(16.sp)
             Spacer(Modifier.width(6.dp))
             val selectedIndex = tabs.indexOfFirst { it.first == tab }
             TabRow(
