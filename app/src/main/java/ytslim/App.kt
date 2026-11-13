@@ -9,7 +9,6 @@ import androidx.profileinstaller.ProfileVerifier
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ytslim.data.AppIcons
@@ -65,17 +64,24 @@ class App : Application(), SingletonImageLoader.Factory {
      * (tag BeamTube), para não medir desempenho num app ainda sem compilar.
      */
     private fun logCompilation() {
-        AppScope.launch(Dispatchers.IO) {
+        AppScope.launch {
             delay(10_000)
-            runCatching {
-                val status = ProfileVerifier.getCompilationStatusAsync().get()
-                Log.i(
-                    "BeamTube",
-                    "compilation: compiled with profile ${status.isCompiledWithProfile}, " +
-                        "profile waiting for compilation ${status.hasProfileEnqueuedForCompilation()}, " +
-                        "install result ${status.profileInstallResultCode}",
-                )
-            }
+            // Sem segurar uma thread esperando: a resposta só vem depois que o ProfileInstaller roda.
+            // Com o get() numa thread do Dispatchers.IO, cada App que nunca recebe a resposta (nos
+            // testes do Robolectric, um por teste) prendia uma das 64 threads, até não sobrar nenhuma
+            // para o DataStore e os testes pararem (o CI do #26 travou assim).
+            val status = ProfileVerifier.getCompilationStatusAsync()
+            status.addListener({
+                runCatching {
+                    val result = status.get()
+                    Log.i(
+                        "BeamTube",
+                        "compilation: compiled with profile ${result.isCompiledWithProfile}, " +
+                            "profile waiting for compilation ${result.hasProfileEnqueuedForCompilation()}, " +
+                            "install result ${result.profileInstallResultCode}",
+                    )
+                }
+            }, Runnable::run)
         }
     }
 
