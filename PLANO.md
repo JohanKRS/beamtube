@@ -99,6 +99,13 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
   - **Duração:** menos de 4 min, 4 a 20, mais de 20, e **30, 45 e 60 minutos ou mais** (pedido do Johan, 2026-11-02). Para essas três, o app pede "mais de 20" ao YouTube e corta o resto pela duração de cada vídeo, buscando mais páginas se sobrar pouco.
 - **Filtros na Explore** (nas Recomendações desde a 0.4.1, pedido do Johan em 2026-11-02; levados para a Explore a pedido dele em 2026-11-03, porque as Recomendações vêm poucas por vez e a Explore traz vídeos antigos e variados): data, duração e ordem (relevância, mais novos, mais vistos), num chip no topo da lista (celular) ou numa fileira de botões (TV). O YouTube não filtra essas listas, então o app aplica os filtros em cada vídeo (`FeedFilter`): a duração, o tempo relativo ("3 days ago") e as visualizações. O "Before <ano>" só mostra o que com certeza é anterior: "4 years ago" pode ser de dois anos diferentes e fica de fora. Os filtros valem até o app fechar. Como funcionam na Explore: ver "Explore".
 - **Bloquear canal**, pelo botão na página do canal, com a lista para desbloquear nas Configurações. Canal bloqueado some das Recomendações, da Busca, das Inscrições e dos vídeos de playlists inscritas. Quando o YouTube não manda o ID do canal (acontece na busca), o app compara pelo nome.
+  - **O bloqueio fica no aparelho** (a lista não passa de um aparelho para outro). Por isso, desde a 1.0.3, a tela diz "neste aparelho" no aviso e nas Configurações (pedido do Johan, 2026-11-13: ele tinha bloqueado canais no site e no app do YouTube e achou a lista da TV vazia).
+  - **"Don't recommend channel" na conta** (1.0.3, mesmo pedido): bloquear também manda ao YouTube o "Não recomendar canal", o mesmo do menu dos cards no app oficial. Ele vai para a conta e vale em todo aparelho (no app oficial e no site também), mas só nas recomendações; a busca e as Inscrições do YouTube continuam iguais, por isso o bloqueio do BeamTube continua existindo. Ver `ChannelFeedback`.
+    - O YouTube só dá esse pedido nos cards do Início (os Recomendados), um por vídeo, e não tem como ler nem escrever a lista da conta por outro caminho (nem a Data API). Então: cada página dos Recomendados deixa anotado, por canal, o pedido dos cards; bloquear manda na hora quando um vídeo do canal passou pelos Recomendados desde que o app abriu (o caso de abrir o canal por um card dos Recomendados); senão, o pedido vai sozinho na próxima vez que o YouTube recomendar o canal naquele aparelho (o vídeo nem aparece, mas o card traz o pedido). Vale também para os canais que já estavam bloqueados antes da 1.0.3.
+    - Os bloqueios que o Johan já fez no YouTube não aparecem no BeamTube: o YouTube não deixa ler essa lista. Mas eles valem nos Recomendados de todos os aparelhos, porque quem filtra é o próprio YouTube.
+    - O aviso do bloquear diz o que aconteceu: "Blocked on this device, and YouTube won't recommend it on your account anymore" (o YouTube aceitou) ou "Blocked on this device. BeamTube asks YouTube…" (vai depois). Nas Configurações, cada canal tem embaixo "YouTube won't recommend it on your account" ou "This device only, for now".
+    - **Desbloquear não desfaz o pedido no YouTube**: o YouTube só apaga esses pedidos todos de uma vez (Minha atividade do Google, "Feedback 'Não tenho interesse' do YouTube"). O aviso do desbloquear diz isso quando o pedido já tinha ido.
+    - Decidido não trocar o botão por um "Don't recommend" só (a outra ideia do Johan): o pedido do YouTube só existe nos cards dos Recomendados, então o botão da página do canal muitas vezes não teria o que mandar, e ele não tira o canal da busca, das Inscrições nem da Explore.
 
 ## Player
 
@@ -302,12 +309,23 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Bea
    - Falta a rotina de atualização do motor.
 7. **Versão 1.0.0 (2026-11-13), pedido do Johan, testada por ele no mesmo dia ("parece que está tudo funcionando")** (ver "Como testar a 1.0"): junta a 0.6.3, a 0.7.0 e a 0.7.1 (nunca publicadas) e traz a tela de tópicos no primeiro uso (sem tópicos prontos), o app em inglês, português e espanhol com o idioma em Settings, a licença MIT com os avisos legais, o README e as notas de todas as releases em inglês. Pedidos do mesmo dia, também na 1.0: a tela do fim do vídeo (sugestões e "Back", ver "Fim do vídeo"), os Ajustes da TV na largura toda e as abas da TV sempre numa linha só.
    - *Versão 1.0.1 (2026-11-13), correção do teste da 1.0.0* (ver "Como testar a 1.0.1"): o aviso da Explore aparecia ao chegar nos Recomendados no celular; agora só com a Explore aberta.
+   - *Versão 1.0.3 (2026-11-13), pedido do Johan, aguardando o teste no aparelho* (ver "Como testar a 1.0.3"): bloquear um canal também manda o "Don't recommend channel" para a conta do YouTube, e o aviso e as Configurações dizem que o bloqueio vale neste aparelho.
 
 Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", porque o motor acessa o real. Fica como ideia opcional para limpar o site.
 
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 1.0.3
+
+Só dá para conferir com a conta, no aparelho: o pedido do YouTube só vem com login. O log (tag `BeamTube`) mostra cada pedido: "don't recommend UC… (nome): accepted" ou "refused".
+
+1. Nos Recomendados, abrir o canal de um vídeo que você não quer ver (o nome ou o avatar no celular; OK longo > "Go to channel" na TV) e tocar no bloquear. O aviso: "Blocked on this device, and YouTube won't recommend it on your account anymore."
+2. Settings > Blocked channels: o canal está lá, com "YouTube won't recommend it on your account" embaixo. O texto do grupo explica que a lista é deste aparelho.
+3. No site ou no app oficial do YouTube (ou nos Recomendados da TV, depois de atualizar): os vídeos desse canal param de aparecer no Início. A TV não mostra o canal na lista dela, mas também não recebe mais recomendações dele.
+4. Bloquear um canal achado pela Busca (que não estava nos Recomendados): o aviso diz que o pedido vai depois, e a linha nas Configurações fica "This device only, for now". Se o YouTube recomendar o canal mais tarde, a linha muda sozinha.
+5. Desbloquear o canal do passo 1 pela página dele: o aviso diz que, na conta, o YouTube continua sem recomendar o canal.
 
 ## Como testar a 1.0.1
 

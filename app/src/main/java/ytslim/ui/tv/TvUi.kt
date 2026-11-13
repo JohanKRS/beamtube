@@ -170,6 +170,7 @@ import ytslim.ui.TypeScale
 import ytslim.ui.Wordmark
 import ytslim.ui.Notice
 import ytslim.ui.Notices
+import ytslim.ui.blockNotice
 import ytslim.ui.PlaylistViewModel
 import ytslim.ui.Subscription
 import ytslim.ui.PlaylistsViewModel
@@ -954,6 +955,10 @@ object TvUi : Screens {
                                 selected = false,
                                 onClick = { vm.unblock(channel.id) },
                                 headlineContent = { Text(channel.name.ifBlank { channel.id }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                // O bloqueio vale neste aparelho; esta linha diz se a conta já recebeu o "Don't recommend channel".
+                                supportingContent = {
+                                    Text(stringResource(if (channel.onAccount) R.string.settings_blocked_account else R.string.settings_blocked_device))
+                                },
                                 trailingContent = { Text(stringResource(R.string.unblock)) },
                             )
                         }
@@ -1397,10 +1402,11 @@ object TvUi : Screens {
         val state by vm.state.collectAsStateWithLifecycle()
         val blocked by vm.blocked.collectAsStateWithLifecycle()
         val subscription by vm.subscription.collectAsStateWithLifecycle()
+        val res = LocalContext.current.resources
         ChannelPage(
             title, state, blocked, subscription,
             onSubscribe = vm::toggleSubscribed,
-            onBlock = vm::toggleBlocked,
+            onBlock = { vm.toggleBlocked { blockNotice(res, it) } },
             onRetry = vm::reload,
             onNearEnd = vm::loadMore,
             onPlay = onPlay,
@@ -1522,15 +1528,11 @@ object TvUi : Screens {
      */
     @Composable
     private fun BlockButton(blocked: Boolean, onToggle: () -> Unit) {
-        val res = LocalContext.current.resources
         var focused by remember { mutableStateOf(false) }
         val label = stringResource(if (blocked) R.string.channel_unblock else R.string.channel_block)
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
-                onClick = {
-                    onToggle()
-                    Notices.show(res.getString(if (blocked) R.string.channel_unblocked_notice else R.string.channel_blocked_notice))
-                },
+                onClick = onToggle,
                 modifier = Modifier.size(36.dp).onFocusChanged { focused = it.isFocused },
                 colors = IconButtonDefaults.colors(
                     containerColor = Color.Transparent,

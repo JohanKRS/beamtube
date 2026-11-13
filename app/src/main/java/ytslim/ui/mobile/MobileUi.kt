@@ -201,6 +201,7 @@ import ytslim.ui.spacedDots
 import ytslim.ui.Notice
 import ytslim.ui.NoticeAction
 import ytslim.ui.Notices
+import ytslim.ui.blockNotice
 import ytslim.ui.PlaylistViewModel
 import ytslim.ui.Subscription
 import ytslim.ui.PlaylistsViewModel
@@ -1060,7 +1061,11 @@ object MobileUi : Screens {
                     if (settings.filters.blocked.isEmpty()) EmptyRow(stringResource(R.string.settings_blocked_empty))
                     settings.filters.blocked.forEachIndexed { i, channel ->
                         if (i > 0) RowDivider()
-                        SettingsRow(title = channel.name.ifBlank { channel.id }) {
+                        // O bloqueio vale neste aparelho; a linha de baixo diz se a conta já recebeu o "Don't recommend channel".
+                        SettingsRow(
+                            title = channel.name.ifBlank { channel.id },
+                            subtitle = stringResource(if (channel.onAccount) R.string.settings_blocked_account else R.string.settings_blocked_device),
+                        ) {
                             TextButton(onClick = { vm.unblock(channel.id) }) { Text(stringResource(R.string.unblock)) }
                         }
                     }
@@ -1426,10 +1431,11 @@ object MobileUi : Screens {
         val state by vm.state.collectAsStateWithLifecycle()
         val blocked by vm.blocked.collectAsStateWithLifecycle()
         val subscription by vm.subscription.collectAsStateWithLifecycle()
+        val res = LocalContext.current.resources
         ChannelPage(
             title, state, blocked, subscription,
             onSubscribe = vm::toggleSubscribed,
-            onBlock = vm::toggleBlocked,
+            onBlock = { vm.toggleBlocked { blockNotice(res, it) } },
             onRetry = vm::reload,
             refresh = vm,
             onNearEnd = vm::loadMore,
@@ -1456,16 +1462,12 @@ object MobileUi : Screens {
         onBack: () -> Unit,
     ) {
         var tab by rememberSaveable { mutableIntStateOf(0) }
-        val res = LocalContext.current.resources
         DetailFrame(
             title = title.ifBlank { stringResource(R.string.channel_default_title) },
             navigation = { BackButton(onBack) },
             // Bloquear: só um ícone pequeno na barra de cima (âmbar quando bloqueado); o resultado vem num aviso.
             actions = {
-                IconButton(onClick = {
-                    onBlock()
-                    Notices.show(res.getString(if (blocked) R.string.channel_unblocked_notice else R.string.channel_blocked_notice))
-                }) {
+                IconButton(onClick = onBlock) {
                     Icon(
                         Icons.Outlined.Block,
                         contentDescription = stringResource(if (blocked) R.string.channel_unblock else R.string.channel_block),
