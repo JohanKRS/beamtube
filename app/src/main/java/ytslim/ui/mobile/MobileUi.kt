@@ -242,6 +242,13 @@ private const val SKELETON_CARDS = 8
  */
 private val LocalBars = compositionLocalOf { PaddingValues(0.dp) }
 
+/**
+ * A aba desta página é a que está aberta. O deslizar de lado também compõe as vizinhas fora de
+ * hora: o pager adianta a próxima (ao chegar nos Recomendados, a Explore) e mostra a que aparece
+ * pela borda durante o gesto. O que é só da aba aberta, como o aviso da Explore, olha isto.
+ */
+internal val LocalTabShown = compositionLocalOf { true }
+
 /** De que borda da tela a barra de vidro sai: ali ela é mais opaca, e menos junto da lista. */
 private enum class GlassEdge { Top, Bottom, Start }
 
@@ -533,7 +540,8 @@ object MobileUi : Screens {
             snapshotFlow { pager.settledPage }.collect { currentOnTab(swipeTabs[it]) }
         }
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { swipeTabs[it].name }) { page ->
-            content(swipeTabs[page])
+            val shown by remember(pager, page) { derivedStateOf { pager.settledPage == page } }
+            CompositionLocalProvider(LocalTabShown provides shown) { content(swipeTabs[page]) }
         }
     }
 
@@ -706,8 +714,9 @@ object MobileUi : Screens {
                 header = filterRow,
             )
         }
-        // Só na primeira vez (enquanto os primeiros vídeos carregam): o que é a Explore.
-        if (showIntro) {
+        // Só na primeira vez (enquanto os primeiros vídeos carregam): o que é a Explore. Só com a
+        // Explore aberta, e não quando ela é preparada ao lado dos Recomendados.
+        if (showIntro && LocalTabShown.current) {
             AlertDialog(
                 onDismissRequest = vm::dismissIntro,
                 title = { Text(stringResource(R.string.tab_explore)) },

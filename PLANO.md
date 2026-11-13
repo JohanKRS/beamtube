@@ -215,7 +215,7 @@ Pedido do Johan (2026-11-02): os filtros das Recomendações só filtram o que o
 - Conferido contra o YouTube em 2026-11-02, com 8 canais de exemplo: 41 canais candidatos, e cada sorteio de 10 canais com 40 vídeos levou 2 a 3 s.
 - Descartado: as seções prontas do YouTube (Gaming, News, Sports, Live, Podcasts), que trazem conteúdo popular e pouco controle.
 - **Filtros de data, duração e ordem** (pedido do Johan, 2026-11-03, tirados das Recomendações): cada canal sorteado escolhe os seus vídeos **entre os que passam pelos filtros** (dos 12 recentes e das prateleiras), em vez de filtrar depois os 4 já escolhidos; assim "This week" pega os recentes e "Before 2020" pega as prateleiras. Se sobrarem menos de 12 vídeos na tela, o app sorteia mais 10 canais, até 4 vezes; o fim da lista faz o mesmo. Mudar um filtro refaz a lista sem ler nada de novo: o app guarda os vídeos de cada canal sorteado e a semente de cada sorteio (`ExploreRules.screen`). "Most viewed" e "Newest" ordenam a lista inteira (sem as rodadas por canal). Conferido contra o YouTube em 2026-11-03: os 83 vídeos de um canal sorteado trouxeram data, duração e visualizações.
-- **O texto que explica a aba** (pedido do Johan, 2026-11-03): não fica mais fixo no topo. Aparece como um aviso só na primeira vez que a aba abre, com "Got it" para fechar (no celular e no tablet, tocar fora também fecha; na TV, o foco já começa no botão). Depois disso não volta; a marca fica nas configurações do aparelho (`explore_intro_seen`).
+- **O texto que explica a aba** (pedido do Johan, 2026-11-03): não fica mais fixo no topo. Aparece como um aviso só na primeira vez que a aba abre, com "Got it" para fechar (no celular e no tablet, tocar fora também fecha; na TV, o foco já começa no botão). Depois disso não volta; a marca fica nas configurações do aparelho (`explore_intro_seen`). O aviso só aparece com a Explore aberta (1.0.1: na 1.0.0 o Johan viu o aviso ao chegar nos Recomendados no celular, porque o deslizar de lado prepara a aba vizinha antes da hora; ver `LocalTabShown`).
 
 ## Inscrição em playlists
 
@@ -300,13 +300,21 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Bea
    - *Versão 0.4.1 (2026-11-02), ajustes pedidos pelo Johan depois da 0.4.0, aguardando o teste no aparelho* (ver "Como testar a 0.4.1"): filtros nas Recomendações, duração de 30/45/60 min ou mais, "Before <ano>", salvar com resposta na hora, título no player, bloquear discreto, desempenho, playlists em sequência, o modo dormir no player (escurecer, quantos vídeos seguem e desligar a TV no fim) e a correção dos vídeos em 360p e lentos para começar na TV.
    - *Polimento visual implementado em 2026-11-02 (versão 0.4.0), aguardando o teste no aparelho* (ver "Como testar a etapa 6"). Junto, a pedido do Johan: salvar pelas listas (toque longo, e o menu do OK longo na TV), o marcador de salvo, o canal pelos cards, o estado de inscrito mais claro na playlist, puxar para atualizar (OK longo na aba, na TV) e o ícone vermelho. As Configurações só ganharam o visual novo.
    - Falta a rotina de atualização do motor.
-7. **Versão 1.0.0 (2026-11-13), pedido do Johan, aguardando o teste no aparelho** (ver "Como testar a 1.0"): junta a 0.6.3, a 0.7.0 e a 0.7.1 (nunca publicadas) e traz a tela de tópicos no primeiro uso (sem tópicos prontos), o app em inglês, português e espanhol com o idioma em Settings, a licença MIT com os avisos legais, o README e as notas de todas as releases em inglês. Pedidos do mesmo dia, também na 1.0: a tela do fim do vídeo (sugestões e "Back", ver "Fim do vídeo"), os Ajustes da TV na largura toda e as abas da TV sempre numa linha só.
+7. **Versão 1.0.0 (2026-11-13), pedido do Johan, testada por ele no mesmo dia ("parece que está tudo funcionando")** (ver "Como testar a 1.0"): junta a 0.6.3, a 0.7.0 e a 0.7.1 (nunca publicadas) e traz a tela de tópicos no primeiro uso (sem tópicos prontos), o app em inglês, português e espanhol com o idioma em Settings, a licença MIT com os avisos legais, o README e as notas de todas as releases em inglês. Pedidos do mesmo dia, também na 1.0: a tela do fim do vídeo (sugestões e "Back", ver "Fim do vídeo"), os Ajustes da TV na largura toda e as abas da TV sempre numa linha só.
+   - *Versão 1.0.1 (2026-11-13), correção do teste da 1.0.0* (ver "Como testar a 1.0.1"): o aviso da Explore aparecia ao chegar nos Recomendados no celular; agora só com a Explore aberta.
 
 Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", porque o motor acessa o real. Fica como ideia opcional para limpar o site.
 
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 1.0.1
+
+O aviso só aparece uma vez por aparelho: para ver de novo, limpar os dados do app (e entrar na conta de novo) ou usar outro aparelho.
+
+1. No celular, ir das Inscrições para os Recomendados (deslizando e pela barra de baixo): o aviso da Explore não aparece.
+2. Ir para a Explore: o aviso aparece ali, uma vez.
 
 ## Como testar a 1.0
 
