@@ -11,5 +11,5 @@
     app:controller_layout_id="@layout/player_controls"
     app:pause_icon="@drawable/ic_pause"
     app:play_icon="@drawable/ic_play"
-    app:show_buffering="always"
+    app:show_buffering="never"
     app:show_timeout="4000" />

@@ -26,7 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AuthRepository
 import ytslim.data.Channel
-import ytslim.data.Engine
+import ytslim.data.EngineWarmup
 import ytslim.data.PlayQueue
 import ytslim.data.PlaybackRepository
 import ytslim.data.Playlist
@@ -54,7 +54,7 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
     val openPlayer: (Video) -> Unit = { video ->
         // O vídeo começa a ser pedido já no toque, enquanto a tela do player abre.
         PlaybackRepository.prefetch(video.id)
-        context.startActivity(PlayerActivity.intent(context, video.id, video.title, video.resumeMs, Published.of(video)))
+        context.startActivity(PlayerActivity.intent(context, video.id, video.title, video.resumeMs, Published.of(video), video.thumbnailUrl))
     }
     // Só a página de uma playlist toca em sequência; o resto abre um vídeo sozinho.
     val play: (Video) -> Unit = { video ->
@@ -92,9 +92,9 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                         vms[RecommendedViewModel::class]
                         vms[PlaylistsViewModel::class]
                         vms[HistoryViewModel::class]
-                        // Adianta o que o primeiro vídeo precisa (o player do YouTube e a decifragem),
-                        // que numa TV fraca leva segundos. O SmartTube faz o mesmo ao abrir.
-                        Engine.service.refreshCacheIfNeeded()
+                        // Adianta o que o primeiro vídeo precisa (o token do YouTube, o player dele e a
+                        // decifragem), que numa TV fraca leva segundos ([EngineWarmup]).
+                        EngineWarmup.start(delayMs = EngineWarmup.AFTER_LISTS_MS)
                     }
                     // Os ViewModels das abas são os do início (os mesmos que viewModel() devolve abaixo).
                     val reload: (HomeTab) -> Unit = { which ->
