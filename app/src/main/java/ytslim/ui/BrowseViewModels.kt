@@ -39,7 +39,7 @@ import ytslim.data.VideoActions
 import ytslim.data.VideoPage
 
 /**
- * Recomendações da conta, com os filtros do Doorglow: sem Shorts, sem lives, sem canais bloqueados
+ * Recomendações da conta, com os filtros do BeamTube: sem Shorts, sem lives, sem canais bloqueados
  * e sem tópicos excluídos; tópicos preferidos sobem (ver [TopicRules.recommend]). Os filtros de
  * data, duração e ordem saíram daqui para a Explore (pedido do Johan, 2026-11-03: as
  * Recomendações vêm poucas por vez).

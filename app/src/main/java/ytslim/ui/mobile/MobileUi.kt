@@ -149,6 +149,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -178,7 +179,7 @@ import ytslim.ui.ChannelViewModel
 import ytslim.ui.ExploreViewModel
 import ytslim.ui.Accent
 import ytslim.ui.Accents
-import ytslim.ui.DoorGlyph
+import ytslim.ui.BeamGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
@@ -187,6 +188,9 @@ import ytslim.ui.MetaLine
 import ytslim.ui.ListMotion
 import ytslim.ui.ListTop
 import ytslim.ui.Look
+import ytslim.ui.TypeScale
+import ytslim.ui.Wordmark
+import ytslim.ui.spacedDots
 import ytslim.ui.Notice
 import ytslim.ui.NoticeAction
 import ytslim.ui.Notices
@@ -298,30 +302,31 @@ private fun colors() = darkColorScheme(
     onError = Look.OnGlow,
 )
 
-private val Type: Typography = Typography().let { t ->
-    fun TextStyle.figtree(weight: FontWeight? = null) = copy(fontFamily = Look.Figtree, fontWeight = weight ?: fontWeight)
-    Typography(
-        displayLarge = t.displayLarge.figtree(),
-        displayMedium = t.displayMedium.figtree(),
-        displaySmall = t.displaySmall.figtree(),
-        headlineLarge = t.headlineLarge.figtree(FontWeight.SemiBold),
-        headlineMedium = t.headlineMedium.figtree(FontWeight.SemiBold),
-        headlineSmall = t.headlineSmall.figtree(FontWeight.SemiBold),
-        titleLarge = t.titleLarge.figtree(FontWeight.SemiBold),
-        titleMedium = t.titleMedium.figtree(FontWeight.SemiBold),
-        titleSmall = t.titleSmall.figtree(FontWeight.SemiBold),
-        bodyLarge = t.bodyLarge.figtree(),
-        bodyMedium = t.bodyMedium.figtree(),
-        bodySmall = t.bodySmall.figtree(),
-        labelLarge = t.labelLarge.figtree(FontWeight.SemiBold),
-        labelMedium = t.labelMedium.figtree(FontWeight.SemiBold),
-        labelSmall = t.labelSmall.figtree(FontWeight.SemiBold),
-    )
-}
+private val Type: Typography = Typography(
+    displayLarge = TypeScale.displayLarge,
+    displayMedium = TypeScale.displayMedium,
+    displaySmall = TypeScale.displaySmall,
+    headlineLarge = TypeScale.headlineLarge,
+    headlineMedium = TypeScale.headlineMedium,
+    headlineSmall = TypeScale.headlineSmall,
+    titleLarge = TypeScale.titleLarge,
+    titleMedium = TypeScale.titleMedium,
+    titleSmall = TypeScale.titleSmall,
+    bodyLarge = TypeScale.bodyLarge,
+    bodyMedium = TypeScale.bodyMedium,
+    bodySmall = TypeScale.bodySmall,
+    labelLarge = TypeScale.labelLarge,
+    labelMedium = TypeScale.labelMedium,
+    labelSmall = TypeScale.labelSmall,
+)
 
-private val CardTitle = TextStyle(fontFamily = Look.Figtree, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 21.sp, letterSpacing = (-0.1).sp)
-private val RowTitle = TextStyle(fontFamily = Look.Figtree, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 20.sp)
-private val Meta = TextStyle(fontFamily = Look.Figtree, fontSize = 13.sp, lineHeight = 18.sp, color = Look.Sub)
+/**
+ * Títulos de vídeo em medium: a Outfit em semibold fica apertada em frases longas. O resto da
+ * linha (canal, visualizações, data) em regular, com as letras um fio mais soltas.
+ */
+private val CardTitle = TextStyle(fontFamily = Look.Outfit, fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 21.sp)
+private val RowTitle = TextStyle(fontFamily = Look.Outfit, fontWeight = FontWeight.Medium, fontSize = 15.sp, lineHeight = 20.sp)
+private val Meta = TextStyle(fontFamily = Look.Outfit, fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.01.em, color = Look.Sub)
 
 /** Interface de toque, para celular e tablet. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -391,8 +396,8 @@ object MobileUi : Screens {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            DoorGlyph(Modifier.size(width = 26.dp, height = 40.dp))
-            Spacer(Modifier.height(28.dp))
+            Wordmark(34.sp)
+            Spacer(Modifier.height(40.dp))
             Text(stringResource(R.string.sign_in_title), style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(24.dp))
             when (val s = state) {
@@ -595,7 +600,7 @@ object MobileUi : Screens {
                 Modifier.fillMaxHeight().padding(start = system.start, top = system.top + 20.dp, bottom = system.bottom + 16.dp).width(RailWidth),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                DoorGlyph(Modifier.size(width = 20.dp, height = 30.dp))
+                BeamGlyph(Modifier.size(width = 40.dp, height = 30.dp))
                 Spacer(Modifier.height(24.dp))
                 items.forEach { info ->
                     val selected = info.tab == tab
@@ -1073,7 +1078,7 @@ object MobileUi : Screens {
                                     Thumbnail(item.playlist.thumbnailUrl, Modifier.width(80.dp), corner = 8.dp)
                                     Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                                         Text(item.playlist.title, style = RowTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        item.playlist.info?.let { Text(it, style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                        item.playlist.info?.let { Text(spacedDots(it), style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                                     }
                                     if (item.busy) {
                                         CircularProgressIndicator(Modifier.padding(horizontal = 12.dp).size(22.dp), strokeWidth = 2.dp)
@@ -1194,7 +1199,7 @@ object MobileUi : Screens {
         ) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 20.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (subtitle != null) Text(subtitle, style = Meta, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                if (subtitle != null) Text(spacedDots(subtitle), style = Meta, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
             }
             trailing?.invoke()
         }
@@ -1752,7 +1757,7 @@ object MobileUi : Screens {
                 Text(
                     badge,
                     color = Look.Text,
-                    style = TextStyle(fontFamily = Look.Figtree, fontWeight = FontWeight.SemiBold, fontSize = if (compact) 11.sp else 12.sp, lineHeight = 16.sp),
+                    style = TextStyle(fontFamily = Look.Outfit, fontWeight = FontWeight.SemiBold, fontSize = if (compact) 11.sp else 12.sp, lineHeight = 16.sp),
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = 7.dp, bottom = 8.dp)
                         .background(if (video.isLive) Look.Live else Look.Badge, RoundedCornerShape(6.dp))
                         .padding(horizontal = 6.dp, vertical = 1.dp),
@@ -1808,9 +1813,9 @@ object MobileUi : Screens {
                 }
             },
             rest = rest?.let {
-                { Text(rest, style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp, vertical = 7.dp)) }
+                { Text(spacedDots(rest), style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp, vertical = 7.dp)) }
             },
-            separator = { Text("·", style = Meta, modifier = Modifier.padding(start = 3.dp, end = 1.dp)) },
+            separator = { Text("·", style = Meta, modifier = Modifier.padding(horizontal = 2.dp)) },
             modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
             stacked = stacked,
             // A linha de baixo encosta na de cima (os 7 dp em volta de cada uma são para o toque).
@@ -1833,7 +1838,7 @@ object MobileUi : Screens {
                 Text(
                     monogramOf(name),
                     color = Look.Text,
-                    style = TextStyle(fontFamily = Look.Figtree, fontWeight = FontWeight.SemiBold, fontSize = (size.value * 0.5f).sp, lineHeight = (size.value * 0.6f).sp),
+                    style = TextStyle(fontFamily = Look.Outfit, fontWeight = FontWeight.SemiBold, fontSize = (size.value * 0.5f).sp, lineHeight = (size.value * 0.6f).sp),
                 )
             }
         }
@@ -1848,7 +1853,7 @@ object MobileUi : Screens {
             Thumbnail(playlist.thumbnailUrl, Modifier.width(152.dp), corner = 12.dp)
             Column(Modifier.padding(horizontal = 14.dp)) {
                 Text(playlist.title, style = RowTitle.copy(fontSize = 16.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                playlist.info?.let { Text(it, style = Meta, maxLines = 2, modifier = Modifier.padding(top = 3.dp)) }
+                playlist.info?.let { Text(spacedDots(it), style = Meta, maxLines = 2, modifier = Modifier.padding(top = 3.dp)) }
             }
         }
     }
@@ -1871,7 +1876,7 @@ object MobileUi : Screens {
             }
             Column(Modifier.padding(start = 16.dp)) {
                 Text(channel.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                channel.info?.let { Text(it, style = Meta, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                channel.info?.let { Text(spacedDots(it), style = Meta, maxLines = 2, overflow = TextOverflow.Ellipsis) }
             }
         }
     }

@@ -75,7 +75,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
-        private const val TAG = "Doorglow"
+        private const val TAG = "BeamTube"
 
         /** O player da tela aberta agora, e a tarefa (a pilha de telas) em que ela está. */
         private var attached: Player? = null

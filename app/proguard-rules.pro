@@ -1,11 +1,11 @@
-# Regras do R8 para o Doorglow.
+# Regras do R8 para o BeamTube.
 #
 # O R8 otimiza e enxuga o código das bibliotecas (Compose, Media3, Kotlin, Coil) e do app. O motor
 # (MediaServiceCore/SharedModules) lê as respostas do YouTube por reflexão (Gson, JsonPath, Retrofit,
 # campos anotados) e chama código nativo (V8, Cronet): ele e as bibliotecas dele ficam inteiros, como
 # no build sem R8.
 
-# Nomes intactos: os logs e os erros continuam legíveis (tag Doorglow), e nada que use nome por
+# Nomes intactos: os logs e os erros continuam legíveis (tag BeamTube), e nada que use nome por
 # reflexão quebra. O ganho do R8 vem de otimizar e tirar o que não é usado, não de encurtar nomes.
 -dontobfuscate
 

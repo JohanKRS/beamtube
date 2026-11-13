@@ -20,7 +20,8 @@ jobs:
     timeout-minutes: 45
     env:
       GH_TOKEN: ${{ github.token }}
-      # Certificado da chave do Doorglow (o mesmo do APK 0.1.0). Uma release com outra chave
+      # Certificado da chave do app (a mesma desde o APK 0.1.0, de quando ele se chamava Doorglow:
+      # por isso os secrets DOORGLOW_*). Uma release com outra chave
       # não atualizaria o app instalado, então o job falha em vez de publicar.
       CERT_SHA256: 886493669cd66096a4ddb811f751c1ba1ca82e0e8711cab36d063e6d1e92a108
     steps:
@@ -79,8 +80,8 @@ jobs:
         if: steps.version.outputs.exists == 'false'
         run: |
           name=${{ steps.version.outputs.name }}
-          cp app/build/outputs/apk/app/release/app-app-release.apk "doorglow-$name.apk"
-          gh release create "v$name" "doorglow-$name.apk" \
-            --title "Doorglow $name" \
+          cp app/build/outputs/apk/app/release/app-app-release.apk "beamtube-$name.apk"
+          gh release create "v$name" "beamtube-$name.apk" \
+            --title "BeamTube $name" \
             --target "$GITHUB_SHA" \
             --generate-notes

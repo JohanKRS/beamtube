@@ -15,7 +15,7 @@ import java.lang.ref.WeakReference
  * - desligar a TV quando os vídeos acabam, se o usuário escolheu "Turn off" no painel de dormir do
  *   player. O Android não deixa um app comum pôr o aparelho para dormir; com o aparelho dormindo,
  *   a TV ligada por HDMI desliga junto (HDMI-CEC);
- * - abrir o Doorglow pelo botão YouTube do controle ([YouTubeButton]): o serviço vê as teclas do
+ * - abrir o BeamTube pelo botão YouTube do controle ([YouTubeButton]): o serviço vê as teclas do
  *   controle antes do sistema e segura só essa. Para aprender qual é, ele fica sabendo quando uma
  *   janela do app do YouTube aparece (só disso, de nenhum outro app).
  *
@@ -52,35 +52,35 @@ class ScreenOffService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         if (event.packageName?.toString() != YouTubeButton.YOUTUBE_PACKAGE) return
         val code = button.onYouTubeShown(SystemClock.uptimeMillis()) ?: return
-        Log.i("Doorglow", "remote key: learned the YouTube button, code=$code")
+        Log.i("BeamTube", "remote key: learned the YouTube button, code=$code")
         prefs.edit().putStringSet(PREF_YOUTUBE_BUTTON, button.learned.map(Int::toString).toSet()).apply()
-        // Desta vez o YouTube já abriu: o Doorglow vem por cima. Das próximas, ele nem abre.
-        openDoorglow()
+        // Desta vez o YouTube já abriu: o BeamTube vem por cima. Das próximas, ele nem abre.
+        openApp()
     }
 
     /**
      * Toda tecla do controle passa por aqui antes do sistema, então a resposta tem de ser imediata:
      * false deixa a tecla seguir. O botão YouTube fica com o serviço (a descida, as repetições de
-     * segurar e a subida), e o Doorglow abre na descida.
+     * segurar e a subida), e o BeamTube abre na descida.
      */
     override fun onKeyEvent(event: KeyEvent): Boolean {
         val keyCode = event.keyCode
         val firstDown = event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0
         if (button.isButton(keyCode)) {
-            if (firstDown) openDoorglow()
+            if (firstDown) openApp()
             return true
         }
         if (firstDown) {
             button.onKeyPassed(keyCode, SystemClock.uptimeMillis())
             if (!YouTubeButton.isOrdinary(keyCode)) {
-                Log.i("Doorglow", "remote key: code=$keyCode scan=${event.scanCode} device=${event.deviceId}")
+                Log.i("BeamTube", "remote key: code=$keyCode scan=${event.scanCode} device=${event.deviceId}")
             }
         }
         return false
     }
 
-    /** Traz o Doorglow para a frente como o launcher faz: com o player aberto, volta para ele. */
-    private fun openDoorglow() {
+    /** Traz o BeamTube para a frente como o launcher faz: com o player aberto, volta para ele. */
+    private fun openApp() {
         val intent = packageManager.getLeanbackLaunchIntentForPackage(packageName)
             ?: packageManager.getLaunchIntentForPackage(packageName)
             ?: return
@@ -88,7 +88,7 @@ class ScreenOffService : AccessibilityService() {
         try {
             startActivity(intent)
         } catch (e: ActivityNotFoundException) {
-            Log.w("Doorglow", "remote key: couldn't open Doorglow", e)
+            Log.w("BeamTube", "remote key: couldn't open BeamTube", e)
         }
     }
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Sem ler a tela (ScreenOffService). O serviço põe o aparelho para dormir e vê as teclas do
-     controle, para abrir o Doorglow pelo botão YouTube. Dos outros apps, só fica sabendo quando uma
+     controle, para abrir o BeamTube pelo botão YouTube. Dos outros apps, só fica sabendo quando uma
      janela do app do YouTube aparece, para aprender o código desse botão (YouTubeButton). -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged"

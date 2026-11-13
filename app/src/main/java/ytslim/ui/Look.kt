@@ -10,8 +10,8 @@ import androidx.compose.ui.text.font.FontWeight
 import ytslim.R
 
 /**
- * A aparência do Doorglow (etapa 6, aprovada pelo Johan em 2026-11-02): um cinza bem escuro, que
- * não é preto, e a luz da porta só no que importa (aba ativa, progresso, foco, salvo). A cor dessa
+ * A aparência do BeamTube (etapa 6, aprovada pelo Johan em 2026-11-02): um cinza bem escuro, que
+ * não é preto, e a luz da fresta só no que importa (aba ativa, progresso, foco, salvo). A cor dessa
  * luz é a de destaque escolhida em Settings ([accent], âmbar por padrão).
  */
 object Look {
@@ -49,11 +49,17 @@ object Look {
     val BadgeSoft = Color(0x8C0A0A0C)
     val Live = Color(0xE6C8372D)
 
-    val Figtree = FontFamily(
-        Font(R.font.figtree_regular, FontWeight.Normal),
-        Font(R.font.figtree_medium, FontWeight.Medium),
-        Font(R.font.figtree_semibold, FontWeight.SemiBold),
-        Font(R.font.figtree_bold, FontWeight.Bold),
+    /**
+     * A letra do logotipo, no app inteiro (2026-11-13, com a marca BeamTube): a Outfit, geométrica,
+     * em cinco pesos. O contraste entre o peso cheio e o leve é o do nome ("beam" em bold, "tube"
+     * em light) e volta nas abas, nos títulos e nos textos de apoio.
+     */
+    val Outfit = FontFamily(
+        Font(R.font.outfit_light, FontWeight.Light),
+        Font(R.font.outfit_regular, FontWeight.Normal),
+        Font(R.font.outfit_medium, FontWeight.Medium),
+        Font(R.font.outfit_semibold, FontWeight.SemiBold),
+        Font(R.font.outfit_bold, FontWeight.Bold),
     )
 
     /** Cores dos avatares sem foto (canais em que o usuário não está inscrito). */

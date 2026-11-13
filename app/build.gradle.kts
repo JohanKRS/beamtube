@@ -13,6 +13,8 @@ val appVersionName = providers.gradleProperty("app.versionName").get()
 
 // Chave das releases. Precisa ser sempre a mesma, senão o Android recusa a atualização.
 // Local: -Pdoorglow.keystore=/caminho/doorglow.keystore. No GitHub Actions: DOORGLOW_KEYSTORE.
+// (A chave e os nomes dela vêm de quando o app se chamava Doorglow; ficam como estão, para os
+// secrets do repositório continuarem valendo.)
 val releaseKeystore: String? = providers.gradleProperty("doorglow.keystore").orNull
     ?: providers.environmentVariable("DOORGLOW_KEYSTORE").orNull
 fun signingValue(name: String, default: String): String =
