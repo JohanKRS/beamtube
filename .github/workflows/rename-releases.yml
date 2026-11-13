@@ -1,0 +1,77 @@
+name: Renomear releases para BeamTube
+
+# Execução única, só nesta branch: troca "Doorglow" por "BeamTube" no título e nas notas de cada
+# release, aponta os links ytslim para beamtube e renomeia os APKs doorglow-X.apk para
+# beamtube-X.apk. Não apaga release, tag nem arquivo. Sai da branch depois de rodar.
+on:
+  push:
+    branches: [claude/project-thread-2cvu0a]
+    paths: [.github/workflows/rename-releases.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  rename:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Renomear
+        run: |
+          set -euo pipefail
+          latest=$(gh api "repos/$REPO/releases/latest" --jq .tag_name)
+          echo "Release mais recente: $latest"
+          gh api --paginate "repos/$REPO/releases?per_page=100" > releases.json
+          jq -c '.[] | {id, tag_name, name, body, assets: [.assets[] | {id, name}]}' releases.json > list.jsonl
+          echo "Releases: $(wc -l < list.jsonl)"
+
+          while IFS= read -r rel; do
+            id=$(jq -r .id <<<"$rel")
+            tag=$(jq -r .tag_name <<<"$rel")
+            old_name=$(jq -r .name <<<"$rel")
+            old_body=$(jq -r '.body // ""' <<<"$rel")
+            new_name=${old_name//Doorglow/BeamTube}
+            new_body=$(jq -r '.body // ""
+              | gsub("JohanKRS/ytslim"; "JohanKRS/beamtube")
+              | gsub("Doorglow"; "BeamTube")' <<<"$rel")
+            if [ "$tag" = "$latest" ]; then make_latest=true; else make_latest=false; fi
+
+            if [ "$new_name" != "$old_name" ] || [ "$new_body" != "$old_body" ]; then
+              gh api -X PATCH "repos/$REPO/releases/$id" \
+                -f name="$new_name" -f body="$new_body" -f make_latest="$make_latest" > /dev/null
+              echo "$tag: \"$old_name\" -> \"$new_name\" (notas atualizadas)"
+            else
+              echo "$tag: título e notas já estavam certos"
+            fi
+
+            jq -c '.assets[]' <<<"$rel" | while IFS= read -r asset; do
+              aid=$(jq -r .id <<<"$asset")
+              aname=$(jq -r .name <<<"$asset")
+              case "$aname" in
+                doorglow-*)
+                  new_aname="beamtube-${aname#doorglow-}"
+                  gh api -X PATCH "repos/$REPO/releases/assets/$aid" -f name="$new_aname" > /dev/null
+                  echo "$tag:   $aname -> $new_aname"
+                  ;;
+                *) echo "$tag:   $aname (sem mudança)" ;;
+              esac
+            done
+          done < list.jsonl
+
+      - name: Conferir
+        run: |
+          set -euo pipefail
+          echo "Mais recente agora: $(gh api "repos/$REPO/releases/latest" --jq .tag_name)"
+          gh api --paginate "repos/$REPO/releases?per_page=100" \
+            --jq '.[] | "\(.tag_name)\t\(.name)\t\([.assets[].name] | join(","))"'
+          left=$(gh api --paginate "repos/$REPO/releases?per_page=100" \
+            --jq '[.[] | select((.name + .body + ([.assets[].name] | join(" "))) | test("Doorglow|doorglow|ytslim"))] | length')
+          echo "Releases que ainda citam Doorglow ou ytslim: $left"
+          [ "$left" = "0" ]
