@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import ytslim.R
 import ytslim.data.AppIcon
+import ytslim.data.BlockedChannel
+import ytslim.data.SettingsRepository
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -442,6 +444,43 @@ class ScreenShots {
         MobileUi.Theme { MobileUi.ChannelPage(title, state, false, subscription, {}, {}, {}, null, {}, {}, {}, {}) }
     }
 
+    /** O canal recém-bloqueado, com o aviso que diz o que aconteceu na conta (1.0.3). */
+    private fun blockedNotice(sent: Boolean): Notice {
+        val res = org.robolectric.RuntimeEnvironment.getApplication().resources
+        val id = if (sent) R.string.channel_blocked_account_notice else R.string.channel_blocked_notice
+        return Notice(res.getString(id), 1L, long = true)
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvChannelBlocked() = shot("tv-channel-blocked") {
+        val (title, state, subscription) = channel(subscribed = false)
+        TvUi.Theme {
+            TvUi.ChannelPage(title, state, true, subscription, {}, {}, {}, {}, {}, {})
+            TvUi.NoticePill(blockedNotice(sent = true))
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneChannelBlocked() = shot("phone-channel-blocked") {
+        val (title, state, subscription) = channel(subscribed = false)
+        MobileUi.Theme {
+            MobileUi.ChannelPage(title, state, true, subscription, {}, {}, {}, null, {}, {}, {}, {})
+            MobileUi.NoticePill(blockedNotice(sent = true))
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "pt-w411dp-h891dp-xxhdpi")
+    fun phoneChannelBlockedLaterPortuguese() = shot("phone-channel-blocked-later-pt") {
+        val (title, state, subscription) = channel(subscribed = false)
+        MobileUi.Theme {
+            MobileUi.ChannelPage(title, state, true, subscription, {}, {}, {}, null, {}, {}, {}, {})
+            MobileUi.NoticePill(blockedNotice(sent = false))
+        }
+    }
+
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvPlaylists() = shot("tv-playlists") {
@@ -571,6 +610,44 @@ class ScreenShots {
     @Config(qualifiers = "pt-w411dp-h2200dp-xxhdpi")
     fun phoneSettingsPortuguese() = shot("phone-settings-pt") {
         MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+    }
+
+    /**
+     * Configurações com dois canais bloqueados (1.0.3): um que o YouTube já aceitou na conta e um
+     * que ainda está só no aparelho. A tela é alta para o grupo aparecer sem rolar.
+     */
+    private fun withBlocked(name: String, content: @Composable () -> Unit) {
+        kotlinx.coroutines.runBlocking {
+            SettingsRepository.block(BlockedChannel("UCblocked1", "Daily Drama Recap"))
+            SettingsRepository.markOnAccount("UCblocked1")
+            SettingsRepository.block(BlockedChannel("UCblocked2", "Loud Reactions"))
+        }
+        try {
+            shot(name, content = content)
+        } finally {
+            kotlinx.coroutines.runBlocking {
+                SettingsRepository.unblock("UCblocked1")
+                SettingsRepository.unblock("UCblocked2")
+            }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h2200dp-xxhdpi")
+    fun phoneSettingsBlocked() = withBlocked("phone-settings-blocked") {
+        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+    }
+
+    @Test
+    @Config(qualifiers = "pt-w411dp-h2200dp-xxhdpi")
+    fun phoneSettingsBlockedPortuguese() = withBlocked("phone-settings-blocked-pt") {
+        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h2000dp-television-xhdpi")
+    fun tvSettingsBlocked() = withBlocked("tv-settings-blocked") {
+        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) } }
     }
 
     @Test

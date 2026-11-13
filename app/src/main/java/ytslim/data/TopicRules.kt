@@ -10,9 +10,13 @@ import java.text.Normalizer
 @Serializable
 data class Topic(val name: String, val keywords: List<String>, val id: String? = null)
 
-/** Um canal bloqueado: some das recomendações, da busca e dos vídeos de playlists inscritas. */
+/**
+ * Um canal bloqueado: some das recomendações, da busca e dos vídeos de playlists inscritas, neste
+ * aparelho. [onAccount]: o YouTube já aceitou o "Don't recommend channel" dele na conta, o que vale
+ * em todo aparelho ([ChannelFeedback]).
+ */
 @Serializable
-data class BlockedChannel(val id: String, val name: String)
+data class BlockedChannel(val id: String, val name: String, val onAccount: Boolean = false)
 
 /** O que decide o que aparece nas Recomendações (e o que fica de fora em outros lugares). */
 data class ContentFilters(

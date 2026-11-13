@@ -79,8 +79,10 @@
     <string name="channel_playlists">Playlists</string>
     <string name="channel_block">Block channel</string>
     <string name="channel_unblock">Unblock channel</string>
-    <string name="channel_blocked_notice">Channel blocked. It won\'t show up in Recommended or Search.</string>
-    <string name="channel_unblocked_notice">Channel unblocked.</string>
+    <string name="channel_blocked_notice">Blocked on this device. BeamTube asks YouTube to stop recommending it the next time it shows up in Recommended.</string>
+    <string name="channel_blocked_account_notice">Blocked on this device, and YouTube won\'t recommend it on your account anymore.</string>
+    <string name="channel_unblocked_notice">Unblocked on this device.</string>
+    <string name="channel_unblocked_account_notice">Unblocked on this device. YouTube still won\'t recommend it on your account.</string>
 
     <string name="playlist_default_title">Playlist</string>
     <string name="playlist_subscribe">Subscribe</string>
@@ -125,8 +127,10 @@
     <string name="topic_keywords">Keywords, separated by commas</string>
     <string name="topic_remove">Remove</string>
     <string name="settings_blocked">Blocked channels</string>
-    <string name="settings_blocked_hint">Block a channel from its page (open it from Search or from the player).</string>
-    <string name="settings_blocked_empty">No blocked channels.</string>
+    <string name="settings_blocked_hint">These channels are hidden on this device only. BeamTube also asks YouTube not to recommend them on your account, which works on every device. The request goes out as soon as YouTube recommends one of their videos here. Unblocking doesn\'t undo it on YouTube.</string>
+    <string name="settings_blocked_empty">No blocked channels. To block one, open its page.</string>
+    <string name="settings_blocked_account">YouTube won\'t recommend it on your account</string>
+    <string name="settings_blocked_device">This device only, for now</string>
     <string name="unblock">Unblock</string>
     <string name="settings_app_icon">App icon</string>
     <string name="settings_app_icon_hint">The new icon can take a few seconds to show up. Some launchers remove the home screen shortcut when it changes; add BeamTube again from the app list.</string>

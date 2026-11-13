@@ -4,6 +4,7 @@ import com.liskovsoft.googlecommon.common.helpers.YouTubeHelper
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItem
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /** Um vídeo, já convertido do modelo do motor. */
 @Serializable
@@ -30,7 +31,21 @@ data class Video(
     val feedbackToken: String? = null,
     /** Onde o YouTube diz que o vídeo parou (o tempo do card); 0 quando não foi começado. */
     val resumeMs: Long = 0,
+    /**
+     * Só nos Recomendados (o Início do YouTube): o "Don't recommend channel" do menu do card, que
+     * o app manda quando o canal está bloqueado ([ChannelFeedback]). Não é guardado no aparelho.
+     */
+    @Transient val notRecommend: NotRecommend? = null,
 )
+
+/**
+ * O pedido "Don't recommend channel" de um card do Início. O cliente de TV manda o token no menu
+ * do card ([Token]) ou, desde 2026, só um painel que traz o menu quando é pedido ([Panel]).
+ */
+sealed interface NotRecommend {
+    data class Token(val value: String) : NotRecommend
+    data class Panel(val panelId: String, val params: String) : NotRecommend
+}
 
 /**
  * Uma playlist da conta (inclui "Assistir mais tarde").
@@ -66,12 +81,16 @@ sealed interface SearchItem {
     }
 }
 
-/** Uma página de vídeos. [next] é a continuação opaca do motor (null quando acabou). */
-class VideoPage(val videos: List<Video>, internal val next: MediaGroup?, val title: String? = null) {
+/**
+ * Uma página de vídeos. [next] é a continuação opaca do motor (null quando acabou). [home]: a
+ * página é dos Recomendados (o Início do YouTube), e as próximas também são.
+ */
+class VideoPage(val videos: List<Video>, internal val next: MediaGroup?, val title: String? = null, internal val home: Boolean = false) {
     val hasMore: Boolean get() = next != null
 }
 
-internal fun MediaItem.toVideo(): Video? {
+/** [home]: o item veio do Início, e o menu dele traz o "Don't recommend channel". */
+internal fun MediaItem.toVideo(home: Boolean = false): Video? {
     val id = videoId ?: return null
     return Video(
         id = id,
@@ -91,8 +110,16 @@ internal fun MediaItem.toVideo(): Video? {
         playlistIndex = playlistIndex,
         feedbackToken = feedbackToken,
         resumeMs = startTimeSeconds.coerceAtLeast(0) * 1000L,
+        notRecommend = if (home) notRecommend() else null,
     )
 }
+
+/**
+ * O "Don't recommend channel" de um card do Início, como o SmartTube lê: o segundo pedido do menu
+ * (o primeiro é o "Not interested") ou, quando o card só traz o painel, o painel.
+ */
+private fun MediaItem.notRecommend(): NotRecommend? =
+    feedbackEndpoint?.let { NotRecommend.Panel(it.panelId, it.params) } ?: feedbackToken2?.let(NotRecommend::Token)
 
 internal fun MediaItem.toPlaylist(): Playlist? {
     val browseId = channelId ?: playlistId?.let { "VL$it" } ?: return null
@@ -106,12 +133,13 @@ internal fun MediaItem.toPlaylist(): Playlist? {
     )
 }
 
-internal fun MediaGroup?.toPage(): VideoPage {
+internal fun MediaGroup?.toPage(home: Boolean = false): VideoPage {
     val items = this?.mediaItems.orEmpty()
     return VideoPage(
-        videos = items.mapNotNull { it.toVideo() },
+        videos = items.mapNotNull { it.toVideo(home) },
         next = this?.takeIf { it.nextPageKey != null },
         title = this?.title,
+        home = home,
     )
 }
 

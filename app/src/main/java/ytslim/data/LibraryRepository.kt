@@ -36,11 +36,11 @@ object LibraryRepository {
     }
 
     /** Recomendações da conta (o "Início" do YouTube), ainda sem os nossos filtros. */
-    suspend fun recommended(): VideoPage = Engine.content.recommendedObserve.firstOrNull().toPage()
+    suspend fun recommended(): VideoPage = Engine.content.recommendedObserve.firstOrNull().toPage(home = true)
 
     /** Próxima página de uma lista (playlist, feed etc.). */
     suspend fun more(page: VideoPage): VideoPage {
         val next = page.next ?: return VideoPage(emptyList(), null)
-        return io { Engine.content.continueGroup(next) }.toPage()
+        return io { Engine.content.continueGroup(next) }.toPage(page.home)
     }
 }

@@ -146,6 +146,13 @@ object SettingsRepository {
         p[BLOCKED_CHANNELS] = json.encodeToString(channels, current.filterNot { it.id == channelId })
     }
 
+    /** O YouTube aceitou o "Don't recommend channel" de [channelId] (se ele ainda estiver bloqueado). */
+    suspend fun markOnAccount(channelId: String) = store.edit { p ->
+        val current = p[BLOCKED_CHANNELS]?.let { decode(it, channels) }.orEmpty()
+        if (current.none { it.id == channelId && !it.onAccount }) return@edit
+        p[BLOCKED_CHANNELS] = json.encodeToString(channels, current.map { if (it.id == channelId) it.copy(onAccount = true) else it })
+    }
+
     /** Apaga o que a Explore antiga deixou guardado (uma vez, ao abrir o app). */
     suspend fun dropOldExplore() {
         if (OLD_EXPLORE.none { it in store.data.first() }) return
