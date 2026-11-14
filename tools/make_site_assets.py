@@ -34,8 +34,9 @@ IMG = SITE / "assets/img"
 # The hero logo, in the units of the logo study (make_icons.lockup): the glow starts at x 108,
 # the name ends near 603 and the beam fades out at 700.
 HERO_VIEWBOX = (100, 30, 600, 240)
-# The header and footer logo: from just left of the glow's bright part to a little past the name.
-LOGO_VIEWBOX = (122, 62, 520, 176)
+# The header and footer logo: the whole glow, the name and a little of the beam past it, with room
+# above and below for the light to fade out.
+LOGO_VIEWBOX = (104, 52, 538, 196)
 
 # Light (300) for the name's "tube" and big text, Regular for running text, Medium and SemiBold for
 # labels and headings. Bold is only in the logo, which is drawn as paths.
@@ -50,28 +51,74 @@ def svg(viewbox, defs, body, extra=""):
             f'<defs>{"".join(defs)}</defs>{body}</svg>\n')
 
 
+class Raw:
+    """SVG written by hand, for what make_icons.Shape can't say (a blur)."""
+
+    def __init__(self, defs, body):
+        self.defs, self.body = defs, body
+
+
+def soft_beam(light, glow):
+    cone = mi.mix(light, glow, 0.5)
+    x0, x1, top0, bottom0, top1, bottom1 = mi.LOCKUP_BEAM
+    # The layers end between x1 - 36 and x1; the light fades to nothing over that stretch.
+    end = x1 - 18
+    d = mi.polygon([(x0, top0), (x1, top1), (x1, bottom1), (x0, bottom0)])
+    defs = [
+        f'<linearGradient id="beam" gradientUnits="userSpaceOnUse" x1="{x0}" y1="0" x2="{end}" y2="0">'
+        f'<stop offset="0" stop-color="{cone}" stop-opacity="0.38"/>'
+        f'<stop offset="0.45" stop-color="{cone}" stop-opacity="0.17"/>'
+        f'<stop offset="1" stop-color="{cone}" stop-opacity="0"/></linearGradient>',
+        f'<filter id="soft" x="-5%" y="-15%" width="110%" height="130%"><feGaussianBlur stdDeviation="{mi.LOCKUP_BEAM_SOFT * 0.8:g}"/></filter>',
+    ]
+    return Raw(defs, f'<path d="{d}" fill="url(#beam)" filter="url(#soft)"/>')
+
+
+def shapes_svg(shapes, defs, prefix):
+    """make_icons.svg_shapes, plus the hand-written parts."""
+    out = ""
+    for i, s in enumerate(shapes):
+        if isinstance(s, Raw):
+            defs.extend(s.defs)
+            out += s.body
+        else:
+            out += mi.svg_shapes([s], defs, f"{prefix}{i}_")
+    return out
+
+
 def hero():
     top, bottom, diagonal, light, glow, letters = mi.PALETTE["night"]
     shapes, _ = mi.lockup(light, glow, letters, flat=False)
     # lockup(): the glow, five beam layers, the dust, the slit, its core, then "beam" and "tube".
-    back = shapes[:6]
+    # The app draws the soft edge of the beam with five layers, because an Android vector has no
+    # blur. In a browser those layers show as lines along the edges and where each one ends, so
+    # the site draws one beam with the same light, blurred by the browser.
+    back = shapes[:1] + [soft_beam(light, glow)]
     slit = shapes[-4:-2]
     word = shapes[-2:]
     for name, part in (("hero-back", back), ("hero-slit", slit), ("hero-word", word)):
         defs = []
-        body = mi.svg_shapes(part, defs, name[5])
+        body = shapes_svg(part, defs, name[5])
         (BRAND / f"{name}.svg").write_text(svg(HERO_VIEWBOX, defs, body, ' aria-hidden="true"'))
     # The header logo: everything, with the dust standing still, cut closer around the name so it
-    # reads at header size. The beam fades out before the cut instead of ending in a hard edge.
+    # reads at header size. The light fades out before every edge of the cut (the beam widens past
+    # the top and the bottom on the right) instead of ending in a hard line.
     # Only the sharp grains: the soft ones would add weight to the file and not show.
     dots = [s for s in shapes[6:-4] if s.fill[0] == "solid"]
     x, y, w, h = LOGO_VIEWBOX
-    defs = [f'<linearGradient id="fade" gradientUnits="userSpaceOnUse" x1="{x + w - 80}" y1="0" x2="{x + w}" y2="0">'
-            '<stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>',
-            f'<mask id="m" maskUnits="userSpaceOnUse" x="{x}" y="{y}" width="{w}" height="{h}">'
-            f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="url(#fade)"/></mask>']
-    light_part = mi.svg_shapes(back + dots, defs, "l")
-    body = f'<g mask="url(#m)">{light_part}</g>' + mi.svg_shapes(slit + word, defs, "n")
+    edge = 26
+    defs = [f'<linearGradient id="fx" gradientUnits="userSpaceOnUse" x1="{x}" y1="0" x2="{x + w}" y2="0">'
+            f'<stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="{edge / w:.3f}" stop-color="#fff"/>'
+            f'<stop offset="{1 - 150 / w:.3f}" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>',
+            f'<linearGradient id="fy" gradientUnits="userSpaceOnUse" x1="0" y1="{y}" x2="0" y2="{y + h}">'
+            f'<stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="{edge / h:.3f}" stop-color="#fff"/>'
+            f'<stop offset="{1 - edge / h:.3f}" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>',
+            f'<mask id="mx" maskUnits="userSpaceOnUse" x="{x}" y="{y}" width="{w}" height="{h}">'
+            f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="url(#fx)"/></mask>',
+            f'<mask id="my" maskUnits="userSpaceOnUse" x="{x}" y="{y}" width="{w}" height="{h}">'
+            f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="url(#fy)"/></mask>']
+    light_part = shapes_svg(back + dots, defs, "l")
+    body = f'<g mask="url(#my)"><g mask="url(#mx)">{light_part}</g></g>' + mi.svg_shapes(slit + word, defs, "n")
     (BRAND / "logo.svg").write_text(svg(LOGO_VIEWBOX, defs, body, ' role="img" aria-label="BeamTube"'))
 
 

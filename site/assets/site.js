@@ -90,6 +90,17 @@
   var canvas = lockup && lockup.querySelector(".l-dust");
   if (canvas && canvas.getContext) dust(lockup, canvas);
 
+  // The header's small logo stays out while the big one is on screen, and comes in once it has
+  // gone up behind the header (the page head sets brand-off before the first paint).
+  var header = document.querySelector("header.top");
+  if (lockup && "IntersectionObserver" in window) {
+    new IntersectionObserver(function (entries) {
+      root.classList.toggle("brand-off", entries[0].isIntersecting);
+    }, { rootMargin: "-" + (header ? header.offsetHeight : 64) + "px 0px 0px 0px" }).observe(lockup);
+  } else {
+    root.classList.remove("brand-off");
+  }
+
   function dust(box, canvas) {
     var VB = { x: 100, y: 30, w: 600, h: 240 };
     // The beam in the logo: from the slit (x 160) to x 700, opening up and down.

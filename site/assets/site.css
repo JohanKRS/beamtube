@@ -39,7 +39,7 @@
   --t-lede: 1.1875rem;
   --t-h3: 1.25rem;
   --t-h2: clamp(1.75rem, 1.2rem + 2.2vw, 2.625rem);
-  --t-tagline: clamp(1.5rem, 1.1rem + 1.7vw, 2.125rem);
+  --t-tagline: clamp(1.5rem, 1.1rem + 1.7vw, 2.375rem);
 
   --wrap: 1160px;
   --gutter: 20px;
@@ -134,8 +134,16 @@ code { font-family: var(--mono); font-size: 0.88em; color: var(--accent-soft); }
   min-height: 64px;
 }
 
-.brand { display: block; flex: none; margin-left: -6px; border-radius: 8px; }
-.brand img { height: 40px; width: auto; }
+.brand {
+  display: block; flex: none; margin-left: -10px; border-radius: 8px;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.brand img { height: 45px; width: auto; }
+/* While the big logo of the hero is on screen, the header leaves its own out. */
+.brand-off .brand {
+  opacity: 0; visibility: hidden; transform: translateY(-6px);
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s 0.25s;
+}
 
 .nav { display: flex; gap: 4px; margin-left: auto; }
 .nav a {
@@ -173,7 +181,7 @@ code { font-family: var(--mono); font-size: 0.88em; color: var(--accent-soft); }
   .top-in { gap: 10px; }
   .gh span { display: none; }
   .gh { padding: 8px; }
-  .brand img { height: 34px; }
+  .brand img { height: 38px; }
 }
 
 /* ---- hero ------------------------------------------------------------------------------------ */
@@ -189,15 +197,18 @@ code { font-family: var(--mono); font-size: 0.88em; color: var(--accent-soft); }
 
 .hero-logo { margin: 0; }
 
-/* The logo in three layers plus the dust (site.js), on the same 600 x 240 box. The slit sits at
-   8.3% of the width: the box moves left by that much, so the slit lines up with the text. */
+/* The logo in three layers plus the dust (site.js), on the same 600 x 240 box. Centered like the
+   TV banner: the slit and the end of the name sit at the same distance from the edges. The slit is
+   at 8.3% of the box and the name ends at 83.8%, so the middle of the two is at 46.05%. The glow on
+   the left and the end of the beam on the right may run past the edges of narrow screens. */
 .lockup {
   position: relative;
   display: block;
-  width: min(109%, 860px);
+  left: 50%;
+  width: min(118%, 860px);
   max-width: none;
   aspect-ratio: 600 / 240;
-  transform: translateX(-8.3%);
+  transform: translateX(-46.05%);
 }
 .lockup > img, .lockup > canvas {
   position: absolute; inset: 0;
@@ -207,12 +218,15 @@ code { font-family: var(--mono); font-size: 0.88em; color: var(--accent-soft); }
 
 .hero-copy {
   display: grid;
+  justify-items: center;
   gap: 22px;
-  max-width: 660px;
-  margin-top: clamp(4px, 1vw, 12px);
+  max-width: 780px;
+  margin: clamp(4px, 1vw, 12px) auto 0;
+  text-align: center;
 }
 
 .tagline {
+  max-width: 28ch;
   font-size: var(--t-tagline);
   font-weight: 300;
   line-height: 1.28;
@@ -223,6 +237,7 @@ code { font-family: var(--mono); font-size: 0.88em; color: var(--accent-soft); }
 .lede { color: var(--sub); font-size: var(--t-lede); max-width: 58ch; }
 
 .cta { display: flex; flex-wrap: wrap; gap: 12px; }
+.hero-copy .cta, .hero-copy .facts { justify-content: center; }
 
 .btn {
   display: inline-flex; align-items: center; gap: 10px;
@@ -261,17 +276,6 @@ code { font-family: var(--mono); font-size: 0.88em; color: var(--accent-soft); }
 
 .hero .hero-shot { margin-top: clamp(40px, 6vw, 64px); }
 
-/* On wide screens the tagline sits on the left and the details on the right, under the beam. */
-@media (min-width: 1000px) {
-  .hero-copy {
-    max-width: none;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    column-gap: clamp(40px, 5vw, 80px);
-    align-items: start;
-  }
-  .tagline { grid-row: 1 / span 3; font-size: clamp(2rem, 1.2rem + 1.3vw, 2.5rem); }
-  .lede, .cta, .facts { grid-column: 2; }
-}
 
 .unofficial {
   margin: 18px 0 0; padding-bottom: 8px;
@@ -306,7 +310,7 @@ code { font-family: var(--mono); font-size: 0.88em; color: var(--accent-soft); }
 
 .screen {
   --pad: 6px;
-  --r: 14px;
+  --r: 12px;
   margin: 0;
   padding: var(--pad);
   border-radius: var(--r);
@@ -321,10 +325,9 @@ code { font-family: var(--mono); font-size: 0.88em; color: var(--accent-soft); }
   cursor: zoom-in;
   background: #18191b;
 }
-.screen.tv { --pad: clamp(4px, 0.8vw, 10px); --r: clamp(10px, 1.4vw, 16px); }
-.screen.phone { --pad: 5px; --r: 24px; }
-.screen.wide { --pad: 5px; --r: 22px; }
-.screen.tablet { --pad: clamp(5px, 0.9vw, 10px); --r: 18px; }
+/* The screenshots have square corners: the frame only rounds a little, so nothing gets cut. */
+.screen.phone, .screen.wide { --r: 14px; }
+.hero .hero-shot { --pad: clamp(6px, 0.8vw, 10px); --r: clamp(12px, 1.4vw, 16px); }
 
 .hero-shot {
   box-shadow:
@@ -333,19 +336,21 @@ code { font-family: var(--mono); font-size: 0.88em; color: var(--accent-soft); }
     0 50px 100px -40px rgba(0, 0, 0, 0.9);
 }
 
-/* A row of screenshots of the same height: each one grows by its aspect ratio. */
+/* A row of screenshots of the same height: every frame has the same padding, and each one grows by
+   its aspect ratio from a start of just that padding, so the pictures inside end up equally tall. */
 .gallery {
   display: flex;
   gap: clamp(12px, 2vw, 24px);
   align-items: flex-start;
+  justify-content: center;
 }
-.gallery > .screen { flex: var(--ar) 1 0; min-width: 0; }
+.gallery > .screen { flex: var(--ar) 1 calc(2 * var(--pad)); min-width: 0; }
 .gallery + .gallery { margin-top: clamp(12px, 2vw, 24px); }
 
 @media (max-width: 680px) {
   .gallery { flex-wrap: wrap; }
   .gallery > .screen.tv, .gallery > .screen.wide, .gallery > .screen.tablet { flex-basis: 100%; }
-  .gallery > .screen.phone { flex-basis: 40%; }
+  .gallery > .screen.phone { flex: 0 1 calc(50% - 8px); }
 }
 
 /* ---- sections -------------------------------------------------------------------------------- */
@@ -642,7 +647,7 @@ h3 { font-size: var(--t-h3); font-weight: 500; letter-spacing: -0.005em; }
 }
 .copy button:hover { border-color: var(--accent); }
 
-.more { display: grid; gap: 0; margin-top: clamp(28px, 4vw, 40px); max-width: 860px; }
+.more { display: grid; gap: 0; margin-top: clamp(28px, 4vw, 40px); }
 .more details { border-top: 1px solid var(--line); }
 .more details:last-child { border-bottom: 1px solid var(--line); }
 .more summary {

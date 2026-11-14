@@ -19,7 +19,7 @@ window.BEAMTUBE_I18N = {
     "nav.language": "Idioma",
 
     "hero.tagline": "Um cliente do YouTube sem distrações para celulares, tablets e TVs Android, para quem senta para assistir.",
-    "hero.lede": "Ele abre nas suas inscrições, deixa a tela quase vazia e traz pequenas ferramentas que deixam os vídeos longos mais gostosos de ver. Um app só para o celular, o tablet e a TV, com o layout certo para cada um.",
+    "hero.lede": "Ele abre nas suas inscrições, mostra só o que interessa e traz pequenas ferramentas que deixam os vídeos longos mais gostosos de ver. Um app só para o celular, o tablet e a TV, com o layout certo para cada um.",
     "cta.download": "Baixar o APK",
     "cta.install": "Como instalar",
     "hero.fact1": "Gratuito e de código aberto",
@@ -81,10 +81,8 @@ window.BEAMTUBE_I18N = {
     "long.qualityD": "Na TV o player tenta 4K primeiro e só baixa quando realmente precisa. Celulares e tablets começam em 1080p. Se você escolher uma resolução à mão, ela fica.",
     "long.endT": "Nada de tocar o próximo sozinho",
     "long.endD": "Quando um vídeo termina, aparecem algumas sugestões: o próximo vídeo da sua lista, um do mesmo canal e vídeos relacionados que respeitam os seus tópicos. Se você não escolher nada, volta para a sua lista em 15 segundos.",
-    "alt.playerTv": "O player na TV, com os capítulos na linha do tempo",
     "alt.jumped": "O player do celular mostrando “Pulou para a frente” depois de pular um patrocínio",
     "alt.endScreen": "O fim de um vídeo na TV: algumas sugestões e o botão Voltar",
-    "alt.captions": "Legendas no player do celular, centralizadas e com contorno fino",
 
     "sleep.title": "Para dormir vendo vídeos",
     "sleep.lede": "O BeamTube nasceu de dormir ouvindo playlists na TV, então o player tem um modo dormir. Toque na lua.",
@@ -222,7 +220,7 @@ window.BEAMTUBE_I18N = {
     "nav.language": "Idioma",
 
     "hero.tagline": "Un cliente de YouTube sin distracciones para teléfonos, tablets y televisores Android, para quien se sienta a mirar.",
-    "hero.lede": "Abre en tus suscripciones, deja la pantalla casi vacía y suma pequeñas herramientas que hacen más agradable mirar videos largos. Una sola app para tu teléfono, tu tablet y tu televisor, con el diseño adecuado para cada uno.",
+    "hero.lede": "Abre en tus suscripciones, muestra solo lo que importa y suma pequeñas herramientas que hacen más agradable mirar videos largos. Una sola app para tu teléfono, tu tablet y tu televisor, con el diseño adecuado para cada uno.",
     "cta.download": "Descargar el APK",
     "cta.install": "Cómo instalar",
     "hero.fact1": "Gratis y de código abierto",
@@ -284,10 +282,8 @@ window.BEAMTUBE_I18N = {
     "long.qualityD": "En el televisor el reproductor busca 4K primero y solo baja cuando de verdad hace falta. Teléfonos y tablets empiezan en 1080p. Si eliges una resolución a mano, se queda.",
     "long.endT": "Nada de reproducir lo siguiente solo",
     "long.endD": "Cuando termina un video aparecen algunas sugerencias: el siguiente video de tu lista, uno del mismo canal y videos relacionados que respetan tus temas. Si no eliges nada, vuelves a tu lista en 15 segundos.",
-    "alt.playerTv": "El reproductor en el televisor, con los capítulos en la línea de tiempo",
     "alt.jumped": "El reproductor del teléfono diciendo “Saltó hacia adelante” después de saltar un patrocinio",
     "alt.endScreen": "El final de un video en el televisor: algunas sugerencias y el botón Volver",
-    "alt.captions": "Subtítulos en el reproductor del teléfono, centrados y con contorno fino",
 
     "sleep.title": "Para dormirse con videos",
     "sleep.lede": "BeamTube nació de dormirse con listas en el televisor, así que el reproductor tiene un modo dormir. Toca la luna.",
