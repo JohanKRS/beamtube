@@ -274,6 +274,17 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Bea
 - O repositório é privado, então o Obtainium precisa de um token do GitHub com leitura do repositório.
 - Em cada PR, o workflow `build.yml` compila e roda os testes de unidade.
 
+## Site do projeto
+
+- Pedido do Johan em 2026-11-14: um site simples e bonito para apresentar o BeamTube, com as explicações do README de um jeito mais compacto, nos três idiomas. Ele sobe o site num subdomínio do domínio dele (sem comprar domínio). Fica em `site/`: HTML, CSS e JS puros, sem build e sem nada para instalar no servidor. Os caminhos são relativos, então funciona em qualquer pasta: basta copiar o conteúdo de `site/`.
+- **Só tema escuro** (pedido dele). Fonte Outfit (um subconjunto em woff2, com a licença OFL ao lado), as cores e o logotipo da marca.
+- **A poeira do logo é animada** (pedido dele): o logotipo do topo vem em três camadas (o brilho e o facho, a fresta, o nome) e a poeira é desenhada numa canvas entre o facho e o nome. Ela flutua devagar, cintila, fica mais fraca longe da fresta e se mexe quando o ponteiro passa pelo facho. O logo acende uma vez ao abrir (a fresta, o facho abrindo para a direita, o nome) e o brilho respira devagar. Com "reduzir movimento" ligado no sistema, tudo fica parado.
+- **Três idiomas:** o inglês está no próprio HTML; o português e o espanhol ficam em `site/assets/i18n.js`, pelas chaves `data-i18n`. O idioma vem do `?lang=pt` no endereço, da última escolha do visitante ou do idioma do navegador (senão, inglês), e o seletor EN/PT/ES fica no topo. Ao mudar um texto em inglês, mudar também as duas traduções.
+- O botão de baixar pergunta ao GitHub qual é a última release e aponta direto para o APK, com a versão e o tamanho. Se o GitHub não responder, fica na página da última release.
+- Duas demonstrações pequenas: o brilho do modo dormir escurece a captura do player, e as sete cores de destaque mudam a cor da página.
+- Os desenhos da marca (logotipo em camadas, os sete ícones, favicon), a fonte e as capturas em webp saem de `tools/make_site_assets.py`, que usa o `make_icons.py` (o site acompanha a marca do app). Rodar de novo quando a marca ou as capturas de `docs/screenshots/` mudarem.
+- Textos sem "calm" e uma tela por captura, como no README.
+
 ## Etapas
 
 0. **Base do projeto:** submódulos, build Gradle e um APK que abre no celular e na TV. *Feito em 2026-11-01.*
