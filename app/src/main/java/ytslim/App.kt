@@ -22,6 +22,7 @@ import ytslim.data.ListCache
 import ytslim.data.PlaylistSubscriptions
 import ytslim.data.WatchPositions
 import ytslim.data.SettingsRepository
+import ytslim.player.AccessibilityRebind
 import ytslim.player.ScreenOffService
 import ytslim.ui.Accents
 import ytslim.ui.AppLanguage
@@ -46,7 +47,7 @@ class App : Application(), SingletonImageLoader.Factory {
         // De volta ao app (a TV ligou de novo, outro app fechou): o token do YouTube e o da conta podem
         // ter vencido, e o primeiro vídeo esperaria por eles. O que ainda vale não é refeito.
         AppScope.launch { AppVisibility.returns.collect { if (Engine.signIn.isSigned) EngineWarmup.start() } }
-        if (!isTv()) removeScreenOffService()
+        if (isTv()) keepScreenOffServiceBound() else removeScreenOffService()
         logCompilation()
     }
 
@@ -83,6 +84,16 @@ class App : Application(), SingletonImageLoader.Factory {
                 }
             }, Runnable::run)
         }
+    }
+
+    /**
+     * O serviço do botão YouTube volta desconectado depois de uma atualização do app, e o Android não
+     * o religa sozinho (medido na TCL do Johan, 2026-11-14): confere quando o processo sobe e cada vez
+     * que o app volta para a tela ([AccessibilityRebind]).
+     */
+    private fun keepScreenOffServiceBound() {
+        AppScope.launch { AccessibilityRebind.ensure(this@App, "app started") }
+        AppScope.launch { AppVisibility.returns.collect { AccessibilityRebind.ensure(this@App, "app shown") } }
     }
 
     /**

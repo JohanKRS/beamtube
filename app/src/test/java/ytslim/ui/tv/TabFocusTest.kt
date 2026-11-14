@@ -125,6 +125,56 @@ class TabFocusTest {
         compose.onNodeWithText("Subscriptions").assertIsFocused()
     }
 
+    /** OK na aba aberta recarrega a lista dela, sem precisar segurar (1.0.6, pedido do Johan). */
+    @Test
+    fun okOnTheOpenTabReloadsIt() {
+        var tab by mutableStateOf(HomeTab.SUBSCRIPTIONS)
+        val reloads = mutableListOf<HomeTab>()
+        compose.setContent {
+            TvUi.Theme {
+                TvUi.Home(tab, onTab = { tab = it }, onReload = { reloads += it }) {
+                    TvUi.VideoGrid(grid(), "", {}, {}, null, takeFocus = true, onFocusTaken = {})
+                }
+            }
+        }
+        compose.waitForIdle()
+        focusFirstCard()
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf(HomeTab.SUBSCRIPTIONS), reloads)
+        // Na aba ao lado, o OK recarrega aquela, e o foco continua na aba.
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        press(KeyEvent.KEYCODE_ENTER)
+        assertEquals(listOf(HomeTab.SUBSCRIPTIONS, HomeTab.RECOMMENDED), reloads)
+        compose.onNodeWithText("Recommended").assertIsFocused()
+        // OK num card continua abrindo o vídeo, sem recarregar nada.
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(2, reloads.size)
+    }
+
+    /**
+     * Só a subida do OK, sem a descida na aba (o OK do launcher que abriu o app, por exemplo), não
+     * recarrega: senão a lista sumiria logo ao abrir.
+     */
+    @Test
+    fun okReleasedWithoutPressingOnTheTabDoesNothing() {
+        val reloads = mutableListOf<HomeTab>()
+        compose.setContent {
+            TvUi.Theme {
+                TvUi.Home(HomeTab.SUBSCRIPTIONS, onTab = {}, onReload = { reloads += it }) {
+                    TvUi.VideoGrid(grid(), "", {}, {}, null, takeFocus = true, onFocusTaken = {})
+                }
+            }
+        }
+        compose.waitForIdle()
+        focusFirstCard()
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        compose.runOnUiThread { compose.activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER)) }
+        compose.waitForIdle()
+        assertEquals(emptyList<HomeTab>(), reloads)
+    }
+
     @Test
     fun goingUpFromTheGridStopsOnTheChannelTabThatIsOpen() {
         var tab by mutableStateOf(0)

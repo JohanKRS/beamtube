@@ -16,6 +16,7 @@ import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -393,9 +394,12 @@ object TvUi : Screens {
     override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, onReload: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
         val initialFocus = rememberSaveable { mutableStateOf(true) }
         var tabsFocused by remember { mutableStateOf(false) }
-        // Segurar OK numa aba recarrega a lista dela, quando o OK é solto depois de [OkHold.HOLD_MS].
-        // O Tab segue recebendo as teclas (o clique dele só escolhe a aba, que já está escolhida).
-        var heldTab by remember { mutableStateOf<HomeTab?>(null) }
+        // OK na aba aberta recarrega a lista dela (1.0.6, pedido do Johan: "quando tiver em cima da
+        // aba e apertar OK, recarrega"; até a 1.0.5 só segurando o OK). Conta só o OK que desceu
+        // nesta aba: a subida de um OK apertado em outro lugar (no launcher, ao abrir o app) não
+        // recarrega nada. O Tab segue recebendo as teclas (o clique dele só escolhe a aba, que já
+        // está escolhida).
+        var pressedTab by remember { mutableStateOf<HomeTab?>(null) }
         val selectedTab = remember { FocusRequester() }
         // Voltar, de dentro do conteúdo, sobe para as abas; nas abas, sai do app.
         BackHandler(enabled = !tabsFocused) { runCatching { selectedTab.requestFocus() } }
@@ -431,10 +435,10 @@ object TvUi : Screens {
                                 val key = event.nativeKeyEvent
                                 if (key.keyCode in OkKeys) {
                                     if (event.type == KeyEventType.KeyDown && key.repeatCount == 0) {
-                                        heldTab = item
+                                        pressedTab = item
                                     } else if (event.type == KeyEventType.KeyUp) {
-                                        if (heldTab == item && key.eventTime - key.downTime >= OkHold.HOLD_MS) onReload(item)
-                                        heldTab = null
+                                        if (pressedTab == item) onReload(item)
+                                        pressedTab = null
                                     }
                                 }
                                 false
@@ -848,8 +852,7 @@ object TvUi : Screens {
                 R.string.settings_subscriptions,
                 rows = listOf(
                     row("show") {
-                        ListItem(
-                            selected = false,
+                        SettingsRow(
                             onClick = { vm.setShowLives(!settings.showLives) },
                             headlineContent = { Text(stringResource(R.string.settings_show_lives)) },
                             supportingContent = { Text(stringResource(R.string.settings_show_lives_desc)) },
@@ -863,8 +866,7 @@ object TvUi : Screens {
                 add(
                     row("current") {
                         val target = settings.saveTarget.title ?: stringResource(R.string.watch_later)
-                        ListItem(
-                            selected = false,
+                        SettingsRow(
                             onClick = {
                                 choosingTarget = !choosingTarget
                                 if (choosingTarget) vm.loadOwnPlaylists()
@@ -879,8 +881,7 @@ object TvUi : Screens {
                         null, UiState.Loading -> add(row("loading") { EmptyRow(stringResource(R.string.loading)) })
                         is UiState.Error -> add(
                             row("error") {
-                                ListItem(
-                                    selected = false,
+                                SettingsRow(
                                     onClick = vm::loadOwnPlaylists,
                                     headlineContent = { Text(stringResource(R.string.error_generic, own.message)) },
                                     trailingContent = { Text(stringResource(R.string.retry)) },
@@ -890,8 +891,7 @@ object TvUi : Screens {
                         is UiState.Ready -> own.data.forEach { playlist ->
                             add(
                                 row(playlist.id) {
-                                    ListItem(
-                                        selected = false,
+                                    SettingsRow(
                                         onClick = {
                                             vm.setSaveTarget(playlist)
                                             choosingTarget = false
@@ -914,8 +914,7 @@ object TvUi : Screens {
                 hint = R.string.settings_end_hint,
                 rows = endActionOptions.map { (action, label) ->
                     row(action) {
-                        ListItem(
-                            selected = false,
+                        SettingsRow(
                             onClick = { vm.setEndAction(action) },
                             headlineContent = { Text(stringResource(label)) },
                             trailingContent = { RadioButton(selected = settings.endAction == action, onClick = null) },
@@ -930,8 +929,7 @@ object TvUi : Screens {
                 hint = R.string.settings_topics_hint,
                 rows = listOf(
                     row("choose") {
-                        ListItem(
-                            selected = false,
+                        SettingsRow(
                             onClick = onOpenTopics,
                             headlineContent = { Text(stringResource(R.string.settings_topics_choose)) },
                             trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
@@ -966,8 +964,7 @@ object TvUi : Screens {
                 } else {
                     settings.filters.blocked.map { channel ->
                         row(channel.id) {
-                            ListItem(
-                                selected = false,
+                            SettingsRow(
                                 onClick = { vm.unblock(channel.id) },
                                 headlineContent = { Text(channel.name.ifBlank { channel.id }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 // O bloqueio vale neste aparelho; esta linha diz se a conta já recebeu o "Don't recommend channel".
@@ -986,8 +983,7 @@ object TvUi : Screens {
                 R.string.settings_links,
                 rows = externalLinkOptions.map { (mode, label) ->
                     row(mode) {
-                        ListItem(
-                            selected = false,
+                        SettingsRow(
                             onClick = { vm.setExternalLinks(mode) },
                             headlineContent = { Text(stringResource(label)) },
                             leadingContent = { RadioButton(selected = settings.externalLinks == mode, onClick = null) },
@@ -1006,8 +1002,7 @@ object TvUi : Screens {
                 rows = listOf(
                     row("accessibility") {
                         val on = remoteButton != RemoteButtonState.OFF
-                        ListItem(
-                            selected = false,
+                        SettingsRow(
                             onClick = {
                                 if (!ScreenOffService.openSettings(activity ?: context)) {
                                     Notices.show(context.getString(R.string.settings_remote_no_settings), long = true)
@@ -1031,8 +1026,7 @@ object TvUi : Screens {
                     UiState.Loading -> add(row("loading") { EmptyRow(stringResource(R.string.loading)) })
                     is UiState.Error -> add(
                         row("retry") {
-                            ListItem(
-                                selected = false,
+                            SettingsRow(
                                 onClick = vm::reloadPlaylists,
                                 headlineContent = { Text(stringResource(R.string.error_generic, p.message)) },
                                 trailingContent = { Text(stringResource(R.string.retry)) },
@@ -1045,8 +1039,7 @@ object TvUi : Screens {
                             add(
                                 row(item.playlist.browseId) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        ListItem(
-                                            selected = false,
+                                        SettingsRow(
                                             onClick = { onOpenPlaylist(item.playlist) },
                                             headlineContent = { Text(item.playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                             supportingContent = item.playlist.info?.let { { Text(spacedDots(it), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
@@ -1071,8 +1064,7 @@ object TvUi : Screens {
                 R.string.settings_language,
                 rows = Language.entries.map { language ->
                     row(language.name) {
-                        ListItem(
-                            selected = false,
+                        SettingsRow(
                             onClick = { activity?.let { AppLanguage.select(it, language) } },
                             headlineContent = { Text(language.native ?: stringResource(language.label ?: R.string.language_system)) },
                             trailingContent = { RadioButton(selected = currentLanguage == language, onClick = null) },
@@ -1087,8 +1079,7 @@ object TvUi : Screens {
                 hint = R.string.settings_app_icon_hint,
                 rows = AppIcon.entries.map { icon ->
                     row(icon.name) {
-                        ListItem(
-                            selected = false,
+                        SettingsRow(
                             onClick = { vm.setAppIcon(icon) },
                             headlineContent = { Text(stringResource(icon.label)) },
                             leadingContent = { AppIconPreview(icon) },
@@ -1105,8 +1096,7 @@ object TvUi : Screens {
                 hint = R.string.settings_accent_hint,
                 rows = Accent.entries.map { option ->
                     row(option.name) {
-                        ListItem(
-                            selected = false,
+                        SettingsRow(
                             onClick = { Accents.select(option) },
                             headlineContent = { Text(stringResource(option.label)) },
                             leadingContent = { Box(Modifier.size(24.dp).background(Color(option.glow), CircleShape)) },
@@ -1121,8 +1111,7 @@ object TvUi : Screens {
                 R.string.settings_account,
                 rows = listOf(
                     row("signout") {
-                        ListItem(
-                            selected = false,
+                        SettingsRow(
                             onClick = { vm.signOut(onSignedOut) },
                             headlineContent = { Text(stringResource(R.string.sign_out)) },
                             supportingContent = vm.accountName?.let { { Text(stringResource(R.string.settings_signed_in_as, it)) } },
@@ -1174,8 +1163,7 @@ object TvUi : Screens {
                 add(
                     row("$index:${topic.name}") {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            ListItem(
-                                selected = false,
+                            SettingsRow(
                                 onClick = { onEdit(index) },
                                 headlineContent = { Text(topic.label()) },
                                 supportingContent = { Text(topic.keywords.joinToString(", "), maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -1189,8 +1177,7 @@ object TvUi : Screens {
             }
             add(
                 row("add") {
-                    ListItem(
-                        selected = false,
+                    SettingsRow(
                         onClick = { onEdit(null) },
                         headlineContent = { Text("+ " + stringResource(R.string.topic_add), color = Look.Glow) },
                     )
@@ -1211,6 +1198,32 @@ object TvUi : Screens {
         }
         if (hint != null) item(key = "$key:hint") { Hint(stringResource(hint)) }
     }
+
+    /**
+     * Uma linha dos Ajustes: o ListItem da TV, sem crescer com o foco. Crescendo (o padrão, 5%), a
+     * linha com foco passava da borda do cartão, e a de baixo era desenhada por cima dela: no meio do
+     * grupo a barra creme ficava cortada reto embaixo, e na última linha (ou na única) o canto do
+     * cartão aparecia por baixo dos cantos dela (achado do Johan, 2026-11-14). Sem crescer, a barra
+     * fica dentro do cartão e é igual em qualquer linha.
+     */
+    @Composable
+    private fun SettingsRow(
+        onClick: () -> Unit,
+        headlineContent: @Composable () -> Unit,
+        modifier: Modifier = Modifier,
+        supportingContent: (@Composable () -> Unit)? = null,
+        leadingContent: (@Composable BoxScope.() -> Unit)? = null,
+        trailingContent: (@Composable () -> Unit)? = null,
+    ) = ListItem(
+        selected = false,
+        onClick = onClick,
+        headlineContent = headlineContent,
+        modifier = modifier,
+        supportingContent = supportingContent,
+        leadingContent = leadingContent,
+        trailingContent = trailingContent,
+        scale = ListItemDefaults.scale(focusedScale = 1f),
+    )
 
     /** Uma linha de um [group], com a chave dela na lista. */
     private fun row(key: Any, content: @Composable () -> Unit): Pair<Any, @Composable () -> Unit> = key to content

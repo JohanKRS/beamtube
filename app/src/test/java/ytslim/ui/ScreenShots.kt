@@ -709,6 +709,57 @@ class ScreenShots {
     @Config(qualifiers = "pt-w960dp-h2600dp-television-xhdpi")
     fun tvSettingsRemoteReadyPortuguese() = remoteShot("tv-settings-remote-ready-pt", on = true, learned = true)
 
+    /**
+     * O foco numa linha dos Ajustes da TV (1.0.6, achado do Johan: a última linha de cada grupo, ou a
+     * única, tinha o foco diferente das outras, com um corte embaixo, nos cantos). A tela é alta para
+     * os primeiros grupos aparecerem sem rolar.
+     */
+    private fun tvSettingsFocusShot(name: String, row: String) = shot(name, action = {
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNode(hasText(row) and hasClickAction(), useUnmergedTree = false).requestFocus()
+    }) {
+        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h1000dp-television-xhdpi")
+    fun tvSettingsFocusMiddle() = tvSettingsFocusShot("tv-settings-focus-middle", "Play a suggestion")
+
+    @Test
+    @Config(qualifiers = "w960dp-h1000dp-television-xhdpi")
+    fun tvSettingsFocusLast() = tvSettingsFocusShot("tv-settings-focus-last", "Stay on the video")
+
+    @Test
+    @Config(qualifiers = "w960dp-h1000dp-television-xhdpi")
+    fun tvSettingsFocusOnly() = tvSettingsFocusShot("tv-settings-focus-only", "Show live streams")
+
+    /**
+     * OK na aba aberta (1.0.6, pedido do Johan): a lista sai e os cartões vazios ficam até a nova
+     * chegar. [ok] falso: só o foco na aba, antes do OK.
+     */
+    private fun tvTabReloadShot(name: String, ok: Boolean) {
+        val loading = androidx.compose.runtime.mutableStateOf(false)
+        shot(name, action = {
+            compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+            compose.onNode(hasText("Subscriptions") and hasClickAction(), useUnmergedTree = false).requestFocus()
+            if (ok) compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        }) {
+            TvUi.Theme {
+                TvUi.Home(HomeTab.SUBSCRIPTIONS, {}, onReload = { loading.value = true }) {
+                    if (loading.value) TvUi.GridSkeleton() else TvUi.VideoGrid(feed(), "", {}, {}, {}, takeFocus = false, onFocusTaken = {})
+                }
+            }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTabFocused() = tvTabReloadShot("tv-tab-focused", ok = false)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTabReloading() = tvTabReloadShot("tv-tab-reloading", ok = true)
+
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvSettings() = shot("tv-settings") {
