@@ -12,7 +12,7 @@ the fonts or the screenshots change. Everything it writes is committed.
   - site/assets/brand/icon-<color>.svg: the app icon in each of the seven colors (option C).
   - site/favicon.svg, site/apple-touch-icon.png, site/icon-192.png.
   - site/assets/fonts/outfit-*.woff2: Outfit, cut down to the Latin letters the three languages use.
-  - site/assets/img/*.webp: the screenshots from docs/screenshots.
+  - site/assets/img/*.webp: the screenshots from docs/screenshots that index.html uses.
 
 The drawing itself comes from tools/make_icons.py, so the site always matches the app.
 
@@ -111,11 +111,17 @@ def fonts():
 
 
 def screenshots():
+    """Only the screenshots the page uses: a new one goes into index.html first."""
+    import re
     from PIL import Image
 
-    for path in sorted((ROOT / "docs/screenshots").glob("*.jpg")):
-        image = Image.open(path).convert("RGB")
-        image.save(IMG / f"{path.stem}.webp", "WEBP", quality=82, method=6)
+    used = set(re.findall(r"assets/img/([\w-]+)\.webp", (SITE / "index.html").read_text()))
+    for old in IMG.glob("*.webp"):
+        if old.stem not in used:
+            old.unlink()
+    for name in sorted(used):
+        image = Image.open(ROOT / f"docs/screenshots/{name}.jpg").convert("RGB")
+        image.save(IMG / f"{name}.webp", "WEBP", quality=82, method=6)
 
 
 def main():
