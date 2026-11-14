@@ -116,6 +116,9 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                         EngineWarmup.start(delayMs = EngineWarmup.AFTER_LISTS_MS)
                     }
                     // Os ViewModels das abas são os do início (os mesmos que viewModel() devolve abaixo).
+                    // Na TV (OK na aba aberta), a lista sai na hora e os cartões vazios ficam até a nova
+                    // chegar, para o OK ter resposta visível; a Explore também (até a 1.0.5 ela mantinha
+                    // a lista velha na tela, sem sinal de que o OK tinha feito algo).
                     val reload: (HomeTab) -> Unit = { which ->
                         val vms = ViewModelProvider.create(entry)
                         when (which) {
@@ -123,7 +126,7 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                             HomeTab.RECOMMENDED -> vms[RecommendedViewModel::class].reload()
                             HomeTab.PLAYLISTS -> vms[PlaylistsViewModel::class].reload()
                             HomeTab.HISTORY -> vms[HistoryViewModel::class].reload()
-                            HomeTab.EXPLORE -> vms[ExploreViewModel::class].refresh()
+                            HomeTab.EXPLORE -> vms[ExploreViewModel::class].reload()
                             HomeTab.SEARCH, HomeTab.SETTINGS -> Unit
                         }
                     }
@@ -209,7 +212,7 @@ interface Screens {
 
     /**
      * Moldura do início: as abas e o conteúdo da aba atual. [onReload] recarrega a lista de uma aba:
-     * a TV chama ao segurar OK na aba; o celular não usa, porque tem o puxar para atualizar.
+     * a TV chama com OK na aba aberta; o celular não usa, porque tem o puxar para atualizar.
      */
     @Composable
     fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, onReload: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit)
