@@ -734,6 +734,30 @@ class ScreenShots {
         loading: String? = null,
         /** O painel do modo dormir aberto (brilho, o que tocar depois, desligar ao terminar). */
         sleep: Boolean = false,
+        /** O brilho do modo dormir já escolhido (1.0.4: os controles seguem, sem ficar abaixo de 10%). */
+        brightness: Int = 100,
+    ) {
+        ytslim.player.SleepBrightness.set(brightness)
+        try {
+            playerShotAt(name, tv, jumped, scrub, captions, hidden, live, channelFocused, captionsAtMs, rolling, loading, sleep)
+        } finally {
+            ytslim.player.SleepBrightness.set(100)
+        }
+    }
+
+    private fun playerShotAt(
+        name: String,
+        tv: Boolean,
+        jumped: Boolean,
+        scrub: Boolean,
+        captions: Boolean,
+        hidden: Boolean,
+        live: Boolean,
+        channelFocused: Boolean,
+        captionsAtMs: Long,
+        rolling: Boolean,
+        loading: String?,
+        sleep: Boolean,
     ) {
         val context = org.robolectric.RuntimeEnvironment.getApplication()
         // O qualificador "television" não chega ao UiModeManager do Robolectric: sem isso o player
@@ -919,6 +943,29 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun playerTv() = playerShot("player-tv", tv = true)
+
+    /** O brilho do modo dormir nos controles (1.0.4): em 25% e em 0% (o vídeo apaga, os controles ficam em 10%). */
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvDim25() = playerShot("player-tv-dim-25", tv = true, sleep = true, brightness = 25)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playerTvDim0() = playerShot("player-tv-dim-0", tv = true, sleep = true, brightness = 0)
+
+    /** As telas do app com o brilho do modo dormir em 25% (1.0.4); a camada vem da MainActivity. */
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSubscriptionsDim25() {
+        ytslim.player.SleepBrightness.set(25)
+        try {
+            shot("tv-subscriptions-dim-25", action = { ytslim.player.SleepBrightness.applyTo(compose.activity.window) }) {
+                TvUi.Theme { TvUi.Home(HomeTab.SUBSCRIPTIONS, {}, {}) { TvUi.VideoGrid(feed(), "", {}, {}, {}, takeFocus = false, onFocusTaken = {}) } }
+            }
+        } finally {
+            ytslim.player.SleepBrightness.set(100)
+        }
+    }
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")

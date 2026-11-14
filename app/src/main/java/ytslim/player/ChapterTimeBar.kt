@@ -2,14 +2,17 @@ package ytslim.player
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.graphics.Region
 import android.os.Build
 import android.util.AttributeSet
+import android.view.KeyEvent
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.TimeBar
 import ytslim.R
+import java.util.concurrent.CopyOnWriteArraySet
 import kotlin.math.abs
 
 /**
@@ -19,6 +22,11 @@ import kotlin.math.abs
  *
  * As medidas da barra (altura e o círculo arrastado, que define a margem dos lados) vêm dos mesmos
  * dimens do player_controls.xml, para a fresta cair no lugar certo.
+ *
+ * Pelo controle remoto (1.0.4, pedido do Johan), esquerda e direita só andam com o círculo e a
+ * miniatura: o vídeo vai para o ponto escolhido só com OK. Sair da barra (descer, subir, voltar ou
+ * os controles sumirem) desiste, e o vídeo continua de onde estava. No DefaultTimeBar, o ponto
+ * valia sozinho 1 s depois da última tecla, e também ao sair da barra. O toque continua o dele.
  */
 @UnstableApi
 class ChapterTimeBar(context: Context, attrs: AttributeSet?) : DefaultTimeBar(context, attrs) {
@@ -36,6 +44,14 @@ class ChapterTimeBar(context: Context, attrs: AttributeSet?) : DefaultTimeBar(co
 
     /** Chamado quando a posição mostrada muda (o PlayerControlView atualiza enquanto os controles estão na tela). */
     var onPosition: ((Long) -> Unit)? = null
+
+    /** Os ouvintes da barra (os do DefaultTimeBar são privados): o arrastar pelas teclas avisa estes. */
+    private val listeners = CopyOnWriteArraySet<TimeBar.OnScrubListener>()
+
+    /** O arrastar pelo controle remoto está aberto (até o OK ou sair da barra). */
+    var keyScrubbing = false
+        private set
+    private var keyIncrement = C.TIME_UNSET
 
     init {
         addListener(
@@ -56,6 +72,85 @@ class ChapterTimeBar(context: Context, attrs: AttributeSet?) : DefaultTimeBar(co
         )
     }
 
+    override fun addListener(listener: TimeBar.OnScrubListener) {
+        listeners.add(listener)
+        super.addListener(listener)
+    }
+
+    override fun removeListener(listener: TimeBar.OnScrubListener) {
+        listeners.remove(listener)
+        super.removeListener(listener)
+    }
+
+    override fun setKeyTimeIncrement(time: Long) {
+        keyIncrement = time
+        super.setKeyTimeIncrement(time)
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (!isEnabled || length <= 0) return super.onKeyDown(keyCode, event)
+        when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                val step = if (keyIncrement != C.TIME_UNSET) keyIncrement else length / 20
+                val from = if (keyScrubbing) scrubAt else shown
+                val to = (from + if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -step else step).coerceIn(0, length)
+                // Parado numa ponta, a tecla segue para o foco (como no DefaultTimeBar), mas não no
+                // meio de um arrastar: lá ela não faz nada, para não desistir sem querer.
+                if (to == from) return keyScrubbing || super.onKeyDown(keyCode, event)
+                if (!keyScrubbing) {
+                    keyScrubbing = true
+                    listeners.forEach { it.onScrubStart(this, from) }
+                }
+                super.setPosition(to)
+                listeners.forEach { it.onScrubMove(this, to) }
+                invalidate()
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                if (keyScrubbing) {
+                    finishKeyScrub(canceled = false)
+                    return true
+                }
+            }
+            KeyEvent.KEYCODE_BACK -> {
+                // Voltar desiste do ponto e fica na barra; o próximo voltar sai como antes.
+                if (keyScrubbing) {
+                    finishKeyScrub(canceled = true)
+                    return true
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    /** Desiste do ponto escolhido pelo controle remoto, se houver: o vídeo continua de onde estava. */
+    fun cancelKeyScrub() {
+        if (keyScrubbing) finishKeyScrub(canceled = true)
+    }
+
+    private fun finishKeyScrub(canceled: Boolean) {
+        keyScrubbing = false
+        val position = scrubAt
+        if (canceled) super.setPosition(shown)
+        listeners.forEach { it.onScrubStop(this, position, canceled) }
+        invalidate()
+    }
+
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
+        if (!gainFocus) cancelKeyScrub()
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+    }
+
+    override fun onVisibilityAggregated(isVisible: Boolean) {
+        super.onVisibilityAggregated(isVisible)
+        if (!isVisible) cancelKeyScrub()
+    }
+
+    override fun onDetachedFromWindow() {
+        cancelKeyScrub()
+        super.onDetachedFromWindow()
+    }
+
     /** Onde começa cada capítulo (o primeiro, no 0, não tem fresta). */
     fun setChapters(startsMs: List<Long>) {
         starts = startsMs.filter { it > 0 }.toLongArray()
@@ -70,7 +165,8 @@ class ChapterTimeBar(context: Context, attrs: AttributeSet?) : DefaultTimeBar(co
     override fun setPosition(position: Long) {
         val changed = position != shown
         shown = position
-        super.setPosition(position)
+        // No meio de um arrastar pelo controle, o círculo fica no ponto escolhido.
+        if (!keyScrubbing) super.setPosition(position)
         if (changed) onPosition?.invoke(position)
     }
 

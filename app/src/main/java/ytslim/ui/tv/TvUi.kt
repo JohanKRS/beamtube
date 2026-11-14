@@ -194,6 +194,7 @@ import ytslim.ui.endActionOptions
 import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
 import ytslim.ui.searchFilterChoices
+import ytslim.ui.sleepDim
 import ytslim.ui.spacedDots
 import ytslim.ui.subtitleOf
 import ytslim.ui.text
@@ -584,8 +585,9 @@ object TvUi : Screens {
     @Composable
     private fun ExploreIntro(onDismiss: () -> Unit) {
         val button = remember { FocusRequester() }
+        val dim = sleepDim()
         Dialog(onDismissRequest = onDismiss) {
-            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(560.dp)) {
+            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(560.dp).sleepDim(dim, RoundedCornerShape(16.dp))) {
                 Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(stringResource(R.string.tab_explore), style = MaterialTheme.typography.headlineSmall)
                     Text(stringResource(R.string.explore_intro_tv), style = MaterialTheme.typography.bodyLarge)
@@ -708,6 +710,7 @@ object TvUi : Screens {
         val selected = choice.options.indexOfFirst { it.selected }.coerceAtLeast(0)
         val focus = remember { FocusRequester() }
         val list = rememberLazyListState(initialFirstVisibleItemIndex = (selected - 2).coerceAtLeast(0))
+        val dim = sleepDim()
         Popup(
             popupPositionProvider = remember(gap) { BelowAnchor(gap) },
             onDismissRequest = onDismiss,
@@ -716,6 +719,7 @@ object TvUi : Screens {
             LazyColumn(
                 state = list,
                 modifier = Modifier.width(300.dp).heightIn(max = 420.dp)
+                    .sleepDim(dim, RoundedCornerShape(22.dp))
                     .background(Floating, RoundedCornerShape(22.dp))
                     .border(1.dp, Look.Hairline, RoundedCornerShape(22.dp)),
                 contentPadding = PaddingValues(8.dp),
@@ -1231,8 +1235,9 @@ object TvUi : Screens {
         var keywords by rememberSaveable { mutableStateOf(initial?.keywords?.joinToString(", ").orEmpty()) }
         val valid = name.isNotBlank() && TopicRules.parseKeywords(keywords).isNotEmpty()
         val first = remember { FocusRequester() }
+        val dim = sleepDim()
         Dialog(onDismissRequest = onDismiss) {
-            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(640.dp)) {
+            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(640.dp).sleepDim(dim, RoundedCornerShape(16.dp))) {
                 Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(
                         stringResource(if (initial == null) R.string.topic_add else R.string.topic_edit),
@@ -1784,6 +1789,7 @@ object TvUi : Screens {
         val target by SavedVideos.target.collectAsStateWithLifecycle()
         val playlist = target.title ?: stringResource(R.string.watch_later)
         val first = remember { FocusRequester() }
+        val dim = sleepDim()
         Popup(
             popupPositionProvider = remember(gap) { BesideAnchor(gap) },
             onDismissRequest = onDismiss,
@@ -1791,6 +1797,7 @@ object TvUi : Screens {
         ) {
             Column(
                 Modifier.width(320.dp)
+                    .sleepDim(dim, RoundedCornerShape(22.dp))
                     .background(Floating, RoundedCornerShape(22.dp))
                     .border(1.dp, Look.Hairline, RoundedCornerShape(22.dp))
                     .padding(8.dp),
