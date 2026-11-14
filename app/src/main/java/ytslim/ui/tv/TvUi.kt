@@ -1,5 +1,6 @@
 package ytslim.ui.tv
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -110,6 +111,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
@@ -148,6 +150,7 @@ import ytslim.data.Topic
 import ytslim.data.TopicRules
 import ytslim.data.UpNext
 import ytslim.data.Video
+import ytslim.player.ScreenOffService
 import ytslim.ui.AppIconPreview
 import ytslim.ui.ChannelViewModel
 import ytslim.ui.ExploreViewModel
@@ -191,6 +194,7 @@ import ytslim.ui.endActionOptions
 import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
 import ytslim.ui.searchFilterChoices
+import ytslim.ui.sleepDim
 import ytslim.ui.spacedDots
 import ytslim.ui.subtitleOf
 import ytslim.ui.text
@@ -581,8 +585,9 @@ object TvUi : Screens {
     @Composable
     private fun ExploreIntro(onDismiss: () -> Unit) {
         val button = remember { FocusRequester() }
+        val dim = sleepDim()
         Dialog(onDismissRequest = onDismiss) {
-            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(560.dp)) {
+            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(560.dp).sleepDim(dim, RoundedCornerShape(16.dp))) {
                 Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(stringResource(R.string.tab_explore), style = MaterialTheme.typography.headlineSmall)
                     Text(stringResource(R.string.explore_intro_tv), style = MaterialTheme.typography.bodyLarge)
@@ -705,6 +710,7 @@ object TvUi : Screens {
         val selected = choice.options.indexOfFirst { it.selected }.coerceAtLeast(0)
         val focus = remember { FocusRequester() }
         val list = rememberLazyListState(initialFirstVisibleItemIndex = (selected - 2).coerceAtLeast(0))
+        val dim = sleepDim()
         Popup(
             popupPositionProvider = remember(gap) { BelowAnchor(gap) },
             onDismissRequest = onDismiss,
@@ -713,6 +719,7 @@ object TvUi : Screens {
             LazyColumn(
                 state = list,
                 modifier = Modifier.width(300.dp).heightIn(max = 420.dp)
+                    .sleepDim(dim, RoundedCornerShape(22.dp))
                     .background(Floating, RoundedCornerShape(22.dp))
                     .border(1.dp, Look.Hairline, RoundedCornerShape(22.dp)),
                 contentPadding = PaddingValues(8.dp),
@@ -817,8 +824,16 @@ object TvUi : Screens {
         val appIcon by vm.appIcon.collectAsStateWithLifecycle()
         var choosingTarget by rememberSaveable { mutableStateOf(false) }
         var editing by remember { mutableStateOf<Pair<TopicList, Int?>?>(null) }
-        val activity = LocalContext.current.findActivity()
+        val context = LocalContext.current
+        val activity = context.findActivity()
         val currentLanguage = remember { activity?.let(AppLanguage::current) ?: Language.SYSTEM }
+        // Lido de novo a cada volta para o app: a pessoa liga o serviço nos ajustes do Android e o
+        // botão é aprendido com o BeamTube fora da tela.
+        var remoteButton by remember { mutableStateOf(RemoteButtonState.of(context)) }
+        LifecycleResumeEffect(Unit) {
+            remoteButton = RemoteButtonState.of(context)
+            onPauseOrDispose { }
+        }
 
         // Em cartões, como no celular (2026-11-03): o nome do grupo em cima, as linhas num cartão e a
         // explicação embaixo. O foco continua o do ListItem (a linha fica creme). Os cartões ocupam a
@@ -981,6 +996,33 @@ object TvUi : Screens {
                 },
             )
 
+            // O botão YouTube do controle (1.0.4, pedido do Johan): desde a 0.6.1 o botão abre o
+            // BeamTube, mas nada no app dizia isso nem onde ligar. A linha diz se o serviço de
+            // Acessibilidade está ligado e leva aos ajustes do Android, onde ele é ligado.
+            group(
+                "remote",
+                R.string.settings_remote,
+                hint = R.string.settings_remote_hint,
+                rows = listOf(
+                    row("accessibility") {
+                        val on = remoteButton != RemoteButtonState.OFF
+                        ListItem(
+                            selected = false,
+                            onClick = {
+                                if (!ScreenOffService.openSettings(activity ?: context)) {
+                                    Notices.show(context.getString(R.string.settings_remote_no_settings), long = true)
+                                }
+                            },
+                            headlineContent = { Text(stringResource(R.string.settings_remote_open)) },
+                            supportingContent = { Text(stringResource(remoteButton.text)) },
+                            trailingContent = {
+                                Text(stringResource(if (on) R.string.settings_remote_on else R.string.settings_remote_off))
+                            },
+                        )
+                    },
+                ),
+            )
+
             val playlistRows = buildList<Pair<Any, @Composable () -> Unit>> {
                 error?.let { message ->
                     add(row("error") { EmptyRow(stringResource(R.string.action_failed, message), MaterialTheme.colorScheme.error) })
@@ -1103,6 +1145,21 @@ object TvUi : Screens {
         }
     }
 
+    /** O que a linha do botão YouTube do controle diz: o serviço desligado, à espera do botão ou pronto. */
+    private enum class RemoteButtonState(val text: Int) {
+        OFF(R.string.settings_remote_state_off),
+        WAITING(R.string.settings_remote_state_waiting),
+        READY(R.string.settings_remote_state_ready);
+
+        companion object {
+            fun of(context: Context): RemoteButtonState = when {
+                !ScreenOffService.isOn(context) -> OFF
+                ScreenOffService.knowsYouTubeButton(context) -> READY
+                else -> WAITING
+            }
+        }
+    }
+
     private fun LazyListScope.topicGroup(
         key: String,
         title: Int,
@@ -1178,8 +1235,9 @@ object TvUi : Screens {
         var keywords by rememberSaveable { mutableStateOf(initial?.keywords?.joinToString(", ").orEmpty()) }
         val valid = name.isNotBlank() && TopicRules.parseKeywords(keywords).isNotEmpty()
         val first = remember { FocusRequester() }
+        val dim = sleepDim()
         Dialog(onDismissRequest = onDismiss) {
-            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(640.dp)) {
+            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(640.dp).sleepDim(dim, RoundedCornerShape(16.dp))) {
                 Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(
                         stringResource(if (initial == null) R.string.topic_add else R.string.topic_edit),
@@ -1731,6 +1789,7 @@ object TvUi : Screens {
         val target by SavedVideos.target.collectAsStateWithLifecycle()
         val playlist = target.title ?: stringResource(R.string.watch_later)
         val first = remember { FocusRequester() }
+        val dim = sleepDim()
         Popup(
             popupPositionProvider = remember(gap) { BesideAnchor(gap) },
             onDismissRequest = onDismiss,
@@ -1738,6 +1797,7 @@ object TvUi : Screens {
         ) {
             Column(
                 Modifier.width(320.dp)
+                    .sleepDim(dim, RoundedCornerShape(22.dp))
                     .background(Floating, RoundedCornerShape(22.dp))
                     .border(1.dp, Look.Hairline, RoundedCornerShape(22.dp))
                     .padding(8.dp),

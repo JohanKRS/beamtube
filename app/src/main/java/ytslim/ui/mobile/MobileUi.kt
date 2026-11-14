@@ -75,6 +75,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -192,6 +193,7 @@ import ytslim.ui.ListTop
 import ytslim.ui.AppLanguage
 import ytslim.ui.Language
 import ytslim.ui.Look
+import ytslim.ui.sleepDim
 import ytslim.ui.TopicsViewModel
 import ytslim.ui.findActivity
 import ytslim.ui.label
@@ -720,6 +722,7 @@ object MobileUi : Screens {
         if (showIntro && LocalTabShown.current) {
             AlertDialog(
                 onDismissRequest = vm::dismissIntro,
+                modifier = Modifier.sleepDim(sleepDim(), AlertDialogDefaults.shape),
                 title = { Text(stringResource(R.string.tab_explore)) },
                 text = { Text(stringResource(R.string.explore_intro)) },
                 confirmButton = { TextButton(onClick = vm::dismissIntro) { Text(stringResource(R.string.got_it)) } },
@@ -1342,6 +1345,7 @@ object MobileUi : Screens {
         val valid = name.isNotBlank() && TopicRules.parseKeywords(keywords).isNotEmpty()
         AlertDialog(
             onDismissRequest = onDismiss,
+            modifier = Modifier.sleepDim(sleepDim(), AlertDialogDefaults.shape),
             title = { Text(stringResource(if (initial == null) R.string.topic_add else R.string.topic_edit)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

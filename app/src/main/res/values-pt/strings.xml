@@ -289,4 +289,15 @@
     <string name="topic_kids">Infantil</string>
     <string name="settings_language">Idioma</string>
     <string name="language_system">O mesmo do aparelho</string>
+
+    <!-- Botão YouTube do controle (Settings, só na TV) -->
+    <string name="settings_remote">Botão YouTube do controle</string>
+    <string name="settings_remote_open">Abrir os ajustes de Acessibilidade</string>
+    <string name="settings_remote_on">Ligado</string>
+    <string name="settings_remote_off">Desligado</string>
+    <string name="settings_remote_state_off">Ative o BeamTube lá, e o botão YouTube passa a abrir o BeamTube em vez do YouTube.</string>
+    <string name="settings_remote_state_waiting">Aperte o botão YouTube uma vez para o BeamTube aprender qual é.</string>
+    <string name="settings_remote_state_ready">O botão YouTube abre o BeamTube.</string>
+    <string name="settings_remote_hint">Em Acessibilidade, escolha o BeamTube e ative. Na primeira vez que você apertar o botão YouTube, o YouTube abre e o BeamTube vem logo em seguida. Dali em diante, o botão abre o BeamTube direto. O mesmo ajuste deixa o modo dormir desligar a TV. O BeamTube só vê as teclas apertadas no controle e quando o app do YouTube abre, nunca o que está na tela.</string>
+    <string name="settings_remote_no_settings">Esta TV não abriu os ajustes. Procure Acessibilidade no menu de configurações da TV.</string>
 </resources>
