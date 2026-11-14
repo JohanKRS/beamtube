@@ -6,6 +6,8 @@
 
 **An uncluttered YouTube client for Android phones, tablets and TVs, for people who sit down to watch.**
 
+Website: **[beamtube.johankrs.com](https://beamtube.johankrs.com/)**, a short tour in English, Portuguese and Spanish.
+
 The official YouTube app is built to keep you scrolling. Shorts in every corner, comments under
 everything, notifications, autoplay into whatever is trending. That's fine when you want it. But a
 lot of the time you just want to watch the channels you chose, the hour-long documentary you saved
