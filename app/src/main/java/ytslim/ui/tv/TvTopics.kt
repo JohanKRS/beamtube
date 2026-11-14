@@ -3,7 +3,6 @@ package ytslim.ui.tv
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +36,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import ytslim.R
+import ytslim.ui.JustifiedFlow
 import ytslim.ui.Look
 import ytslim.ui.TopicsViewModel
 import ytslim.ui.TopicsViewModel.Step
@@ -44,6 +44,11 @@ import ytslim.ui.Wordmark
 
 /** Folga acima da primeira linha de sugestões para o botão em foco, que cresce, não sair cortado. */
 private val ChipFocusRoom = 8.dp
+
+/** O visto de uma sugestão marcada e o espaço até o nome. */
+private val CheckSize = 18.dp
+private val CheckGap = 6.dp
+private val ChipPadding = 10.dp
 
 /**
  * A tela de tópicos na TV: a pergunta em cima, as sugestões em botões que OK marca e desmarca (com
@@ -78,15 +83,19 @@ internal fun TvTopics(vm: TopicsViewModel, firstRun: Boolean, onDone: () -> Unit
         Spacer(Modifier.height(20.dp - ChipFocusRoom))
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)) {
             if (state.loaded) {
-                FlowRow(
+                // Cada linha vai até a borda direita, menos a última (ver JustifiedFlow).
+                JustifiedFlow(
+                    spacing = 10.dp,
+                    lineSpacing = 10.dp,
                     // O botão em foco cresce 10% e a rolagem corta o que passa da borda de cima: a primeira
                     // linha começa um pouco abaixo dela, no mesmo lugar de antes na tela.
                     modifier = Modifier.padding(top = ChipFocusRoom),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     state.shown.forEachIndexed { index, topic ->
                         val selected = topic in state.chosen
+                        // A mesma largura marcado ou não: sem o visto, o espaço dele fica dos dois lados do
+                        // nome. Assim marcar não empurra as outras sugestões para a linha de baixo.
+                        val side = if (selected) ChipPadding else ChipPadding + (CheckSize + CheckGap) / 2
                         Button(
                             onClick = { vm.toggle(topic) },
                             modifier = if (index == 0) Modifier.focusRequester(firstChip) else Modifier,
@@ -96,13 +105,16 @@ internal fun TvTopics(vm: TopicsViewModel, firstRun: Boolean, onDone: () -> Unit
                                 focusedContainerColor = Look.Text,
                                 focusedContentColor = Look.Ground,
                             ),
-                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+                            contentPadding = PaddingValues(horizontal = side, vertical = 8.dp),
                         ) {
-                            if (selected) {
-                                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
+                            // No meio do botão, que pode estar mais largo que o nome (a linha vai até a borda).
+                            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                if (selected) {
+                                    Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(CheckSize))
+                                    Spacer(Modifier.width(CheckGap))
+                                }
+                                Text(stringResource(topic.label), style = MaterialTheme.typography.labelLarge)
                             }
-                            Text(stringResource(topic.label), style = MaterialTheme.typography.labelLarge)
                         }
                     }
                 }
