@@ -1,13 +1,18 @@
 package ytslim.player
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
 import java.lang.ref.WeakReference
 
 /**
@@ -20,7 +25,8 @@ import java.lang.ref.WeakReference
  *   janela do app do YouTube aparece (só disso, de nenhum outro app).
  *
  * O serviço não lê nada da tela. O nome da classe fica: trocar desligaria o serviço de quem já o
- * ligou. O usuário liga o serviço uma vez, em Configurações > Acessibilidade.
+ * ligou. O usuário liga o serviço uma vez, em Configurações > Acessibilidade; os Ajustes da TV
+ * explicam e levam até lá (grupo "YouTube button on the remote", 1.0.4).
  */
 class ScreenOffService : AccessibilityService() {
     private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
@@ -105,6 +111,41 @@ class ScreenOffService : AccessibilityService() {
 
         /** O usuário já ligou o serviço nas configurações de Acessibilidade? */
         val enabled: Boolean get() = instance?.get() != null
+
+        /**
+         * Como [enabled], mas também pergunta ao Android: logo depois de a pessoa ligar o serviço,
+         * o sistema pode ainda não ter se conectado a ele.
+         */
+        fun isOn(context: Context): Boolean {
+            if (enabled) return true
+            val manager = context.getSystemService(AccessibilityManager::class.java) ?: return false
+            return manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any {
+                val service = it.resolveInfo?.serviceInfo ?: return@any false
+                service.packageName == context.packageName && service.name == ScreenOffService::class.java.name
+            }
+        }
+
+        /** O código do botão YouTube do controle já foi aprendido neste aparelho? */
+        fun knowsYouTubeButton(context: Context): Boolean =
+            !context.getSharedPreferences(PREFS, MODE_PRIVATE).getStringSet(PREF_YOUTUBE_BUTTON, null).isNullOrEmpty()
+
+        /**
+         * Abre os ajustes de Acessibilidade do Android, onde a pessoa liga o serviço. Se a TV não
+         * tiver essa tela, abre os ajustes gerais. false se nenhuma das duas abriu.
+         */
+        fun openSettings(context: Context): Boolean {
+            for (action in listOf(Settings.ACTION_ACCESSIBILITY_SETTINGS, Settings.ACTION_SETTINGS)) {
+                val intent = Intent(action)
+                if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                try {
+                    context.startActivity(intent)
+                    return true
+                } catch (_: ActivityNotFoundException) {
+                } catch (_: SecurityException) {
+                }
+            }
+            return false
+        }
 
         /** Põe o aparelho para dormir. false se o serviço não está ligado. */
         fun turnOff(): Boolean {

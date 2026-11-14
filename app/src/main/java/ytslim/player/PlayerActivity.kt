@@ -3,7 +3,6 @@ package ytslim.player
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.app.PictureInPictureParams
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -19,7 +18,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.os.SystemClock
-import android.provider.Settings
 import android.util.Log
 import android.util.Rational
 import android.util.TypedValue
@@ -164,7 +162,7 @@ class PlayerActivity : ComponentActivity() {
     /** Quando o card foi tocado (para o log do tempo até o primeiro quadro); 0 = agora. */
     private var requestedAtMs = 0L
 
-    /** Brilho do vídeo no modo dormir, em %. Vale até fechar o app ([sessionBrightness]). */
+    /** Brilho do vídeo no modo dormir, em %. Vale até fechar o app ([SleepBrightness]). */
     private var brightness = 100
 
     /** "When done: Turn off", guardado nas configurações. */
@@ -297,7 +295,7 @@ class PlayerActivity : ComponentActivity() {
         bindScrubbing()
         buildSleepPanel()
         // O brilho escolhido num vídeo vale para os próximos, até fechar o app (pedido do Johan, 2026-11-03).
-        if (sessionBrightness < 100) setBrightness(sessionBrightness)
+        if (SleepBrightness.level.value < 100) setBrightness(SleepBrightness.level.value)
         onBackPressedDispatcher.addCallback(this, closePanelOnBack)
 
         val startMs = savedInstanceState?.getLong(KEY_POSITION) ?: target.startMs
@@ -564,7 +562,7 @@ class PlayerActivity : ComponentActivity() {
 
     /** As opções do painel de dormir. A lista de "Then play" só aparece numa sequência de playlist. */
     private fun buildSleepPanel() {
-        BRIGHTNESS_LEVELS.forEach { level ->
+        SleepBrightness.LEVELS.forEach { level ->
             brightnessRow.addView(chip(getString(R.string.player_brightness_level, level), level) { setBrightness(level) })
         }
         PlayQueue.CHOICES.forEach { count ->
@@ -654,12 +652,18 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    /** Escurece o vídeo (a legenda junto), sem mexer nos controles nem no brilho da TV. */
+    /**
+     * Escurece o vídeo (a legenda junto), sem mexer no brilho da TV. Desde a 1.0.4 os controles e
+     * as telas do app seguem o mesmo brilho, mas sem ficar abaixo de 10% ([SleepBrightness]): a
+     * janela inteira ganha uma camada preta, e a do vídeo, por baixo dos controles, escurece o resto.
+     */
     private fun setBrightness(level: Int) {
         brightness = level
-        sessionBrightness = level
-        dimView.alpha = 1f - level / 100f
-        dimView.visibility = if (level < 100) View.VISIBLE else View.GONE
+        SleepBrightness.set(level)
+        SleepBrightness.applyTo(window, level)
+        val videoDim = SleepBrightness.videoDim(level)
+        dimView.alpha = videoDim
+        dimView.visibility = if (videoDim > 0f) View.VISIBLE else View.GONE
         // Escurecido, os controles não acendem sozinhos na troca de vídeo nem no fim.
         playerView.controllerAutoShow = level == 100
         renderSleep()
@@ -672,13 +676,10 @@ class PlayerActivity : ComponentActivity() {
         if (on && !ScreenOffService.enabled) {
             // Uma vez só: o Android pede que o serviço seja ligado à mão.
             Toast.makeText(this, R.string.player_turn_off_setup, Toast.LENGTH_LONG).show()
-            try {
-                // Daqui a pessoa volta para o mesmo vídeo: o player não fecha ao sair da tela.
-                inOwnSettings = true
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            } catch (_: ActivityNotFoundException) {
-                // Sem a tela de Acessibilidade: o aviso já diz onde ligar.
-            }
+            // Daqui a pessoa volta para o mesmo vídeo: o player não fecha ao sair da tela. Sem
+            // nenhuma tela de ajustes, o aviso já diz onde ligar.
+            inOwnSettings = true
+            if (!ScreenOffService.openSettings(this)) inOwnSettings = false
         }
     }
 
@@ -1034,7 +1035,15 @@ class PlayerActivity : ComponentActivity() {
                 override fun onScrubStop(timeBar: TimeBar, position: Long, canceled: Boolean) {
                     scrubbing = false
                     preview.visibility = View.GONE
-                    showChapter(position)
+                    if (canceled) {
+                        // Desistiu do ponto (saiu da barra sem OK, 1.0.4): o tempo volta para o do vídeo,
+                        // que o PlayerControlView só atualizaria no próximo tique (parado, nunca).
+                        val now = controller.player.currentPosition
+                        (positionView as? TextView)?.text = Util.getStringForTime(timeText, timeFormat, now)
+                        showChapter(now)
+                    } else {
+                        showChapter(position)
+                    }
                     if (!touch && !canceled && from != C.TIME_UNSET && position > from) jumpAhead(from, position)
                     from = C.TIME_UNSET
                 }
@@ -1389,15 +1398,6 @@ class PlayerActivity : ComponentActivity() {
 
         /** A opção "Auto" do painel de resolução (as outras são as alturas). */
         private const val AUTO_QUALITY = 0
-
-        /** Opções de brilho do painel de dormir, em %. */
-        private val BRIGHTNESS_LEVELS = listOf(100, 50, 25, 10, 0)
-
-        /**
-         * O último brilho escolhido, guardado só na memória: vale para os próximos vídeos até o app
-         * fechar (ou a TV desligar), e o app abre de novo com o vídeo claro.
-         */
-        private var sessionBrightness = 100
 
         /** O player que está no mini player agora, se houver (um vídeo novo o fecha). */
         private var floatingPlayer: WeakReference<PlayerActivity>? = null

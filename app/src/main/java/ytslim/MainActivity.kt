@@ -14,8 +14,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import ytslim.data.VideoLinks
+import ytslim.player.SleepBrightness
 import ytslim.ui.AppLanguage
 import ytslim.ui.AppRoot
 import ytslim.ui.Link
@@ -36,6 +41,12 @@ class MainActivity : ComponentActivity() {
         if (!tv) drawEdgeToEdge()
         if (savedInstanceState == null) links.value = linkOf(intent)
         setContent { AppRoot(isTv = tv, links = links) }
+        // O brilho do modo dormir também nas telas (1.0.4, pedido do Johan), nunca abaixo de 10%.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                SleepBrightness.level.collect { SleepBrightness.applyTo(window, it) }
+            }
+        }
     }
 
     /**

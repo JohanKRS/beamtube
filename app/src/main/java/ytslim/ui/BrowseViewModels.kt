@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,8 +20,11 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import ytslim.data.AppScope
 import ytslim.data.AuthRepository
 import ytslim.data.BlockedChannel
+import ytslim.data.ChannelFeedback
 import ytslim.data.ChannelRepository
 import ytslim.data.ContentFilters
 import ytslim.data.FeedRepository
@@ -42,7 +46,8 @@ import ytslim.data.VideoPage
  * Recomendações da conta, com os filtros do BeamTube: sem Shorts, sem lives, sem canais bloqueados
  * e sem tópicos excluídos; tópicos preferidos sobem (ver [TopicRules.recommend]). Os filtros de
  * data, duração e ordem saíram daqui para a Explore (pedido do Johan, 2026-11-03: as
- * Recomendações vêm poucas por vez).
+ * Recomendações vêm poucas por vez). Cada página passa antes pelo [ChannelFeedback], que manda o
+ * "Don't recommend channel" dos canais bloqueados.
  */
 class RecommendedViewModel : ViewModel(), Refreshable {
     private sealed interface Raw {
@@ -85,6 +90,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
         if (!quiet) raw.value = Raw.Loading
         job = viewModelScope.launch {
             raw.value = runCatching { LibraryRepository.recommended() }
+                .onSuccess { ChannelFeedback.note(it.videos) }
                 .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false) }, { Raw.Error(it.toMessage()) })
             _refreshing.value = false
             fill(extra = 0)
@@ -107,6 +113,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
                 val next = runCatching { LibraryRepository.more(current.lastPage) }.getOrNull()
                 // Um recarregar cancelou esta busca: não escreve por cima dele.
                 ensureActive()
+                next?.let { ChannelFeedback.note(it.videos) }
                 current = Raw.Loaded(current.pages + listOf(next?.videos.orEmpty()), next ?: VideoPage(emptyList(), null), loadingMore = true)
                 raw.value = current
                 pages++
@@ -324,9 +331,33 @@ class ChannelViewModel(private val channelId: String, private val name: String) 
         }
     }
 
-    fun toggleBlocked() {
-        viewModelScope.launch {
-            if (blocked.value) SettingsRepository.unblock(channelId) else SettingsRepository.block(BlockedChannel(channelId, name))
+    /** O que o toque no bloquear fez, para o aviso ([blockNotice]). */
+    enum class BlockOutcome { BLOCKED_HERE, BLOCKED_AND_ACCOUNT, UNBLOCKED, UNBLOCKED_ACCOUNT_STAYS }
+
+    /**
+     * Bloqueia o canal neste aparelho (na hora) e manda o "Don't recommend channel" para a conta
+     * ([ChannelFeedback]), ou desbloqueia. [onDone] recebe o resultado para o aviso, que espera a
+     * resposta do YouTube por até [ACCOUNT_WAIT_MS]. Roda no [AppScope]: sair da página logo depois
+     * do toque não cancela o pedido.
+     */
+    fun toggleBlocked(onDone: (BlockOutcome) -> Unit) {
+        val wasBlocked = blocked.value
+        AppScope.launch {
+            if (wasBlocked) {
+                val onAccount = SettingsRepository.current().filters.blocked.any { it.id == channelId && it.onAccount }
+                SettingsRepository.unblock(channelId)
+                onDone(if (onAccount) BlockOutcome.UNBLOCKED_ACCOUNT_STAYS else BlockOutcome.UNBLOCKED)
+            } else {
+                val channel = BlockedChannel(channelId, name)
+                SettingsRepository.block(channel)
+                val sending = async { ChannelFeedback.dontRecommend(channel) }
+                val sent = withTimeoutOrNull(ACCOUNT_WAIT_MS) { sending.await() } == true
+                onDone(if (sent) BlockOutcome.BLOCKED_AND_ACCOUNT else BlockOutcome.BLOCKED_HERE)
+            }
         }
+    }
+
+    private companion object {
+        const val ACCOUNT_WAIT_MS = 5_000L
     }
 }

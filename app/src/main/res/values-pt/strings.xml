@@ -75,8 +75,10 @@
     <string name="channel_playlists">Playlists</string>
     <string name="channel_block">Bloquear canal</string>
     <string name="channel_unblock">Desbloquear canal</string>
-    <string name="channel_blocked_notice">Canal bloqueado. Ele não aparece mais nos Recomendados nem na Busca.</string>
-    <string name="channel_unblocked_notice">Canal desbloqueado.</string>
+    <string name="channel_blocked_notice">Bloqueado neste aparelho. O BeamTube pede ao YouTube para parar de recomendar o canal na próxima vez que ele aparecer nos Recomendados.</string>
+    <string name="channel_blocked_account_notice">Bloqueado neste aparelho, e o YouTube não vai mais recomendar o canal na sua conta.</string>
+    <string name="channel_unblocked_notice">Desbloqueado neste aparelho.</string>
+    <string name="channel_unblocked_account_notice">Desbloqueado neste aparelho. Na sua conta, o YouTube continua sem recomendar o canal.</string>
     <string name="playlist_default_title">Playlist</string>
     <string name="playlist_subscribe">Inscrever-se</string>
     <string name="playlist_subscribed">Inscrito</string>
@@ -119,8 +121,10 @@
     <string name="topic_keywords">Palavras-chave, separadas por vírgula</string>
     <string name="topic_remove">Tirar</string>
     <string name="settings_blocked">Canais bloqueados</string>
-    <string name="settings_blocked_hint">Bloqueie um canal pela página dele (abra pela Busca ou pelo player).</string>
-    <string name="settings_blocked_empty">Nenhum canal bloqueado.</string>
+    <string name="settings_blocked_hint">Esses canais somem só neste aparelho. O BeamTube também pede ao YouTube para não recomendá-los na sua conta, o que vale em todos os aparelhos. O pedido vai assim que o YouTube recomendar um vídeo do canal aqui. Desbloquear não desfaz isso no YouTube.</string>
+    <string name="settings_blocked_empty">Nenhum canal bloqueado. Para bloquear, abra a página do canal.</string>
+    <string name="settings_blocked_account">O YouTube não recomenda mais na sua conta</string>
+    <string name="settings_blocked_device">Só neste aparelho, por enquanto</string>
     <string name="unblock">Desbloquear</string>
     <string name="settings_app_icon">Ícone do app</string>
     <string name="settings_app_icon_hint">O ícone novo pode levar alguns segundos para aparecer. Alguns launchers tiram o atalho da tela inicial quando ele muda; é só pôr o BeamTube de novo pela lista de apps.</string>
@@ -285,4 +289,15 @@
     <string name="topic_kids">Infantil</string>
     <string name="settings_language">Idioma</string>
     <string name="language_system">O mesmo do aparelho</string>
+
+    <!-- Botão YouTube do controle (Settings, só na TV) -->
+    <string name="settings_remote">Botão YouTube do controle</string>
+    <string name="settings_remote_open">Abrir os ajustes de Acessibilidade</string>
+    <string name="settings_remote_on">Ligado</string>
+    <string name="settings_remote_off">Desligado</string>
+    <string name="settings_remote_state_off">Ative o BeamTube lá, e o botão YouTube passa a abrir o BeamTube em vez do YouTube.</string>
+    <string name="settings_remote_state_waiting">Aperte o botão YouTube uma vez para o BeamTube aprender qual é.</string>
+    <string name="settings_remote_state_ready">O botão YouTube abre o BeamTube.</string>
+    <string name="settings_remote_hint">Em Acessibilidade, escolha o BeamTube e ative. Na primeira vez que você apertar o botão YouTube, o YouTube abre e o BeamTube vem logo em seguida. Dali em diante, o botão abre o BeamTube direto. O mesmo ajuste deixa o modo dormir desligar a TV. O BeamTube só vê as teclas apertadas no controle e quando o app do YouTube abre, nunca o que está na tela.</string>
+    <string name="settings_remote_no_settings">Esta TV não abriu os ajustes. Procure Acessibilidade no menu de configurações da TV.</string>
 </resources>

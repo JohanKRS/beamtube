@@ -14,9 +14,10 @@ import ytslim.data.VideoActions
 
 /**
  * Um aviso curto em cima da tela (a pílula de vidro), como "Saved to Watch later". Com [action], a
- * pílula ganha um botão (o "Undo") e fica [Notices.UNDO_MS] na tela.
+ * pílula ganha um botão (o "Undo") e fica [Notices.UNDO_MS] na tela. [long]: um texto mais
+ * comprido, que fica [Notices.LONG_MS].
  */
-data class Notice(val text: String, val id: Long, val action: NoticeAction? = null)
+data class Notice(val text: String, val id: Long, val action: NoticeAction? = null, val long: Boolean = false)
 
 /** O botão da pílula: [label] e o que ele faz. */
 class NoticeAction(val label: String, val run: () -> Unit)
@@ -31,11 +32,14 @@ object Notices {
     /** Quanto tempo um aviso sem botão fica na tela. */
     const val SHOW_MS = 2_600L
 
+    /** Um aviso de duas frases (o do bloquear), para dar tempo de ler. */
+    const val LONG_MS = 5_000L
+
     private val _current = MutableStateFlow<Notice?>(null)
     val current: StateFlow<Notice?> = _current.asStateFlow()
 
-    fun show(text: String, action: NoticeAction? = null) {
-        _current.value = Notice(text, System.nanoTime(), action)
+    fun show(text: String, action: NoticeAction? = null, long: Boolean = false) {
+        _current.value = Notice(text, System.nanoTime(), action, long)
     }
 
     /** Some com o aviso [id], se ele ainda for o da tela. */
@@ -54,6 +58,20 @@ fun toggleSaved(res: Resources, video: Video) {
     }
     val name = SavedVideos.target.value.title ?: res.getString(R.string.watch_later)
     Notices.show(res.getString(if (saved) R.string.player_saved_to else R.string.player_removed_from, name))
+}
+
+/**
+ * O aviso do bloquear: o bloqueio vale neste aparelho, e o aviso diz o que aconteceu na conta do
+ * YouTube (o "Don't recommend channel", ver [ytslim.data.ChannelFeedback]).
+ */
+fun blockNotice(res: Resources, outcome: ChannelViewModel.BlockOutcome) {
+    val text = when (outcome) {
+        ChannelViewModel.BlockOutcome.BLOCKED_AND_ACCOUNT -> R.string.channel_blocked_account_notice
+        ChannelViewModel.BlockOutcome.BLOCKED_HERE -> R.string.channel_blocked_notice
+        ChannelViewModel.BlockOutcome.UNBLOCKED -> R.string.channel_unblocked_notice
+        ChannelViewModel.BlockOutcome.UNBLOCKED_ACCOUNT_STAYS -> R.string.channel_unblocked_account_notice
+    }
+    Notices.show(res.getString(text), long = outcome != ChannelViewModel.BlockOutcome.UNBLOCKED)
 }
 
 /** O canal de um vídeo, para abrir a página dele. null quando o YouTube não manda o ID. */

@@ -19,10 +19,10 @@
         </aapt:attr>
     </path>
     <group
-        android:translateX="1.760"
-        android:translateY="26.932"
-        android:scaleX="0.4205"
-        android:scaleY="0.4205">
+        android:translateX="-45.284"
+        android:translateY="8.182"
+        android:scaleX="0.5455"
+        android:scaleY="0.5455">
         <group
             android:pivotX="158"
             android:pivotY="149.4"

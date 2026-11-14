@@ -177,7 +177,7 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
             ui.NoticePill(notice)
             LaunchedEffect(notice?.id) {
                 val shown = notice ?: return@LaunchedEffect
-                delay(if (shown.action != null) Notices.UNDO_MS else Notices.SHOW_MS)
+                delay(if (shown.action != null) Notices.UNDO_MS else if (shown.long) Notices.LONG_MS else Notices.SHOW_MS)
                 Notices.dismiss(shown.id)
             }
         }

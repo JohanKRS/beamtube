@@ -432,9 +432,11 @@ def notification_icon():
 
 # O banner da TV: 320x180dp. O logotipo aprovado, desenhado nas medidas do estudo (um bloco de
 # 760x300 com a letra em 88) e reduzido: a fresta, o facho com a poeira atravessando o nome e o
-# nome. A fresta e o fim da palavra ficam à mesma distância das bordas.
+# nome. A fresta e o fim da palavra ficam à mesma distância das bordas. Desde a 1.0.4 (pedido do
+# Johan, vendo o cartão no launcher) o logotipo todo ocupa mais do banner: com a letra em 37dp, ele
+# ficava pequeno no meio do cartão. O fim do facho passa da borda direita, já quase apagado.
 BANNER_W, BANNER_H = 320, 180
-LOCKUP_SCALE = 37 / 88  # a letra do nome fica com 37dp
+LOCKUP_SCALE = 48 / 88  # a letra do nome fica com 48dp (era 37dp até a 1.0.3)
 LOCKUP_SLIT = (149.7, 88.3, 166.3, 210.6, 2.8)
 LOCKUP_CORE = (156.4, 96.0, 159.6, 203.0, 1.6)
 LOCKUP_BLOOM = (158.0, 149.4, 50.0, 75.0)

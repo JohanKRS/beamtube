@@ -65,7 +65,8 @@ Most of what BeamTube adds is about the moment after you press play.
   says "Jumped ahead". It uses YouTube's own "most replayed" data, so there's no separate button
   and no third-party service. The start of each of those stretches is marked on the timeline.
 - **Chapters** show on the timeline, with the current chapter's name and a thumbnail preview while
-  you scrub.
+  you scrub. On the TV, left and right only move the preview: press OK to jump there, or move away
+  from the timeline to stay where you were.
 - **Captions you can read.** Always centered, white with a thin outline, and automatic captions
   appear two lines at a time instead of scrolling word by word.
 - **Playlists play in order**, so Watch later works as a real queue. You can reorder it by dragging,
@@ -93,8 +94,9 @@ BeamTube grew out of falling asleep to playlists on the TV, so the player has a 
 the moon:
 
 - **Brightness:** 100, 50, 25, 10 or 0%. The picture and captions dim without touching the TV's own
-  brightness, so the room stays dark while the sound keeps going. It stays dimmed for the next
-  videos until you close the app.
+  brightness, so the room stays dark while the sound keeps going. The player controls and the rest
+  of the app dim to the same level (never below 10%, so you can still find your way), and it all
+  stays that way until you close the app.
 - **Then play:** how many more videos of the playlist should play after this one, from none to all.
 - **When done** (TV only): stay on, or **turn the TV off** when the last video ends. You get ten
   seconds to cancel, then the TV goes to sleep (and with HDMI-CEC, the TV set switches off too).
@@ -166,7 +168,8 @@ your devices. If you already follow the channel, its videos aren't repeated.
 - Hold OK on a video for a quick menu: save it, remove it, or go to the channel.
 - Sign in by scanning a QR code with your phone.
 - **The YouTube button on your remote can open BeamTube.** Turn on BeamTube's Accessibility
-  service once, press the button, and the app learns your remote's key by itself.
+  service once (Settings > YouTube button on the remote takes you there), press the button, and
+  the app learns your remote's key by itself.
 - Come back after a while and Subscriptions are already refreshed, with the new videos on top.
 - Rest the focus on a video for a couple of seconds and BeamTube starts getting it ready, so it
   opens faster when you press OK.
@@ -228,7 +231,8 @@ app's "Open by default" page and turn off "Open supported links", then open Beam
 youtube.com, m.youtube.com and youtu.be.
 
 **Turn the TV off at the end, and the remote's YouTube button** need BeamTube's Accessibility
-service: Settings > Accessibility > BeamTube. The service only puts the device to sleep and listens
+service: Settings > Accessibility > BeamTube. In BeamTube, Settings > YouTube button on the remote
+shows whether it's on and opens that screen. The service only puts the device to sleep and listens
 for the remote's YouTube button; it doesn't read the screen. On Android 13 and newer, an app
 installed outside the Play Store may need "Allow restricted settings" first (App info > ⋮).
 
