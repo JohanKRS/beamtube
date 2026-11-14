@@ -11,6 +11,8 @@
     <!-- O toque na notificação traz de volta a tela do player, mesmo numa tarefa de outro app
          (um link aberto pelo WhatsApp). -->
     <uses-permission android:name="android.permission.REORDER_TASKS" />
+    <!-- Na TV ligada do zero, conferir se o serviço do botão YouTube voltou (AccessibilityRebind). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Um APK só: roda com ou sem tela de toque, com ou sem leanback. -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -206,6 +208,17 @@
             android:name=".player.PlaybackService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Depois de uma atualização do app (ou da TV ligar do zero), sobe o processo e confere se o
+             Android religou o serviço de Acessibilidade abaixo; se não, pede de novo (AccessibilityRebind). -->
+        <receiver
+            android:name=".player.AccessibilityRebind$Receiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Painel de dormir do player: desligar a TV quando os vídeos acabam ("When done: Turn off").
              Só o sistema se liga a ele (BIND_ACCESSIBILITY_SERVICE). -->

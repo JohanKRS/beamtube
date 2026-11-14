@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -38,10 +39,13 @@ class ScreenOffService : AccessibilityService() {
         instance = WeakReference(this)
         // Lê os códigos já aprendidos agora, e não na primeira tecla, que precisa de resposta imediata.
         button
+        // No log, para saber pelo ADB quando o Android ligou o serviço (ver AccessibilityRebind).
+        Log.i("BeamTube", "remote key: service connected, ${button.learned.size} button code(s) known")
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
         instance = null
+        Log.i("BeamTube", "remote key: service unbound")
         return super.onUnbind(intent)
     }
 
@@ -123,6 +127,17 @@ class ScreenOffService : AccessibilityService() {
                 val service = it.resolveInfo?.serviceInfo ?: return@any false
                 service.packageName == context.packageName && service.name == ScreenOffService::class.java.name
             }
+        }
+
+        /**
+         * O serviço está ligado nas configurações de Acessibilidade, conectado ou não. Depois de uma
+         * atualização do app, o Android pode deixá-lo ligado lá e desconectado ([AccessibilityRebind]).
+         */
+        fun isEnabledInSettings(context: Context): Boolean {
+            val list = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+                ?: return false
+            val me = ComponentName(context, ScreenOffService::class.java)
+            return list.split(':').any { ComponentName.unflattenFromString(it.trim()) == me }
         }
 
         /** O código do botão YouTube do controle já foi aprendido neste aparelho? */
