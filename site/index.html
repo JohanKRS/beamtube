@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title data-i18n="meta.title">BeamTube · An uncluttered YouTube client for Android</title>
+<meta name="description" data-i18n-content="meta.description" content="BeamTube is a free, open-source YouTube client for Android phones, tablets and TVs. It opens on your subscriptions, leaves out Shorts and comments, and adds tools for long videos and for falling asleep to playlists.">
+<meta name="theme-color" content="#12131c">
+<meta name="color-scheme" content="dark">
+<meta property="og:type" content="website">
+<meta property="og:title" content="BeamTube">
+<meta property="og:description" data-i18n-content="meta.description" content="BeamTube is a free, open-source YouTube client for Android phones, tablets and TVs. It opens on your subscriptions, leaves out Shorts and comments, and adds tools for long videos and for falling asleep to playlists.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" href="assets/fonts/outfit-regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/outfit-light.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/site.css">
+<script>
+  // Picks the language before the page shows, so nobody sees the English text flash first.
+  // Order: ?lang=pt in the address, the visitor's last choice, the browser's languages, English.
+  (function () {
+    var lang = null;
+    try { lang = new URLSearchParams(location.search).get("lang"); } catch (e) {}
+    if (!lang) { try { lang = localStorage.getItem("beamtube-lang"); } catch (e) {} }
+    if (!lang) {
+      var list = navigator.languages || [navigator.language || ""];
+      for (var i = 0; i < list.length && !lang; i++) {
+        var code = String(list[i] || "").slice(0, 2).toLowerCase();
+        if (code === "en" || code === "pt" || code === "es") lang = code;
+      }
+    }
+    if (lang !== "pt" && lang !== "es") lang = "en";
+    var root = document.documentElement;
+    root.setAttribute("data-lang", lang);
+    // The header shows its logo only once the big one has scrolled away (site.js).
+    if ("IntersectionObserver" in window) root.classList.add("brand-off");
+    if (lang !== "en") {
+      root.classList.add("i18n-wait");
+      setTimeout(function () { root.classList.remove("i18n-wait"); }, 1500);
+    }
+  })();
+</script>
+<script src="assets/i18n.js" defer></script>
+<script src="assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="nav.skip">Skip to content</a>
+
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="#top"><img src="assets/brand/logo.svg" alt="BeamTube" width="124" height="45"></a>
+    <nav class="nav" aria-label="Sections" data-i18n-aria="nav.label">
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#sleep" data-i18n="nav.sleep">Sleep mode</a>
+      <a href="#install" data-i18n="nav.install">Install</a>
+      <a href="#privacy" data-i18n="nav.privacy">Privacy</a>
+    </nav>
+    <div class="lang" role="group" aria-label="Language" data-i18n-aria="nav.language">
+      <button type="button" data-lang="en" title="English" lang="en">EN</button>
+      <button type="button" data-lang="pt" title="Português" lang="pt-BR">PT</button>
+      <button type="button" data-lang="es" title="Español" lang="es">ES</button>
+    </div>
+    <a class="gh" href="https://github.com/JohanKRS/beamtube">
+      <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      <span>GitHub</span>
+    </a>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero" id="top">
+  <div class="wrap">
+    <h1 class="hero-logo">
+      <span class="sr">BeamTube</span>
+      <span class="lockup" aria-hidden="true">
+        <img class="l-back" src="assets/brand/hero-back.svg" alt="" width="600" height="240">
+        <canvas class="l-dust"></canvas>
+        <img class="l-slit" src="assets/brand/hero-slit.svg" alt="" width="600" height="240">
+        <img class="l-word" src="assets/brand/hero-word.svg" alt="" width="600" height="240">
+      </span>
+    </h1>
+    <div class="hero-copy">
+      <p class="tagline" data-i18n="hero.tagline">An uncluttered YouTube client for Android phones, tablets and TVs, for people who sit down to watch.</p>
+      <p class="lede" data-i18n="hero.lede">It opens on your subscriptions, shows only what matters and adds the small tools that make long videos nicer to watch. One app for your phone, your tablet and your TV, with the right layout for each.</p>
+      <div class="cta">
+        <a class="btn primary" id="download" href="https://github.com/JohanKRS/beamtube/releases/latest">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="cta.download">Download the APK</span>
+          <span class="ver" id="version" hidden></span>
+        </a>
+        <a class="btn" href="#install" data-i18n="cta.install">How to install</a>
+      </div>
+      <ul class="facts">
+        <li data-i18n="hero.fact1">Free and open source</li>
+        <li data-i18n="hero.fact2">No tracking</li>
+        <li data-i18n="hero.fact3">Android 6.0 or newer</li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap">
+    <figure class="screen tv hero-shot">
+      <img src="assets/img/tv-subscriptions.webp" width="1280" height="720" alt="BeamTube on a TV, showing the Subscriptions feed" data-i18n-alt="alt.tvSubs">
+    </figure>
+    <p class="unofficial" data-i18n="hero.unofficial">BeamTube is an unofficial app. It is not affiliated with YouTube or Google.</p>
+  </div>
+</section>
+
+<section class="band why" id="why">
+  <div class="wrap">
+    <div class="why-grid">
+      <div class="why-text">
+        <h2 data-i18n="why.title">It starts with the channels you chose</h2>
+        <p data-i18n="why.p1">The official YouTube app is built to keep you scrolling, with Shorts in every corner, comments under everything, notifications and autoplay into whatever is trending. That’s fine when you want it.</p>
+        <p data-i18n="why.p2">A lot of the time, though, you just want the channels you follow, the hour-long documentary you saved last week, or a playlist to fall asleep to. BeamTube starts from that side.</p>
+      </div>
+      <div class="cmp-wrap">
+        <table class="cmp">
+          <thead>
+            <tr><td></td><th scope="col" data-i18n="cmp.yt">YouTube app</th><th scope="col" class="bt">BeamTube</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row" data-i18n="cmp.home">Home screen</th><td data-i18n="cmp.homeYt">An algorithmic feed</td><td data-i18n="cmp.homeBt">Your subscriptions, newest first</td></tr>
+            <tr><th scope="row" data-i18n="cmp.shorts">Shorts</th><td data-i18n="cmp.shortsYt">Everywhere</td><td data-i18n="cmp.shortsBt">Nowhere, ever</td></tr>
+            <tr><th scope="row" data-i18n="cmp.comments">Comments and notifications</th><td data-i18n="cmp.yes">Yes</td><td data-i18n="cmp.no">No</td></tr>
+            <tr><th scope="row" data-i18n="cmp.titles">Titles and audio</th><td data-i18n="cmp.titlesYt">Often auto-translated and dubbed</td><td data-i18n="cmp.titlesBt">Always the original title and audio</td></tr>
+            <tr><th scope="row" data-i18n="cmp.devices">Phone, tablet and TV</th><td data-i18n="cmp.devicesYt">Separate apps that behave differently</td><td data-i18n="cmp.devicesBt">One app, one look</td></tr>
+            <tr><th scope="row" data-i18n="cmp.duration">Duration filters</th><td data-i18n="cmp.durationYt">Up to “over 20 minutes”</td><td data-i18n="cmp.durationBt">Also 30, 45 and 60 minutes or more, and “Before 2015”</td></tr>
+            <tr><th scope="row" data-i18n="cmp.playlists">Subscribing to a playlist</th><td data-i18n="cmp.playlistsYt">Not possible</td><td data-i18n="cmp.playlistsBt">New videos show up with your subscriptions</td></tr>
+            <tr><th scope="row" data-i18n="cmp.links">Links from other apps</th><td data-i18n="cmp.linksYt">Go to your watch history</td><td data-i18n="cmp.linksBt">Play without touching your history</td></tr>
+            <tr><th scope="row" data-i18n="cmp.topics">Hiding topics</th><td data-i18n="cmp.topicsYt">“Not interested”, one video at a time</td><td data-i18n="cmp.topicsBt">Whole topics, matched by keywords</td></tr>
+            <tr><th scope="row" data-i18n="cmp.end">When a video ends</th><td data-i18n="cmp.endYt">Autoplays whatever comes next</td><td data-i18n="cmp.endBt">A few suggestions, then back to your list</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="features">
+  <div class="wrap">
+    <header class="head">
+      <h2 data-i18n="long.title">Made for longer videos</h2>
+      <p data-i18n="long.lede">Most of what BeamTube adds is about the moment after you press play.</p>
+    </header>
+    <dl class="features">
+      <div><dt data-i18n="long.findT">Long videos are easy to find</dt><dd data-i18n="long.findD">Search and Explore can filter for 30, 45 or 60 minutes or more, and “Before 2015” (or any year) digs up older videos the algorithm has long forgotten.</dd></div>
+      <div><dt data-i18n="long.resumeT">It remembers where you stopped</dt><dd data-i18n="long.resumeD">On every device, and it picks up from there next time.</dd></div>
+      <div><dt data-i18n="long.jumpT">It jumps over the boring part</dt><dd data-i18n="long.jumpD">Skip forward inside a stretch most viewers skip, like a sponsor read or a long intro, and BeamTube jumps straight to where people start watching again. It uses YouTube’s own “most replayed” data, so there’s no extra button and no third-party service.</dd></div>
+      <div><dt data-i18n="long.chaptersT">Chapters on the timeline</dt><dd data-i18n="long.chaptersD">With the chapter’s name and a thumbnail preview while you scrub. On the TV, press OK to jump there, or move away to stay where you were.</dd></div>
+      <div><dt data-i18n="long.captionsT">Captions you can read</dt><dd data-i18n="long.captionsD">Always centered, white with a thin outline. Automatic captions show up two lines at a time instead of scrolling word by word.</dd></div>
+      <div><dt data-i18n="long.queueT">Playlists play in order</dt><dd data-i18n="long.queueD">Watch later works as a real queue. Drag to reorder, swipe a video to the top or away, with Undo.</dd></div>
+      <div><dt data-i18n="long.qualityT">The best picture your screen can show</dt><dd data-i18n="long.qualityD">On the TV the player goes for 4K first and only steps down when it really has to. Phones and tablets start at 1080p. A resolution you pick by hand stays.</dd></div>
+      <div><dt data-i18n="long.endT">No autoplay into the next thing</dt><dd data-i18n="long.endD">When a video ends you get a few suggestions: the next video from your list, one from the same channel and related videos that respect your topics. Pick nothing, and you’re back on your list after 15 seconds.</dd></div>
+    </dl>
+    <div class="gallery">
+      <figure class="screen wide" style="--ar:2.169"><img src="assets/img/player-phone-jumped.webp" width="1280" height="590" loading="lazy" alt="The phone player saying “Jumped ahead” after skipping a sponsor read" data-i18n-alt="alt.jumped"></figure>
+      <figure class="screen tv" style="--ar:1.778"><img src="assets/img/tv-end-screen.webp" width="1280" height="720" loading="lazy" alt="The end of a video on a TV: a few suggestions and a Back button" data-i18n-alt="alt.endScreen"></figure>
+    </div>
+  </div>
+</section>
+
+<section class="band night" id="sleep">
+  <div class="wrap sleep-grid">
+    <div class="sleep-text">
+      <h2 data-i18n="sleep.title">Falling asleep to videos</h2>
+      <p data-i18n="sleep.lede">BeamTube grew out of falling asleep to playlists on the TV, so the player has a sleep mode. Tap the moon.</p>
+      <dl class="steps">
+        <div>
+          <dt data-i18n="sleep.brightT">Brightness</dt>
+          <dd data-i18n="sleep.brightD">100, 50, 25, 10 or 0%. The picture and captions dim without touching the TV’s own brightness, so the room stays dark while the sound goes on. The rest of the app dims with them until you close it.</dd>
+        </div>
+        <div>
+          <dt data-i18n="sleep.thenT">Then play</dt>
+          <dd data-i18n="sleep.thenD">How many more videos of the playlist play after this one, from none to all.</dd>
+        </div>
+        <div>
+          <dt data-i18n="sleep.doneT">When done</dt>
+          <dd data-i18n="sleep.doneD">On the TV, stay on or turn the TV off when the last video ends. You get ten seconds to cancel, and with HDMI-CEC the TV set switches off too.</dd>
+        </div>
+      </dl>
+      <p class="note" data-i18n="sleep.phone">On a phone, switch the screen off and the video keeps playing as audio only, with the controls on the lock screen. Leave the app while a video plays and it moves into a small floating window.</p>
+    </div>
+    <div class="sleep-demo">
+      <figure class="screen tv dimmable" id="sleep-shot">
+        <img src="assets/img/player-tv-sleep.webp" width="1280" height="720" loading="lazy" alt="The sleep mode panel in the TV player" data-i18n-alt="alt.sleep">
+      </figure>
+      <div class="dimmer" role="group" aria-labelledby="dimmer-label">
+        <span id="dimmer-label" data-i18n="sleep.try">Try the brightness</span>
+        <div class="chips">
+          <button type="button" data-dim="1" aria-pressed="true">100%</button>
+          <button type="button" data-dim="0.5" aria-pressed="false">50%</button>
+          <button type="button" data-dim="0.25" aria-pressed="false">25%</button>
+          <button type="button" data-dim="0.1" aria-pressed="false">10%</button>
+          <button type="button" data-dim="0" aria-pressed="false">0%</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="explore">
+  <div class="wrap split">
+    <div class="split-text">
+      <h2 data-i18n="explore.title">Explore, through the channels you trust</h2>
+      <p data-i18n="explore.p1">Recommended is still there, if you like it. Explore is another way to find new things. Creators often list channels they like on their own channel page, and Explore reads those lists from the channels you subscribe to.</p>
+      <p data-i18n="explore.p2">It shows videos from about ten of those channels at a time, a couple of recent ones and a couple of their best-known, and every refresh draws a different set. Channels you already follow or blocked, second channels of creators you follow, and videos you’ve watched are left out.</p>
+      <p data-i18n="explore.p3">The date, duration and sort filters work here too, so “60 minutes or more, before 2018” is a perfectly good way to spend an evening.</p>
+    </div>
+    <div class="gallery">
+      <figure class="screen tv" style="--ar:1.778"><img src="assets/img/tv-explore.webp" width="1280" height="720" loading="lazy" alt="Explore on a TV" data-i18n-alt="alt.exploreTv"></figure>
+      <figure class="screen phone" style="--ar:0.4615"><img src="assets/img/phone-explore.webp" width="540" height="1170" loading="lazy" alt="Explore on a phone" data-i18n-alt="alt.explorePhone"></figure>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="topics">
+  <div class="wrap split reverse">
+    <div class="split-text">
+      <h2 data-i18n="topics.title">Your topics</h2>
+      <p data-i18n="topics.p1">The first time you open BeamTube, it asks what you’d like to see more of and what you’d like to see less of. There are more than 40 suggestions, from documentaries, history and engineering to sleep videos, or gaming, news and celebrity gossip on the other side.</p>
+      <ul class="ticks">
+        <li data-i18n="topics.more"><strong>See more of:</strong> these come first in Recommended.</li>
+        <li data-i18n="topics.less"><strong>See less of:</strong> these don’t show up in Recommended, in Explore or in subscribed playlists.</li>
+        <li data-i18n="topics.subs"><strong>Your subscriptions are never filtered.</strong> You chose those channels.</li>
+      </ul>
+      <p data-i18n="topics.p2">A topic is just a name and a list of keywords, matched as whole words in the title and the channel name. In Settings you can change any topic, add your own, or block a channel so it disappears everywhere.</p>
+    </div>
+    <div class="gallery">
+      <figure class="screen phone" style="--ar:0.4615"><img src="assets/img/phone-topics.webp" width="540" height="1170" loading="lazy" alt="Choosing topics to see more of" data-i18n-alt="alt.topicsMore"></figure>
+      <figure class="screen phone" style="--ar:0.4615"><img src="assets/img/phone-topics-less.webp" width="540" height="1170" loading="lazy" alt="Choosing topics to see less of" data-i18n-alt="alt.topicsLess"></figure>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="playlists">
+  <div class="wrap split">
+    <div class="split-text">
+      <h2 data-i18n="playlists.title">Subscribe to playlists</h2>
+      <p data-i18n="playlists.p1">YouTube lets you subscribe to channels, but not to playlists. In BeamTube, open a playlist from any channel and tap Subscribe. From then on, new videos added to it show up in your Subscriptions, next to the videos from your channels.</p>
+      <p data-i18n="playlists.p2">The subscription is saved in your YouTube account, so it’s the same on all your devices. If you already follow the channel, its videos aren’t repeated.</p>
+    </div>
+    <div class="gallery">
+      <figure class="screen phone" style="--ar:0.4615"><img src="assets/img/phone-playlist-subscribe.webp" width="540" height="1170" loading="lazy" alt="Subscribing to a playlist on a phone" data-i18n-alt="alt.playlist"></figure>
+      <figure class="screen phone" style="--ar:0.4615"><img src="assets/img/phone-watch-later.webp" width="540" height="1170" loading="lazy" alt="Watch later on a phone" data-i18n-alt="alt.watchLater"></figure>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="devices">
+  <div class="wrap">
+    <header class="head">
+      <h2 data-i18n="devices.title">One app on every screen</h2>
+      <p data-i18n="devices.lede">The same APK runs on your phone, your tablet and your Android TV, and picks the right interface by itself.</p>
+    </header>
+    <div class="devices">
+      <div class="device">
+        <h3 data-i18n="devices.tvT">On the TV</h3>
+        <ul class="ticks">
+          <li data-i18n="devices.tv1">Made for the remote: big cards, clear focus, everything reachable with the arrows.</li>
+          <li data-i18n="devices.tv2">Hold OK on a video for a quick menu: save it, remove it or go to the channel.</li>
+          <li data-i18n="devices.tv3">Sign in by scanning a QR code with your phone.</li>
+          <li data-i18n="devices.tv4">The YouTube button on your remote can open BeamTube. It learns your remote’s key by itself.</li>
+          <li data-i18n="devices.tv5">Come back after a while and Subscriptions are already refreshed, with the new videos on top.</li>
+          <li data-i18n="devices.tv6">Rest the focus on a video for a moment and it starts getting ready, so it opens faster.</li>
+        </ul>
+      </div>
+      <div class="device">
+        <h3 data-i18n="devices.phoneT">On phones and tablets</h3>
+        <ul class="ticks">
+          <li data-i18n="devices.phone1">Double-tap the sides of the video to skip 10 seconds, and keep tapping to add more.</li>
+          <li data-i18n="devices.phone2">Swipe sideways to switch tabs, pull down to refresh.</li>
+          <li data-i18n="devices.phone3">Long-press a thumbnail to save it to Watch later.</li>
+          <li data-i18n="devices.phone4">The player turns by itself to fit the video, and a button switches orientation.</li>
+          <li data-i18n="devices.phone5">On tablets, three columns in portrait and a side rail in landscape.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="gallery">
+      <figure class="screen tv" style="--ar:1.778"><img src="assets/img/tv-channel.webp" width="1280" height="720" loading="lazy" alt="A channel page on a TV" data-i18n-alt="alt.channel"></figure>
+      <figure class="screen tablet" style="--ar:1.602"><img src="assets/img/tablet-landscape.webp" width="1280" height="799" loading="lazy" alt="BeamTube on a tablet in landscape" data-i18n-alt="alt.tablet"></figure>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="yours">
+  <div class="wrap">
+    <header class="head">
+      <h2 data-i18n="yours.title">Make it yours</h2>
+      <p data-i18n="yours.lede">Seven icon colors and seven highlight colors, in Settings. The highlight color is used for the open tab, progress bars, focus on the TV and the player.</p>
+    </header>
+    <div class="colors">
+      <ul class="icons" aria-label="App icon colors" data-i18n-aria="yours.iconsLabel">
+        <li><img src="assets/brand/icon-night.svg" width="64" height="64" alt="Night blue" data-i18n-alt="color.night" loading="lazy"></li>
+        <li><img src="assets/brand/icon-black.svg" width="64" height="64" alt="Black" data-i18n-alt="color.black" loading="lazy"></li>
+        <li><img src="assets/brand/icon-teal.svg" width="64" height="64" alt="Teal" data-i18n-alt="color.teal" loading="lazy"></li>
+        <li><img src="assets/brand/icon-plum.svg" width="64" height="64" alt="Plum" data-i18n-alt="color.plum" loading="lazy"></li>
+        <li><img src="assets/brand/icon-mustard.svg" width="64" height="64" alt="Mustard" data-i18n-alt="color.mustard" loading="lazy"></li>
+        <li><img src="assets/brand/icon-vivid.svg" width="64" height="64" alt="Vivid" data-i18n-alt="color.vivid" loading="lazy"></li>
+        <li><img src="assets/brand/icon-red.svg" width="64" height="64" alt="Red" data-i18n-alt="color.red" loading="lazy"></li>
+      </ul>
+      <div class="accents">
+        <span id="accent-label" data-i18n="yours.try">Try the highlight colors on this page</span>
+        <div class="swatches" role="group" aria-labelledby="accent-label">
+          <button type="button" class="swatch" style="--c:#FFC861" data-accent="#FFC861 #FFE3A3" aria-pressed="true" title="Amber" data-i18n-title="accent.amber" data-i18n-aria="accent.amber" aria-label="Amber"></button>
+          <button type="button" class="swatch" style="--c:#BDC7DB" data-accent="#BDC7DB #DEE3ED" aria-pressed="false" title="Silver" data-i18n-title="accent.silver" data-i18n-aria="accent.silver" aria-label="Silver"></button>
+          <button type="button" class="swatch" style="--c:#3BBFCE" data-accent="#3BBFCE #9DDFE6" aria-pressed="false" title="Teal" data-i18n-title="accent.teal" data-i18n-aria="accent.teal" aria-label="Teal"></button>
+          <button type="button" class="swatch" style="--c:#CC90D5" data-accent="#CC90D5 #E6C8EA" aria-pressed="false" title="Plum" data-i18n-title="accent.plum" data-i18n-aria="accent.plum" aria-label="Plum"></button>
+          <button type="button" class="swatch" style="--c:#DD962C" data-accent="#DD962C #EECB95" aria-pressed="false" title="Mustard" data-i18n-title="accent.mustard" data-i18n-aria="accent.mustard" aria-label="Mustard"></button>
+          <button type="button" class="swatch" style="--c:#E873C7" data-accent="#E873C7 #F3B9E3" aria-pressed="false" title="Vivid" data-i18n-title="accent.vivid" data-i18n-aria="accent.vivid" aria-label="Vivid"></button>
+          <button type="button" class="swatch" style="--c:#FF0000" data-accent="#FF0000 #FF8080" aria-pressed="false" title="Red" data-i18n-title="accent.red" data-i18n-aria="accent.red" aria-label="Red"></button>
+        </div>
+      </div>
+    </div>
+    <p class="langs" data-i18n="yours.langs"><strong>English, Portuguese and Spanish.</strong> BeamTube follows your device’s language, or you can pick one in Settings.</p>
+    <div class="gallery">
+      <figure class="screen phone" style="--ar:0.4615"><img src="assets/img/phone-accent-teal.webp" width="540" height="1170" loading="lazy" alt="The Teal highlight color on a phone" data-i18n-alt="alt.teal"></figure>
+      <figure class="screen phone" style="--ar:0.4615"><img src="assets/img/phone-subscriptions-pt.webp" width="540" height="1170" loading="lazy" alt="BeamTube in Portuguese" data-i18n-alt="alt.pt"></figure>
+      <figure class="screen tv" style="--ar:1.778"><img src="assets/img/tv-accent-plum.webp" width="1280" height="720" loading="lazy" alt="The Plum highlight color on a TV" data-i18n-alt="alt.plum"></figure>
+    </div>
+  </div>
+</section>
+
+<section class="section left-out" id="left-out">
+  <div class="wrap">
+    <div class="left-out-in">
+      <h2 data-i18n="out.title">What’s not in BeamTube</h2>
+      <ul class="struck" aria-label="Left out on purpose" data-i18n-aria="out.label">
+        <li data-i18n="out.shorts">Shorts</li>
+        <li data-i18n="out.comments">Comments</li>
+        <li data-i18n="out.chat">Live chat</li>
+        <li data-i18n="out.notifications">Notifications</li>
+        <li data-i18n="out.uploads">Uploads</li>
+        <li data-i18n="out.trending">Trending</li>
+        <li data-i18n="out.shopping">Shopping</li>
+        <li data-i18n="out.buttons">Most buttons</li>
+      </ul>
+      <p data-i18n="out.p">Left out on purpose. You can like, dislike, save and subscribe, and that’s it. If you need the rest, the official app is still there.</p>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="install">
+  <div class="wrap">
+    <header class="head">
+      <h2 data-i18n="install.title">Install</h2>
+      <p data-i18n="install.req">BeamTube needs Android 6.0 or newer on an ARM device. That’s nearly every phone, tablet and Android TV.</p>
+    </header>
+    <ol class="install">
+      <li>
+        <h3 data-i18n="install.s1T">Download</h3>
+        <p data-i18n="install.s1D">Get <code>beamtube-X.Y.Z.apk</code> from the latest release on GitHub and install it. On a TV, a file manager or the Downloader app makes this easier.</p>
+        <a class="link" href="https://github.com/JohanKRS/beamtube/releases/latest" data-i18n="install.s1L">Latest release</a>
+      </li>
+      <li>
+        <h3 data-i18n="install.s2T">Sign in</h3>
+        <p data-i18n="install.s2D">Open BeamTube and sign in with the code at <a href="https://youtube.com/activate">youtube.com/activate</a>, or scan the QR code on the TV. You sign in on Google’s own page, and BeamTube never sees your password.</p>
+      </li>
+      <li>
+        <h3 data-i18n="install.s3T">Stay up to date</h3>
+        <p data-i18n="install.s3D">In <a href="https://github.com/ImranR98/Obtainium">Obtainium</a>, add this address and BeamTube updates itself from the releases.</p>
+        <div class="copy">
+          <code id="repo-url">https://github.com/JohanKRS/beamtube</code>
+          <button type="button" id="copy-url" data-i18n="install.copy">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="more">
+      <details>
+        <summary data-i18n="install.linksT">Open YouTube links in BeamTube</summary>
+        <p data-i18n="install.linksD">On Android 12 and newer, open the YouTube app’s page in the system settings, go to “Open by default” and turn off “Open supported links”. Then open BeamTube’s page there and add youtube.com, m.youtube.com and youtu.be.</p>
+      </details>
+      <details>
+        <summary data-i18n="install.a11yT">Turning the TV off, and the remote’s YouTube button</summary>
+        <p data-i18n="install.a11yD">Both need BeamTube’s Accessibility service. In BeamTube, Settings &gt; YouTube button on the remote shows whether it’s on and takes you there. The service only puts the device to sleep and listens for the YouTube button. It doesn’t read the screen. On Android 13 and newer, an app installed outside the Play Store may need “Allow restricted settings” first (App info &gt; ⋮).</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="privacy">
+  <div class="wrap">
+    <header class="head">
+      <h2 data-i18n="privacy.title">Privacy</h2>
+    </header>
+    <ul class="privacy">
+      <li data-i18n="privacy.p1"><strong>Nothing goes to the developer.</strong> BeamTube has no servers, no ads, no analytics and no crash reporting of its own.</li>
+      <li data-i18n="privacy.p2"><strong>It talks only to YouTube and Google.</strong> That’s how it signs you in, loads your lists and plays videos, like any YouTube client.</li>
+      <li data-i18n="privacy.p3"><strong>Your settings stay on your device.</strong> Topics, blocked channels and watch positions too. Signing out deletes the lists cached on it.</li>
+      <li data-i18n="privacy.p4"><strong>Links stay out of your history.</strong> Videos opened from other apps aren’t added to your watch history, unless you choose otherwise.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="section source" id="source">
+  <div class="wrap">
+    <div class="source-in">
+      <h2 data-i18n="source.title">Open source</h2>
+      <p data-i18n="source.p">BeamTube is written in Kotlin with Jetpack Compose and plays video with Media3/ExoPlayer. Sign-in, feeds, playlists and streams come from <a href="https://github.com/yuliskov/MediaServiceCore">MediaServiceCore</a>, the engine behind <a href="https://github.com/yuliskov/SmartTube">SmartTube</a>, used unchanged. The code is on GitHub under the MIT License.</p>
+      <div class="cta">
+        <a class="btn" href="https://github.com/JohanKRS/beamtube" data-i18n="source.repo">Source code on GitHub</a>
+        <a class="btn ghost" href="https://github.com/JohanKRS/beamtube#building-from-source" data-i18n="source.build">Building from source</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-top">
+      <img src="assets/brand/logo.svg" alt="BeamTube" width="110" height="40" loading="lazy">
+      <nav class="foot-links" aria-label="Links" data-i18n-aria="foot.links">
+        <a href="https://github.com/JohanKRS/beamtube/releases" data-i18n="foot.releases">Releases</a>
+        <a href="https://github.com/JohanKRS/beamtube/blob/main/LICENSE" data-i18n="foot.license">License</a>
+        <a href="https://github.com/JohanKRS/beamtube/blob/main/THIRD_PARTY_NOTICES.md" data-i18n="foot.notices">Third-party notices</a>
+        <a href="https://github.com/JohanKRS/beamtube">GitHub</a>
+      </nav>
+    </div>
+    <div class="legal">
+      <p data-i18n="foot.unofficial"><strong>Not affiliated with YouTube or Google.</strong> BeamTube is an independent, unofficial client. It is not affiliated with, endorsed by, sponsored by or approved by YouTube or Google LLC. YouTube, Android, Android TV and Google TV are trademarks of Google LLC, used here only to say what BeamTube works with.</p>
+      <p data-i18n="foot.license2"><strong>License and warranty.</strong> BeamTube’s code is released under the MIT License. The BeamTube name and logo are not covered by it. The app is provided “as is”, without warranty of any kind. It depends on how YouTube works today, and YouTube can change that at any time. You use it with your own Google account, at your own risk, and you are responsible for following YouTube’s Terms of Service.</p>
+      <p data-i18n="foot.content"><strong>Content.</strong> Videos, thumbnails, titles and channel names belong to their creators. The screenshots show public videos from Kurzgesagt, Veritasium, 3Blue1Brown, Real Engineering, Practical Engineering, Wendover Productions, SmarterEveryDay, PBS Space Time and Kings and Generals, used only to show the app. BeamTube doesn’t download, store or redistribute videos.</p>
+    </div>
+  </div>
+</footer>
+
+<dialog class="lightbox" id="lightbox" aria-label="Screenshot" data-i18n-aria="alt.dialog">
+  <img alt="">
+</dialog>
+</body>
+</html>

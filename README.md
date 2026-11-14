@@ -11,7 +11,7 @@ everything, notifications, autoplay into whatever is trending. That's fine when 
 lot of the time you just want to watch the channels you chose, the hour-long documentary you saved
 last week, or a quiet playlist to fall asleep to.
 
-BeamTube starts from that side. It opens on your subscriptions, keeps the screen almost empty,
+BeamTube starts from that side. It opens on your subscriptions, shows only what matters,
 leaves out the things designed to pull you somewhere else, and adds the small tools that make long
 videos nicer to watch. One APK runs on your phone, your tablet and your Android TV, and picks the
 right interface by itself.
