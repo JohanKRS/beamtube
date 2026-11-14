@@ -650,6 +650,54 @@ class ScreenShots {
         TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) } }
     }
 
+    /**
+     * O grupo do botão YouTube do controle (1.0.4) nos três estados: o serviço de Acessibilidade
+     * desligado (com o foco na linha), ligado à espera do botão e pronto. A tela é alta para o grupo
+     * aparecer sem rolar.
+     */
+    private fun remoteShot(name: String, on: Boolean, learned: Boolean, focus: String? = null) {
+        val app = org.robolectric.RuntimeEnvironment.getApplication()
+        val prefs = app.getSharedPreferences("remote_keys", android.content.Context.MODE_PRIVATE)
+        val manager = org.robolectric.Shadows.shadowOf(app.getSystemService(android.view.accessibility.AccessibilityManager::class.java))
+        if (on) {
+            val info = android.accessibilityservice.AccessibilityServiceInfo()
+            val resolve = android.content.pm.ResolveInfo().apply {
+                serviceInfo = android.content.pm.ServiceInfo().apply {
+                    packageName = app.packageName
+                    this.name = ytslim.player.ScreenOffService::class.java.name
+                }
+            }
+            org.robolectric.util.ReflectionHelpers.setField(info, "mResolveInfo", resolve)
+            manager.setEnabledAccessibilityServiceList(listOf(info))
+        }
+        if (learned) prefs.edit().putStringSet("youtube_button", setOf("293")).commit()
+        try {
+            shot(name, action = {
+                if (focus != null) {
+                    compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+                    compose.onNode(hasText(focus) and hasClickAction(), useUnmergedTree = false).requestFocus()
+                }
+            }) {
+                TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+            }
+        } finally {
+            manager.setEnabledAccessibilityServiceList(emptyList())
+            prefs.edit().clear().commit()
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h2600dp-television-xhdpi")
+    fun tvSettingsRemoteOff() = remoteShot("tv-settings-remote-off", on = false, learned = false, focus = "Open Accessibility settings")
+
+    @Test
+    @Config(qualifiers = "es-w960dp-h2600dp-television-xhdpi")
+    fun tvSettingsRemoteWaitingSpanish() = remoteShot("tv-settings-remote-waiting-es", on = true, learned = false)
+
+    @Test
+    @Config(qualifiers = "pt-w960dp-h2600dp-television-xhdpi")
+    fun tvSettingsRemoteReadyPortuguese() = remoteShot("tv-settings-remote-ready-pt", on = true, learned = true)
+
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvSettings() = shot("tv-settings") {

@@ -3,7 +3,6 @@ package ytslim.player
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.app.PictureInPictureParams
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -19,7 +18,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.os.SystemClock
-import android.provider.Settings
 import android.util.Log
 import android.util.Rational
 import android.util.TypedValue
@@ -672,13 +670,10 @@ class PlayerActivity : ComponentActivity() {
         if (on && !ScreenOffService.enabled) {
             // Uma vez só: o Android pede que o serviço seja ligado à mão.
             Toast.makeText(this, R.string.player_turn_off_setup, Toast.LENGTH_LONG).show()
-            try {
-                // Daqui a pessoa volta para o mesmo vídeo: o player não fecha ao sair da tela.
-                inOwnSettings = true
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            } catch (_: ActivityNotFoundException) {
-                // Sem a tela de Acessibilidade: o aviso já diz onde ligar.
-            }
+            // Daqui a pessoa volta para o mesmo vídeo: o player não fecha ao sair da tela. Sem
+            // nenhuma tela de ajustes, o aviso já diz onde ligar.
+            inOwnSettings = true
+            if (!ScreenOffService.openSettings(this)) inOwnSettings = false
         }
     }
 

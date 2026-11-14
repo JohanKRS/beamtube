@@ -166,7 +166,8 @@ your devices. If you already follow the channel, its videos aren't repeated.
 - Hold OK on a video for a quick menu: save it, remove it, or go to the channel.
 - Sign in by scanning a QR code with your phone.
 - **The YouTube button on your remote can open BeamTube.** Turn on BeamTube's Accessibility
-  service once, press the button, and the app learns your remote's key by itself.
+  service once (Settings > YouTube button on the remote takes you there), press the button, and
+  the app learns your remote's key by itself.
 - Come back after a while and Subscriptions are already refreshed, with the new videos on top.
 - Rest the focus on a video for a couple of seconds and BeamTube starts getting it ready, so it
   opens faster when you press OK.
@@ -228,7 +229,8 @@ app's "Open by default" page and turn off "Open supported links", then open Beam
 youtube.com, m.youtube.com and youtu.be.
 
 **Turn the TV off at the end, and the remote's YouTube button** need BeamTube's Accessibility
-service: Settings > Accessibility > BeamTube. The service only puts the device to sleep and listens
+service: Settings > Accessibility > BeamTube. In BeamTube, Settings > YouTube button on the remote
+shows whether it's on and opens that screen. The service only puts the device to sleep and listens
 for the remote's YouTube button; it doesn't read the screen. On Android 13 and newer, an app
 installed outside the Play Store may need "Allow restricted settings" first (App info > ⋮).
 

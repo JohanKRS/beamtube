@@ -20,7 +20,7 @@ Um **único APK** que roda no celular, no tablet e na Android TV, com a conta Go
 - **Nome e marca: BeamTube** (decidido pelo Johan em 2026-11-13, depois dos estudos de logotipo). `applicationId` = `app.beamtube` (trocado na 0.7.0; o Johan pediu a troca já, "para quando eu lançar a versão pública, não ter confusão nenhuma", sabendo que precisa reinstalar e entrar na conta de novo). Nome e ID ficam no `gradle.properties`. O repositório virou `JohanKRS/beamtube`. O pacote do código Kotlin continua `ytslim` (não aparece para o usuário).
   - **A marca:** uma fresta de luz de pé, o facho que sai dela para a direita com poeira no ar, e o nome em minúsculas na fonte Outfit, "beam" em Bold e "tube" em Light, com as letras iluminadas pelo lado da fresta. Os estudos ficaram no canvas de logotipos (pranchas C1 a C4).
   - **Ícone do celular: a opção C** (escolha do Johan em 2026-11-13, "a que tem mais personalidade", "pelo menos por enquanto"): a fresta no centro e o facho indo até a borda direita, com poeira, sem letras.
-  - **Banner da TV** (aprovado pelo Johan em 2026-11-13, falta ele ver na TV): o logotipo completo, com a fresta de um lado e o fim da palavra do outro à mesma distância das bordas.
+  - **Banner da TV** (aprovado pelo Johan em 2026-11-13): o logotipo completo, com a fresta de um lado e o fim da palavra do outro à mesma distância das bordas. **Desde a 1.0.4 o logotipo todo é maior** (pedido do Johan vendo o cartão na TV: "ampliar ele todo para ocupar um pouco mais de espaço do banner", não só o texto): a letra do nome passou de 37dp para 48dp, e a fresta e o fim da palavra ficam a uns 36dp das bordas (eram 65dp). O fim do facho, já quase apagado, passa da borda direita.
   - **Cor do ícone à escolha** (decidido em 2026-11-01): o desenho é sempre o mesmo, e nas Configurações ("App icon") dá para escolher uma de sete cores: azul-noite (padrão), preto, verde-azulado, ameixa, mostarda, gradiente vivo e vermelho. O vermelho (luz branca em #E53935, no tom do YouTube) entrou em 2026-11-02, a pedido do Johan.
   - Ícones, banners da TV e cores saem de `tools/make_icons.py` (não editar os XMLs gerados à mão). A tabela de cores fica no script.
   - **No app:** o logotipo completo (fresta, facho, poeira e nome, sem fundo) fica na barra de cima da TV, na mesma linha das abas (pedido do Johan, 2026-11-13), com a letra do mesmo tamanho da das abas (16sp; ele achou o primeiro, de 22sp, grande demais), com o logotipo à esquerda e as abas encostadas à direita (pedido dele do mesmo dia), e na tela de login; o trilho do tablet deitado mostra só a fresta com o facho (`Wordmark` e `BeamGlyph`, em `ui/Glyphs.kt`). A luz segue a cor de destaque escolhida.
@@ -258,6 +258,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Bea
   - Para isso o serviço fica sabendo quando uma janela do app do YouTube aparece (`packageNames`), e só disso: dos outros apps não chega nada, e a tela continua fora do alcance dele. A descrição do serviço nos ajustes diz que ele vê as teclas e quando o YouTube abre.
   - Um vídeo mandado do celular para a TV abre o YouTube sem tecla nenhuma, então não ensina nada nem é desviado.
   - Teclas de app vão para o log (tag BeamTube, "remote key: code=… scan=…"), e o aprendizado também ("learned the YouTube button").
+- **Nos Ajustes da TV** (1.0.4, pedido do Johan: o botão funcionou nas TVs, mas nada no app dizia que dava nem onde ligar): o grupo "YouTube button on the remote", depois de "Links from other apps", tem uma linha "Open Accessibility settings" que abre a tela de Acessibilidade do Android (sem ela, os ajustes gerais; sem nenhum dos dois, um aviso diz para procurar Acessibilidade nos ajustes da TV). À direita, On ou Off; embaixo, o estado: desligado ("ative o BeamTube lá"), ligado à espera do botão ("aperte o botão YouTube uma vez") ou pronto ("o botão YouTube abre o BeamTube"). O estado é lido de novo cada vez que o app volta para a frente (`ScreenOffService.isOn`, que pergunta também ao `AccessibilityManager`, e `knowsYouTubeButton`). O texto embaixo do grupo explica o primeiro aperto, o modo dormir e que o serviço não lê a tela. O "When done: Turn off" do player usa o mesmo caminho para abrir os ajustes (`ScreenOffService.openSettings`).
 - **Limites e riscos, a conferir no aparelho:** se a TV tratar o botão por baixo do Android (antes do filtro de teclas), o serviço não vê a tecla e o botão continua abrindo o YouTube. Com a TV desligada, o botão pode ligar a TV direto no YouTube, por fora do Android. E em algumas Hisense, um serviço que filtra teclas faz o volume parar de repetir ao segurar.
 
 ## Atualizações (Obtainium)
@@ -311,12 +312,21 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Bea
    - *Versão 1.0.1 (2026-11-13), correção do teste da 1.0.0* (ver "Como testar a 1.0.1"): o aviso da Explore aparecia ao chegar nos Recomendados no celular; agora só com a Explore aberta.
    - *Versão 1.0.2 (2026-11-13), dois achados do Johan na TV* (ver "Como testar a 1.0.2"): o cartão do BeamTube voltou para a tela inicial da TV (o banner tinha um número malformado que o Android recusava ao abrir fora do app, então o launcher ficava sem ele) e, na tela de tópicos, o botão em foco da primeira linha não sai mais com o topo cortado.
    - *Versão 1.0.3 (2026-11-13), pedido do Johan, aguardando o teste no aparelho* (ver "Como testar a 1.0.3"): bloquear um canal também manda o "Don't recommend channel" para a conta do YouTube, e o aviso e as Configurações dizem que o bloqueio vale neste aparelho.
+   - *Versão 1.0.4 (2026-11-14), dois pedidos do Johan na TV, aguardando o teste no aparelho* (ver "Como testar a 1.0.4"): os Ajustes da TV explicam o botão YouTube do controle, mostram se a Acessibilidade do BeamTube está ligada e abrem a tela dela direto; e o logotipo do banner da TV ficou maior.
 
 Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", porque o motor acessa o real. Fica como ideia opcional para limpar o site.
 
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 1.0.4
+
+1. TV: atualizar pelo Obtainium. Na tela inicial, o cartão do BeamTube mostra o logotipo maior: a fresta e o fim de "beamtube" mais perto das bordas, e o facho chegando à borda direita.
+2. Settings: depois de "Links from other apps", o grupo "YouTube button on the remote". Com a Acessibilidade do BeamTube ligada e o botão já aprendido, a linha diz "On" e "The YouTube button opens BeamTube."
+3. OK na linha "Open Accessibility settings": abre a tela de Acessibilidade do Android (na Hisense e na TCL). Desligar o BeamTube ali e voltar: a linha muda para "Off" e "Turn on BeamTube there…". Ligar de novo e voltar: "On" outra vez.
+4. Ler o texto embaixo do grupo nos três idiomas (Settings > Language), sem nada cortado.
+5. Player: no modo dormir, "When done: Turn off" com a Acessibilidade desligada continua abrindo a mesma tela, e ao voltar o vídeo continua lá.
 
 ## Como testar a 1.0.3
 

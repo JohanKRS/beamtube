@@ -301,4 +301,15 @@
     <!-- Idioma do app (Settings) -->
     <string name="settings_language">Language</string>
     <string name="language_system">Same as the device</string>
+
+    <!-- Botão YouTube do controle (Settings, só na TV) -->
+    <string name="settings_remote">YouTube button on the remote</string>
+    <string name="settings_remote_open">Open Accessibility settings</string>
+    <string name="settings_remote_on">On</string>
+    <string name="settings_remote_off">Off</string>
+    <string name="settings_remote_state_off">Turn on BeamTube there, and the YouTube button opens BeamTube instead of YouTube.</string>
+    <string name="settings_remote_state_waiting">Press the YouTube button once so BeamTube learns it.</string>
+    <string name="settings_remote_state_ready">The YouTube button opens BeamTube.</string>
+    <string name="settings_remote_hint">In Accessibility, select BeamTube and turn it on. The first time you press the YouTube button, YouTube opens and BeamTube comes up right after. From then on, the button opens BeamTube directly. The same setting lets sleep mode turn off the TV. BeamTube only sees the keys you press on the remote and when the YouTube app opens, never what\'s on the screen.</string>
+    <string name="settings_remote_no_settings">This TV didn\'t open its settings. Look for Accessibility in the TV\'s settings menu.</string>
 </resources>
