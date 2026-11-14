@@ -550,14 +550,15 @@ class ScreenShots {
         }
     }
 
-    /** A tela de tópicos de uma instalação nova, com algumas sugestões já marcadas. */
-    private fun topicsVm(lessStep: Boolean): TopicsViewModel {
+    /** A tela de tópicos de uma instalação nova, com algumas sugestões já marcadas ([picks] falso: nenhuma). */
+    private fun topicsVm(lessStep: Boolean, picks: Boolean = true): TopicsViewModel {
         val vm = TopicsViewModel()
         repeat(100) {
             if (vm.state.value.loaded) return@repeat
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
             Thread.sleep(10)
         }
+        if (!picks) return vm
         listOf(SuggestedTopic.DOCUMENTARIES, SuggestedTopic.HISTORY, SuggestedTopic.SCIENCE, SuggestedTopic.SPACE, SuggestedTopic.ENGINEERING, SuggestedTopic.SLEEP)
             .forEach(vm::toggle)
         if (lessStep) {
@@ -570,6 +571,11 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
     fun phoneTopics() = shot("phone-topics") { MobileUi.Theme { MobileUi.Topics(topicsVm(lessStep = false), firstRun = true) {} } }
+
+    /** Sem nada marcado: as sugestões precisam estar no mesmo lugar que na foto com algumas marcadas. */
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneTopicsNone() = shot("phone-topics-none") { MobileUi.Theme { MobileUi.Topics(topicsVm(lessStep = false, picks = false), firstRun = true) {} } }
 
     @Test
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
@@ -586,6 +592,11 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvTopics() = shot("tv-topics") { TvUi.Theme { TvUi.Topics(topicsVm(lessStep = false), firstRun = true) {} } }
+
+    /** Sem nada marcado: as sugestões precisam estar no mesmo lugar que na foto com algumas marcadas. */
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTopicsNone() = shot("tv-topics-none") { TvUi.Theme { TvUi.Topics(topicsVm(lessStep = false, picks = false), firstRun = true) {} } }
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")

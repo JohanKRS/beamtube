@@ -1,10 +1,10 @@
 package ytslim.ui.mobile
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -23,10 +24,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,10 +37,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ytslim.R
+import ytslim.ui.JustifiedFlow
 import ytslim.ui.Look
 import ytslim.ui.TopicsViewModel
 import ytslim.ui.TopicsViewModel.Step
@@ -84,7 +88,8 @@ internal fun MobileTopics(vm: TopicsViewModel, firstRun: Boolean, onDone: () -> 
                 )
                 Spacer(Modifier.height(22.dp))
                 if (state.loaded) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    // Cada linha vai até a borda direita, menos a última (ver JustifiedFlow).
+                    JustifiedFlow(spacing = 8.dp, lineSpacing = 2.dp) {
                         state.shown.forEach { topic ->
                             TopicChip(stringResource(topic.label), selected = topic in state.chosen) { vm.toggle(topic) }
                         }
@@ -114,26 +119,38 @@ internal fun MobileTopics(vm: TopicsViewModel, firstRun: Boolean, onDone: () -> 
     }
 }
 
+/** O visto de uma sugestão marcada, o espaço até o nome e a borda da pílula. */
+private val CheckSize = 18.dp
+private val CheckGap = 6.dp
+private val ChipPadding = 10.dp
+
+/**
+ * Uma sugestão. Tem a mesma largura marcada ou não (sem o visto, o espaço dele fica dos dois lados do
+ * nome), para marcar não empurrar as outras para a linha de baixo. O conteúdo fica no meio, porque a
+ * linha pode esticar a pílula até a borda.
+ */
 @Composable
 private fun TopicChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
+    val side = if (selected) ChipPadding else ChipPadding + (CheckSize + CheckGap) / 2
+    Surface(
         selected = selected,
         onClick = onClick,
-        label = { Text(label, style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp)) },
-        leadingIcon = if (selected) {
-            { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-        } else {
-            null
-        },
+        modifier = Modifier.semantics { role = Role.Checkbox }.height(40.dp),
         shape = RoundedCornerShape(20.dp),
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = Color.Transparent,
-            labelColor = Look.Text,
-            selectedContainerColor = Look.Glow,
-            selectedLabelColor = Look.OnGlow,
-            selectedLeadingIconColor = Look.OnGlow,
-        ),
-        border = FilterChipDefaults.filterChipBorder(enabled = true, selected = selected, borderColor = Look.Outline, selectedBorderColor = Color.Transparent),
-        modifier = Modifier.height(40.dp),
-    )
+        color = if (selected) Look.Glow else Color.Transparent,
+        contentColor = if (selected) Look.OnGlow else Look.Text,
+        border = if (selected) null else BorderStroke(1.dp, Look.Outline),
+    ) {
+        Row(
+            Modifier.padding(horizontal = side),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (selected) {
+                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(CheckSize))
+                Spacer(Modifier.width(CheckGap))
+            }
+            Text(label, style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp), maxLines = 1)
+        }
+    }
 }
