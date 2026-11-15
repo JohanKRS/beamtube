@@ -56,8 +56,21 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     private sealed interface Raw {
         data object Loading : Raw
         data class Error(val message: String) : Raw
-        /** [cached]: a lista guardada no aparelho ([ListCache]), na tela até a da conta chegar. */
-        data class Loaded(val pages: List<List<Video>>, val lastPage: VideoPage, val loadingMore: Boolean, val cached: Boolean = false) : Raw
+        /**
+         * [cached]: a lista guardada no aparelho ([ListCache]), na tela até a da conta chegar.
+         * [kept]: a primeira página são as fileiras da lista guardada que a pessoa já tinha visto,
+         * e as outras são a lista da conta ([FreshBelow]); saem quando a aba sai da tela.
+         */
+        data class Loaded(
+            val pages: List<List<Video>>,
+            val lastPage: VideoPage,
+            val loadingMore: Boolean,
+            val cached: Boolean = false,
+            val kept: Boolean = false,
+        ) : Raw {
+            /** As páginas da conta, sem as fileiras antigas. */
+            val fresh: List<List<Video>> get() = if (kept) pages.drop(1) else pages
+        }
     }
 
     private val raw = MutableStateFlow<Raw>(Raw.Loading)
@@ -94,7 +107,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
         viewModelScope.launch {
             raw.mapNotNull { loaded -> (loaded as? Raw.Loaded)?.takeIf { !it.cached && !it.loadingMore } }
                 .debounce(1_000)
-                .collect { loaded -> AppScope.launch { ListCache.save(CACHE_KEY, null, loaded.pages.flatten()) } }
+                .collect { loaded -> AppScope.launch { ListCache.save(CACHE_KEY, null, loaded.fresh.flatten()) } }
         }
     }
 
@@ -102,28 +115,37 @@ class RecommendedViewModel : ViewModel(), Refreshable {
 
     override fun refresh() = load(quiet = raw.value is Raw.Loaded)
 
-    /** A lista da conta que chegou com a guardada na tela, esperando a aba sair da tela ([QuietSwap]). */
-    private val swap = QuietSwap<Raw.Loaded>()
+    private var onScreen = false
+
+    /** Até onde a grade já mostrou a lista ([SeenRows]). */
+    private var seen = 0
+
+    /** A grade mostrou os [count] primeiros vídeos. */
+    fun seen(count: Int) {
+        if (count > seen) seen = count
+    }
 
     /**
-     * A aba apareceu ou saiu da tela. A lista não troca com a aba na tela (pedido do Johan, 1.0.11):
-     * a da conta que chegou nesse meio-tempo entra quando a aba sai, ou vai para o fim da lista
-     * quando a pessoa desce até lá ([loadMore]).
+     * A aba apareceu ou saiu da tela. Com ela na tela, a lista da conta que chega depois da
+     * guardada entra logo abaixo das fileiras já vistas ([FreshBelow], ideia do Johan, 1.0.11);
+     * quando a aba sai, as fileiras antigas saem e fica só a lista da conta.
      */
     fun onScreen(shown: Boolean) {
-        val fresh = swap.onScreen(shown) ?: return
+        onScreen = shown
+        val loaded = raw.value as? Raw.Loaded ?: return
+        if (shown || !loaded.kept) return
+        // Uma página a caminho ainda conta com as fileiras antigas: recomeça sem elas.
         job?.cancel()
-        raw.value = fresh
+        raw.value = loaded.copy(pages = loaded.fresh, kept = false, loadingMore = false)
         fill(extra = 0)
     }
 
     /**
-     * @param byUser a pessoa pediu (OK na aba, puxar para atualizar): a lista nova entra na hora.
-     * Na carga da abertura, com a guardada na tela, ela espera a aba sair da tela ([onScreen]).
+     * @param byUser a pessoa pediu (OK na aba, puxar para atualizar): a lista nova entra inteira
+     * na hora. Na carga da abertura, com a guardada na tela, só abaixo do que já foi visto ([onScreen]).
      */
     private fun load(quiet: Boolean, byUser: Boolean = true) {
         job?.cancel()
-        swap.take()
         _refreshing.value = quiet
         if (!quiet) raw.value = Raw.Loading
         job = viewModelScope.launch {
@@ -131,24 +153,20 @@ class RecommendedViewModel : ViewModel(), Refreshable {
                 .onSuccess { ChannelFeedback.note(it.videos) }
                 // Sem rede, a lista que está na tela (a guardada, ou a de antes do puxar) fica.
                 .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false) }, { if (quiet) raw.value else Raw.Error(it.toMessage()) })
+            val old = raw.value
+            raw.value = if (quiet && !byUser && onScreen && fresh is Raw.Loaded && old is Raw.Loaded && fresh !== old) {
+                val keep = withContext(Dispatchers.Default) { FreshBelow.keep(shown(old.pages, settings.value), seen) }
+                fresh.copy(pages = listOf(keep) + fresh.pages, kept = true)
+            } else {
+                fresh
+            }
             _refreshing.value = false
-            val held = quiet && !byUser && fresh is Raw.Loaded && fresh !== raw.value && swap.arrived(fresh) == null
-            if (held) return@launch
-            raw.value = fresh
             fill(extra = 0)
         }
     }
 
-    /**
-     * Fim da lista na tela: busca a próxima página (e mais, se os filtros deixarem poucos vídeos).
-     * Com a lista da conta esperando ([swap]), ela continua a lista da tela: os vídeos que já
-     * estão nela ficam onde estão, e os novos entram embaixo.
-     */
-    fun loadMore() {
-        val shown = raw.value as? Raw.Loaded
-        if (shown != null && !shown.loadingMore) swap.take()?.let { fresh -> raw.value = fresh.copy(pages = shown.pages + fresh.pages) }
-        fill(extra = MIN_NEW)
-    }
+    /** Fim da lista na tela: busca a próxima página (e mais, se os filtros deixarem poucos vídeos). */
+    fun loadMore() = fill(extra = MIN_NEW)
 
     /** Busca páginas até a tela ter pelo menos [MIN_ON_SCREEN] vídeos (e [extra] a mais que agora), até [MAX_PAGES]. */
     private fun fill(extra: Int) {
@@ -164,7 +182,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
                 // Um recarregar cancelou esta busca: não escreve por cima dele.
                 ensureActive()
                 next?.let { ChannelFeedback.note(it.videos) }
-                current = Raw.Loaded(current.pages + listOf(next?.videos.orEmpty()), next ?: VideoPage(emptyList(), null), loadingMore = true)
+                current = current.copy(pages = current.pages + listOf(next?.videos.orEmpty()), lastPage = next ?: VideoPage(emptyList(), null), loadingMore = true)
                 raw.value = current
                 pages++
             }

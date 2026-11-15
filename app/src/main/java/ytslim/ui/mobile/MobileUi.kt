@@ -228,6 +228,7 @@ import ytslim.ui.PlaylistViewModel
 import ytslim.ui.Subscription
 import ytslim.ui.PlaylistsViewModel
 import ytslim.ui.PrefetchThumbnails
+import ytslim.ui.SeenRows
 import ytslim.ui.RecommendedViewModel
 import ytslim.ui.Refreshable
 import ytslim.ui.Screens
@@ -913,15 +914,15 @@ object MobileUi : Screens {
     @Composable
     override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
-        // Com a aba na tela (e não só preparada ao lado, no deslizar), a lista não troca sozinha
-        // ([RecommendedViewModel.onScreen]).
+        // Com a aba na tela (e não só preparada ao lado, no deslizar), a lista nova entra abaixo do
+        // que já foi visto ([RecommendedViewModel.onScreen]).
         val tabShown = LocalTabShown.current
         DisposableEffect(vm, tabShown) {
             vm.onScreen(tabShown)
             onDispose { vm.onScreen(false) }
         }
         Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton() }) { content ->
-            VideoGrid(content, emptyText = stringResource(R.string.recommended_empty), onNearEnd = vm::loadMore, onPlay = onPlay, onOpenChannel = onOpenChannel)
+            VideoGrid(content, emptyText = stringResource(R.string.recommended_empty), onNearEnd = vm::loadMore, onPlay = onPlay, onOpenChannel = onOpenChannel, onSeen = vm::seen)
         }
     }
 
@@ -2015,10 +2016,12 @@ object MobileUi : Screens {
         onPlay: (Video) -> Unit,
         onOpenChannel: ((Channel) -> Unit)?,
         header: (@Composable () -> Unit)? = null,
+        onSeen: ((Int) -> Unit)? = null,
     ) {
         val grid = rememberLazyGridState()
         NearEnd(grid, content.videos.size, onNearEnd)
         PrefetchThumbnails(content.videos, grid)
+        if (onSeen != null) SeenRows(grid, onSeen)
         ListTop(grid, content)
         val cards = rememberCardState()
         val motion = rememberListMotion(content.videos)

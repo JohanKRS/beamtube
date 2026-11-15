@@ -203,6 +203,7 @@ import ytslim.ui.PlaylistViewModel
 import ytslim.ui.Subscription
 import ytslim.ui.PlaylistsViewModel
 import ytslim.ui.PrefetchThumbnails
+import ytslim.ui.SeenRows
 import ytslim.ui.QrCode
 import ytslim.ui.RecommendedViewModel
 import ytslim.ui.Screens
@@ -938,13 +939,13 @@ object TvUi : Screens {
     @Composable
     override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
-        // Com a aba na tela, a lista não troca sozinha ([RecommendedViewModel.onScreen]).
+        // Com a aba na tela, a lista nova entra abaixo do que já foi visto ([RecommendedViewModel.onScreen]).
         DisposableEffect(vm) {
             vm.onScreen(true)
             onDispose { vm.onScreen(false) }
         }
         Loadable(state, onRetry = vm::reload) { content ->
-            VideoGrid(content, stringResource(R.string.recommended_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
+            VideoGrid(content, stringResource(R.string.recommended_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {}, onSeen = vm::seen)
         }
     }
 
@@ -2191,12 +2192,14 @@ object TvUi : Screens {
         showSaved: Boolean = true,
         onRemove: ((Video) -> Unit)? = null,
         removeLabel: String? = null,
+        onSeen: ((Int) -> Unit)? = null,
     ) {
         val firstFocus = remember { FocusRequester() }
         val saved by SavedVideos.ids.collectAsStateWithLifecycle()
         val grid = rememberLazyGridState()
         var inGrid by remember { mutableStateOf(false) }
         PrefetchThumbnails(content.videos, grid)
+        if (onSeen != null) SeenRows(grid, onSeen)
         // De volta ao começo com vídeos novos: o foco que estava na grade vai para o primeiro deles.
         ListTop(grid, content) {
             if (!inGrid) return@ListTop
