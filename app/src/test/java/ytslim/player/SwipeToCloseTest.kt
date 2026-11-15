@@ -20,7 +20,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Arrastar o vídeo para baixo fecha o player no celular (pedido do Johan, 2026-11-14: ele esconde a
- * barra de navegação e o indicador, e só tinha o gesto de voltar).
+ * barra de navegação e o indicador, e só tinha o gesto de voltar). Desde a 1.0.9 o vídeo fica
+ * parado, desfocando e escurecendo, e fecha ao soltar.
  */
 @RunWith(RobolectricTestRunner::class)
 class SwipeToCloseTest {
@@ -53,10 +54,13 @@ class SwipeToCloseTest {
     }
 
     @Test
-    fun theVideoShrinksALittleAsItGoesDown() {
-        assertEquals(1f, SwipeRules.scale(0f, 1000), 0.001f)
-        assertEquals(0.94f, SwipeRules.scale(200f, 1000), 0.001f)
-        assertEquals(SwipeRules.MIN_SCALE, SwipeRules.scale(5000f, 1000), 0.001f)
+    fun theBlurFollowsTheFingerUpToWhereLettingGoCloses() {
+        // Celular deitado: 411 dp de altura, fecha a 82 dp; em pé, a 160 dp.
+        val landscape = (411 * density).toInt()
+        assertEquals(0f, SwipeRules.progress(0f, landscape, density), 0.001f)
+        assertEquals(0.5f, SwipeRules.progress(41.1f * density, landscape, density), 0.01f)
+        assertEquals(1f, SwipeRules.progress(300 * density, landscape, density), 0.001f)
+        assertEquals(0.5f, SwipeRules.progress(80 * density, (891 * density).toInt(), density), 0.01f)
     }
 
     private fun openPlayer(): PlayerActivity {
@@ -99,28 +103,33 @@ class SwipeToCloseTest {
     fun draggingTheVideoDownClosesThePlayer() {
         val player = openPlayer()
         drag(player, down = player.window.decorView.height * 0.4f)
-        // 1.0.8: antes de fechar, a miniatura desfocada volta por cima do vídeo (o contrário da abertura).
+        // 1.0.9: a miniatura desfocada cobre o vídeo e a tela vai ao preto antes de fechar.
         shadowOf(Looper.getMainLooper()).idleFor(400, TimeUnit.MILLISECONDS)
         assertTrue(loadingOf(player).posterShown)
+        assertEquals(1f, loadingOf(player).shadeAlpha, 0.001f)
         assertTrue(player.isFinishing)
     }
 
     @Test
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
-    fun theVideoFollowsTheFingerAndGoesBackIfLetGoEarly() {
+    fun theVideoStaysStillDarkensAndComesBackIfLetGoEarly() {
         val player = openPlayer()
         val screen = screenOf(player)
-        // Segurando no meio do caminho: o vídeo desceu e encolheu um pouco.
+        val loading = loadingOf(player)
+        // Segurando no meio do caminho (1.0.9): o vídeo não sai do lugar, a tela vai escurecendo.
         drag(player, down = 120f, release = false)
-        assertTrue(screen.translationY > 0f)
-        assertTrue(screen.scaleX < 1f)
-        // Soltar devagar, pouco abaixo de onde começou: volta ao lugar e o player continua.
+        assertEquals(0f, screen.translationY, 0.01f)
+        assertEquals(1f, screen.scaleX, 0.001f)
+        assertTrue(loading.shadeAlpha > 0f)
+        assertTrue(loading.shadeAlpha < 1f)
+        // Soltar devagar, pouco abaixo de onde começou: o escuro sai e o player continua.
         val time = SystemClock.uptimeMillis() + 2_000
         player.dispatchTouchEvent(MotionEvent.obtain(time, time, MotionEvent.ACTION_UP, player.window.decorView.width / 2f, 300f, 0))
         shadowOf(Looper.getMainLooper()).idleFor(1, TimeUnit.SECONDS)
         assertFalse(player.isFinishing)
-        assertEquals(0f, screen.translationY, 0.5f)
-        assertEquals(1f, screen.scaleX, 0.001f)
+        assertEquals(0f, loading.shadeAlpha, 0.001f)
+        // A miniatura estava na frente (o vídeo ainda não começou aqui) e continua.
+        assertTrue(loading.posterShown)
         player.finish()
     }
 
@@ -128,10 +137,9 @@ class SwipeToCloseTest {
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
     fun upwardOrSidewaysDoesNothing() {
         val player = openPlayer()
-        val screen = screenOf(player)
         drag(player, down = -300f)
         assertFalse(player.isFinishing)
-        assertEquals(0f, screen.translationY, 0.01f)
+        assertEquals(0f, loadingOf(player).shadeAlpha, 0.001f)
         player.finish()
     }
 

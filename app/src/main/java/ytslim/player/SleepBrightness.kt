@@ -46,6 +46,19 @@ object SleepBrightness {
      */
     fun videoDim(level: Int): Float = 1f - level.coerceIn(0, 100).toFloat() / screens(level)
 
+    /**
+     * A camada só do vídeo fica na tela em todo brilho abaixo de 100%, mesmo quando não escurece nada
+     * ([videoDim] zero, de 50% a 10%): a faixa clara no pé do vídeo (achado do Johan na TV, 1.0.8 e
+     * 1.0.9). O vídeo é uma camada (SurfaceView) por baixo da janela, e o Android só junta a janela
+     * por cima dele onde alguma view desenha; no resto, a janela vale como vazia e nem é mostrada,
+     * com a camada preta junto. Por cima do vídeo ficava só a legenda, que não chega ao pé da tela (a
+     * margem de baixo dela e a subida acima da barra): ali o vídeo aparecia com o brilho normal. A
+     * anotação muda a cada layout, então dependia de os controles estarem na tela: no primeiro vídeo,
+     * com o brilho escolhido no painel, a barra de baixo cobria o pé; nos seguintes, os controles não
+     * abrem sozinhos com o brilho baixo. Na tela, esta camada cobre o vídeo inteiro.
+     */
+    fun coversVideo(level: Int): Boolean = level < 100
+
     /** Põe a camada preta da janela, por cima de tudo o que ela desenha (sem pegar toques nem teclas). */
     fun applyTo(window: Window, level: Int = this.level.value) {
         val alpha = windowDim(level)
@@ -53,11 +66,9 @@ object SleepBrightness {
     }
 
     /**
-     * A camada preta: pinta tudo o que a janela desenha, sem depender dos limites dela (1.0.8, achado
-     * do Johan na TV: com o brilho baixo, do segundo vídeo em diante ficava uma faixa clara no pé do
-     * vídeo). O player abre já com o brilho escolhido, e o Android media os limites da camada antes de
-     * a janela chegar ao tamanho final; um ColorDrawable ficava com a altura de antes e deixava o pé
-     * da tela de fora.
+     * A camada preta: pinta tudo o que a janela desenha, sem depender dos limites dela (1.0.8): o
+     * player abre já com o brilho escolhido, e os limites são medidos antes de a janela chegar ao
+     * tamanho final. Não era isso que deixava a faixa clara no pé do vídeo ([coversVideo]).
      */
     internal class Dim(val color: Int) : Drawable() {
         override fun draw(canvas: Canvas) = canvas.drawColor(color)

@@ -209,8 +209,9 @@
     <string name="player_saved_to">Saved to %1$s</string>
     <string name="player_removed_from">Removed from %1$s</string>
     <string name="player_jumped_ahead">Jumped ahead</string>
-    <string name="player_captions">Turn on captions</string>
-    <string name="player_captions_off">Turn off captions</string>
+    <string name="player_captions">Captions</string>
+    <string name="player_captions_none">Off</string>
+    <string name="player_captions_original">Original</string>
     <string name="player_quality">Quality</string>
     <string name="player_live">LIVE</string>
     <string name="player_go_live">Go to live</string>

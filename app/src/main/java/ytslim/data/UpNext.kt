@@ -75,9 +75,9 @@ object UpNext {
     }
 
     /**
-     * O modo dormir está em uso: o vídeo escurecido, um limite no "Then play" ou "Turn off". Aí o
-     * fim fica como sempre foi (parado, ou a TV desligando), sem tela de sugestões.
+     * O modo dormir está em uso: um limite no "Then play" ou "Turn off". Aí o fim fica como sempre
+     * foi (parado, ou a TV desligando), sem tela de sugestões. Só o brilho baixo não conta (1.0.9,
+     * pedido do Johan): com o vídeo escurecido, a tela do fim aparece como sempre.
      */
-    fun sleeping(brightness: Int, queueLimited: Boolean, turnOff: Boolean): Boolean =
-        brightness < 100 || queueLimited || turnOff
+    fun sleeping(queueLimited: Boolean, turnOff: Boolean): Boolean = queueLimited || turnOff
 }

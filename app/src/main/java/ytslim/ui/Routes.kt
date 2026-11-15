@@ -22,6 +22,10 @@ data class TopicsRoute(val firstRun: Boolean)
 @Serializable
 data object TopicListsRoute
 
+/** As playlists inscritas, aberta pelos Ajustes (1.0.9). */
+@Serializable
+data object SubscribedPlaylistsRoute
+
 @Serializable
 data class PlaylistRoute(
     val browseId: String,

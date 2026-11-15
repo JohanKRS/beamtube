@@ -71,9 +71,8 @@ class UpNextTest {
 
     @Test
     fun sleepModeKeepsTheOldEnd() {
-        assertFalse(UpNext.sleeping(brightness = 100, queueLimited = false, turnOff = false))
-        assertTrue(UpNext.sleeping(brightness = 40, queueLimited = false, turnOff = false))
-        assertTrue(UpNext.sleeping(brightness = 100, queueLimited = true, turnOff = false))
-        assertTrue(UpNext.sleeping(brightness = 100, queueLimited = false, turnOff = true))
+        assertFalse(UpNext.sleeping(queueLimited = false, turnOff = false))
+        assertTrue(UpNext.sleeping(queueLimited = true, turnOff = false))
+        assertTrue(UpNext.sleeping(queueLimited = false, turnOff = true))
     }
 }

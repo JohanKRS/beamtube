@@ -67,6 +67,9 @@ object PlaybackRepository {
     /** TV: depois de um pedido adiantado que não trouxe o vídeo, quanto tempo sem adiantar outros. */
     private const val GUESS_PAUSE_MS = 5 * 60_000L
 
+    /** O parâmetro da tradução automática na URL de uma legenda. */
+    private val TLANG = Regex("[?&]tlang=")
+
     val userAgent: String get() = DefaultHeaders.APP_USER_AGENT
 
     /** Os vídeos pedidos antes de a tela do player precisar deles ([EarlyRequests]). */
@@ -205,6 +208,9 @@ object PlaybackRepository {
                     language = sub.languageCode,
                     name = sub.name,
                     auto = sub.type == "asr" || sub.vssId?.startsWith("a.") == true,
+                    translatable = sub.isTranslatable,
+                    // O motor junta as traduções automáticas da legenda da fala: a URL leva tlang e o nome, "*".
+                    translated = TLANG.containsMatchIn(sub.baseUrl) || sub.name?.endsWith("*") == true,
                 )
             },
             storyboard = if (isLive) null else Storyboard.from(runCatching { createStoryboard() }.getOrNull()),

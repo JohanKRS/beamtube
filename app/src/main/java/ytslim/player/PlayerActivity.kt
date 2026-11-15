@@ -64,6 +64,7 @@ import coil3.request.ImageRequest
 import coil3.size.Size as CoilSize
 import coil3.toBitmap
 import java.lang.ref.WeakReference
+import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -72,6 +73,8 @@ import ytslim.MainActivity
 import ytslim.R
 import ytslim.isTv
 import ytslim.data.AppScope
+import ytslim.data.CaptionLanguage
+import ytslim.data.CaptionOption
 import ytslim.data.Chapter
 import ytslim.data.Chapters
 import ytslim.data.EndAction
@@ -134,6 +137,8 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var durationView: View
     private lateinit var qualityPanel: View
     private lateinit var qualityRow: LinearLayout
+    private lateinit var captionsPanel: View
+    private lateinit var captionsRow: LinearLayout
     private lateinit var brightnessRow: LinearLayout
     private lateinit var queueRow: LinearLayout
     private lateinit var endRow: LinearLayout
@@ -148,7 +153,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var previewTime: TextView
     private lateinit var endScreen: EndScreen
 
-    /** A tela inteira do player (o que desce junto com o dedo no [SwipeToClose]). */
+    /** A tela inteira do player (a altura dela mede o arrastar do [SwipeToClose]). */
     private lateinit var screen: View
 
     private var saveHistory = true
@@ -193,6 +198,7 @@ class PlayerActivity : ComponentActivity() {
 
     /** As resoluções que o painel de qualidade mostra agora. */
     private var qualityHeights: List<Int> = emptyList()
+    private var captionOptions: List<CaptionOption> = emptyList()
 
     /** Os trechos que o avanço pula inteiros, marcados agora na barra de tempo. */
     private var shownSkipSpots: List<Long> = emptyList()
@@ -237,7 +243,7 @@ class PlayerActivity : ComponentActivity() {
     /** O player abriu com as animações dele ([useTransitions]); fechar usa as de fechar. */
     private var transitions = false
 
-    /** Fechando por ter sido arrastado para baixo ([SwipeToClose]): a miniatura desfocada voltando por cima. */
+    /** Fechando por ter sido arrastado para baixo ([SwipeToClose]): a tela indo ao preto. */
     private var closingBySwipe = false
 
     /** Pulos seguidos com dois toques: o lado, até quando um toque só ainda soma, e o total. */
@@ -489,10 +495,68 @@ class PlayerActivity : ComponentActivity() {
             timeBar.setChapters(chapters.map { it.startMs })
             showChapter(controller.player.currentPosition)
         }
-        captionsButton.visibility = if (controls.captionsAvailable) View.VISIBLE else View.GONE
-        captionsButton.setActive(controls.captionsOn)
-        captionsButton.contentDescription =
-            getString(if (controls.captionsOn) R.string.player_captions_off else R.string.player_captions)
+        renderCaptions(controls)
+    }
+
+    /**
+     * Botão de legenda (1.0.9, pedido do Johan): abre o painel com "Off" e a legenda no idioma do
+     * app, no original e em inglês, sem repetir ([ytslim.data.SubtitleRules.options]). Aceso com a legenda ligada.
+     */
+    private fun renderCaptions(controls: PlaybackController.Controls) {
+        captionsButton.visibility = if (controls.captionOptions.isEmpty()) View.GONE else View.VISIBLE
+        captionsButton.setActive(controls.captionShown != null)
+        if (controls.captionOptions != captionOptions) {
+            captionOptions = controls.captionOptions
+            captionsRow.removeAllViews()
+            captionsRow.addView(chip(getString(R.string.player_captions_none), CAPTIONS_OFF) { chooseCaption(null) })
+            controls.captionOptions.forEach { option ->
+                captionsRow.addView(chip(captionLabel(option), option.language) { chooseCaption(option) })
+            }
+            if (controls.captionOptions.isEmpty() && openPanel == captionsPanel) closePanel(focusButton = false)
+            fitChips(captionsRow)
+        }
+        captionsRow.select(controls.captionShown?.language ?: CAPTIONS_OFF)
+    }
+
+    /** O nome do idioma no idioma do app ("Português", "Inglês"); a do original sozinha é "Original". */
+    private fun captionLabel(option: CaptionOption): String {
+        if (option.choices == setOf(CaptionLanguage.ORIGINAL)) return getString(R.string.player_captions_original)
+        val locale = resources.configuration.locales[0]
+        return Locale.forLanguageTag(option.language).getDisplayLanguage(locale)
+            .replaceFirstChar { it.titlecase(locale) }
+            .ifBlank { option.language }
+    }
+
+    /**
+     * Num celular estreito em pé, os nomes dos idiomas não cabem com o espaço de sempre: as opções
+     * ficam mais justas (e, no limite, com a letra um pouco menor), sempre numa linha só.
+     */
+    private fun fitChips(row: LinearLayout) {
+        val chips = (0 until row.childCount).map { row.getChildAt(it) as TextView }
+        if (chips.isEmpty()) return
+        val panel = row.parent as View
+        val margins = (panel.layoutParams as? ViewGroup.MarginLayoutParams)?.let { it.marginStart + it.marginEnd } ?: 0
+        val screen = playerView.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val room = screen - margins - panel.paddingStart - panel.paddingEnd - row.paddingStart - row.paddingEnd
+        val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        fun width(): Int = chips.sumOf { it.measure(unspecified, unspecified); it.measuredWidth }
+        val sizes = listOf(13f, 12f, 11f)
+        for (size in sizes) {
+            for (padding in listOf(12, 9, 6, 4)) {
+                chips.forEach {
+                    it.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+                    it.setPadding(dp(padding), it.paddingTop, dp(padding), it.paddingBottom)
+                    it.minWidth = if (padding < 12) 0 else dp(52)
+                    it.minimumWidth = it.minWidth
+                }
+                if (width() <= room) return
+            }
+        }
+    }
+
+    private fun chooseCaption(option: CaptionOption?) {
+        controller.chooseCaption(option)
+        closePanel()
     }
 
     private fun bindButtons() {
@@ -507,7 +571,7 @@ class PlayerActivity : ComponentActivity() {
             finish()
             startActivity(MainActivity.channelIntent(this, channelId, page.channelName.orEmpty()))
         }
-        captionsButton.setOnClickListener { controller.toggleCaptions() }
+        captionsButton.setOnClickListener { togglePanel(captionsPanel) }
         sleepButton.setOnClickListener { togglePanel(sleepPanel) }
         rotateButton.setOnClickListener { rotate() }
         qualityButton.setOnClickListener { togglePanel(qualityPanel) }
@@ -605,6 +669,7 @@ class PlayerActivity : ComponentActivity() {
         TextView(this, null, 0, R.style.PlayerChip).apply {
             this.text = text
             tag = value
+            isSingleLine = true
             // Peso 1: num trilho alargado por [sameWidth], as opções crescem por igual.
             layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, dp(34), 1f)
             setOnClickListener { onClick() }
@@ -649,6 +714,8 @@ class PlayerActivity : ComponentActivity() {
         if (openPanel == panel) return closePanel()
         closePanel(focusButton = false)
         if (panel == sleepPanel) renderSleep()
+        // A largura muda ao girar o celular.
+        if (panel == captionsPanel) fitChips(captionsRow)
         panel.visibility = View.VISIBLE
         openPanel = panel
         closePanelOnBack.isEnabled = true
@@ -657,10 +724,10 @@ class PlayerActivity : ComponentActivity() {
         playerView.showController()
         // Na TV, o foco fica na lua: ela só abre e fecha a caixa (1.0.8, pedido do Johan; ir direto
         // para o brilho confundia, e o "cima" de costume levava ao canal, no alto). [sleepPanelKey].
-        val focus = if (panel == sleepPanel) {
-            if (touch) brightnessRow.findViewWithTag<View>(brightness) else sleepButton
-        } else {
-            qualityRow.findViewWithTag<View>(controller.quality.value.manual ?: AUTO_QUALITY)
+        val focus = when (panel) {
+            sleepPanel -> if (touch) brightnessRow.findViewWithTag<View>(brightness) else sleepButton
+            captionsPanel -> captionsRow.findViewWithTag<View>(controller.controls.value.captionShown?.language ?: CAPTIONS_OFF)
+            else -> qualityRow.findViewWithTag<View>(controller.quality.value.manual ?: AUTO_QUALITY)
         }
         focus?.requestFocus()
     }
@@ -673,7 +740,11 @@ class PlayerActivity : ComponentActivity() {
         playerView.controllerShowTimeoutMs = CONTROLS_TIMEOUT_MS
         if (focusButton) {
             playerView.showController()
-            (if (panel == sleepPanel) sleepButton else qualityButton).requestFocus()
+            when (panel) {
+                sleepPanel -> sleepButton
+                captionsPanel -> captionsButton
+                else -> qualityButton
+            }.requestFocus()
         }
     }
 
@@ -686,9 +757,11 @@ class PlayerActivity : ComponentActivity() {
         brightness = level
         SleepBrightness.set(level)
         SleepBrightness.applyTo(window, level)
-        val videoDim = SleepBrightness.videoDim(level)
-        dimView.alpha = videoDim
-        dimView.visibility = if (videoDim > 0f) View.VISIBLE else View.GONE
+        dimView.alpha = SleepBrightness.videoDim(level)
+        // Na tela sempre que há escurecimento, mesmo transparente (de 50% a 10% o vídeo escurece só
+        // pela camada da janela). O vídeo fica numa camada por baixo da janela, e o Android só junta
+        // a janela por cima dele onde alguma view desenha ([SleepBrightness.coversVideo]).
+        dimView.visibility = if (SleepBrightness.coversVideo(level)) View.VISIBLE else View.GONE
         // Escurecido, os controles não acendem sozinhos na troca de vídeo nem no fim.
         playerView.controllerAutoShow = level == 100
         renderSleep()
@@ -739,13 +812,13 @@ class PlayerActivity : ComponentActivity() {
 
     /**
      * O fim sem o "Turn off" (1.0, pedido do Johan): a tela de sugestões, voltar para a tela de onde
-     * o vídeo veio, tocar a primeira sugestão ou ficar parado ([EndAction], [UpNext]). Com o modo
-     * dormir em uso (o vídeo escurecido ou um limite no "Then play"), fica parado, como sempre; na
-     * janelinha flutuante e depois de um erro, também.
+     * o vídeo veio, tocar a primeira sugestão ou ficar parado ([EndAction], [UpNext]). Com um limite
+     * no "Then play", fica parado, como sempre; na janelinha flutuante e depois de um erro, também.
+     * O brilho baixo sozinho não impede a tela do fim (1.0.9).
      */
     private fun afterEnd() {
         val queueLimited = PlayQueue.active.value && PlayQueue.left.value != PlayQueue.ALL
-        if (UpNext.sleeping(brightness, queueLimited, turnOff = false) || floating || isFinishing) return
+        if (UpNext.sleeping(queueLimited, turnOff = false) || floating || isFinishing) return
         if (controller.state.value is PlaybackController.State.Failed) return
         lifecycleScope.launch {
             val settings = SettingsRepository.current()
@@ -1032,11 +1105,10 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /**
-     * Arrastado para baixo e solto ([SwipeToClose]): o inverso da abertura (1.0.8, pedido do Johan:
-     * "o reverso da animação de entrada do vídeo, com aquele fade para blur"). O vídeo some por baixo
-     * da miniatura desfocada, como ela tinha saído por cima dele ao começar ([PlayerLoading.blurBack]),
-     * e então o player fecha encolhendo, como no voltar. Até a 1.0.7 ele continuava descendo e sumia.
-     * Com as animações desligadas no Android, fecha na hora.
+     * Arrastado para baixo e solto ([SwipeToClose]): a miniatura desfocada termina de cobrir o vídeo,
+     * a tela vai ao preto e o player fecha (1.0.9, pedido do Johan: "um blur, um fade to black, e daí
+     * fecha"; [PlayerLoading.fadeOut]). Na 1.0.8 o vídeo descia com o dedo e o desfoque só vinha ao
+     * soltar. Com as animações desligadas no Android, fecha na hora.
      */
     private fun closeBySwipe() {
         if (isFinishing || closingBySwipe) return
@@ -1044,8 +1116,14 @@ class PlayerActivity : ComponentActivity() {
         playerView.hideController()
         val animations = android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
         if (!transitions || !animations) return close()
-        loading.blurBack(BLUR_BACK_MS)
-        screen.postDelayed(::close, BLUR_BACK_MS)
+        loading.fadeOut(FADE_OUT_MS)
+        screen.postDelayed(::close, FADE_OUT_MS)
+    }
+
+    /** O dedo arrastando para fechar: o vídeo parado, ficando desfocado e escuro ([PlayerLoading.drag]). */
+    private fun dragToClose(progress: Float) {
+        if (playerView.isControllerFullyVisible) playerView.hideController()
+        loading.drag(progress)
     }
 
     /**
@@ -1073,9 +1151,9 @@ class PlayerActivity : ComponentActivity() {
                 }
             },
         )
-        val swipe = SwipeToClose(screen, onClose = ::closeBySwipe)
+        val swipe = SwipeToClose(screen, onDrag = ::dragToClose, onCancel = loading::undrag, onClose = ::closeBySwipe)
         playerView.setOnTouchListener { _, event ->
-            // Solto para fechar: o vídeo fica onde o dedo o deixou enquanto o player fecha.
+            // Solto para fechar: a tela vai ao preto, e nenhum toque conta mais.
             if (closingBySwipe) return@setOnTouchListener true
             val wasDragging = swipe.dragging
             if (swipe.onTouch(event)) {
@@ -1388,6 +1466,8 @@ class PlayerActivity : ComponentActivity() {
         durationView = playerView.findViewById(androidx.media3.ui.R.id.exo_duration)
         qualityPanel = playerView.findViewById(R.id.player_quality_panel)
         qualityRow = playerView.findViewById(R.id.player_quality_options)
+        captionsPanel = playerView.findViewById(R.id.player_captions_panel)
+        captionsRow = playerView.findViewById(R.id.player_captions_options)
         brightnessRow = playerView.findViewById(R.id.player_sleep_brightness)
         queueRow = playerView.findViewById(R.id.player_sleep_queue)
         endRow = playerView.findViewById(R.id.player_sleep_end)
@@ -1513,6 +1593,8 @@ class PlayerActivity : ComponentActivity() {
 
         /** A opção "Auto" do painel de resolução (as outras são as alturas). */
         private const val AUTO_QUALITY = 0
+        /** A etiqueta da opção "Off" do painel de legenda (as outras levam o código do idioma). */
+        private const val CAPTIONS_OFF = ""
 
         /** O player que está no mini player agora, se houver (um vídeo novo o fecha). */
         private var floatingPlayer: WeakReference<PlayerActivity>? = null
@@ -1525,7 +1607,7 @@ class PlayerActivity : ComponentActivity() {
          * player fechar encolhendo (0,17 s). Na abertura, ela sai em 0,3 s; aqui, mais rápido, para
          * o fechar não parecer lento.
          */
-        private const val BLUR_BACK_MS = 160L
+        private const val FADE_OUT_MS = 180L
 
         private const val STEP_SECONDS = (TouchRules.SEEK_STEP_MS / 1000).toInt()
 

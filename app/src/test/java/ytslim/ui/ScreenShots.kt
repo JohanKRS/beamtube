@@ -973,6 +973,51 @@ class ScreenShots {
         TvUi.Theme { TvUi.TopicLists(TopicListsViewModel()) {} }
     }
 
+    /**
+     * A tela das playlists inscritas (1.0.9) com as de outros canais: o pedido à conta termina (sem
+     * rede, vazio ou com erro) e a tela fica com estas.
+     */
+    @Composable
+    private fun subscribedVm(): SubscribedPlaylistsViewModel {
+        val vm = androidx.compose.runtime.remember { SubscribedPlaylistsViewModel() }
+        androidx.compose.runtime.LaunchedEffect(vm) {
+            @Suppress("UNCHECKED_CAST")
+            val state = SubscribedPlaylistsViewModel::class.java.getDeclaredField("_playlists").apply { isAccessible = true }
+                .get(vm) as kotlinx.coroutines.flow.MutableStateFlow<UiState<List<SubscribedPlaylistsViewModel.SubscribedPlaylist>>>
+            val shown = UiState.Ready(playlists.drop(2).take(2).map { SubscribedPlaylistsViewModel.SubscribedPlaylist(it) })
+            // O que o pedido à conta trouxer depois (sem rede) é trocado por estas.
+            state.collect { if (it != shown) state.value = shown }
+        }
+        return vm
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneSubscribedPlaylists() = shot("phone-subscribed-playlists") {
+        MobileUi.Theme { MobileUi.SubscribedPlaylists(subscribedVm(), {}, {}) }
+    }
+
+    @Test
+    @Config(qualifiers = "pt-w411dp-h891dp-xxhdpi")
+    fun phoneSubscribedPlaylistsPortuguese() = shot("phone-subscribed-playlists-pt") {
+        MobileUi.Theme { MobileUi.SubscribedPlaylists(subscribedVm(), {}, {}) }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSubscribedPlaylists() = shot("tv-subscribed-playlists") {
+        TvUi.Theme { TvUi.SubscribedPlaylists(subscribedVm(), {}, {}) }
+    }
+
+    /** O grupo das playlists nos Ajustes (1.0.9): uma linha que leva à tela delas. */
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneSettingsPlaylists() = shot("phone-settings-playlists", action = {
+        compose.onNode(androidx.compose.ui.test.hasScrollToIndexAction()).performScrollToNode(hasText("Subscribed playlists"))
+    }) {
+        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
+    }
+
     /** O grupo dos tópicos nos Ajustes, com a linha que leva aos tópicos um por um e quantos há. */
     @Test
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
@@ -1211,12 +1256,14 @@ class ScreenShots {
         sleep: Boolean = false,
         /** O brilho do modo dormir já escolhido (1.0.4: os controles seguem, sem ficar abaixo de 10%). */
         brightness: Int = 100,
-        /** O vídeo arrastado para baixo esta fração da altura, ainda com o dedo na tela ([ytslim.player.SwipeToClose]). */
+        /** O dedo arrastando para fechar, esta fração do caminho até onde soltar fecha ([ytslim.player.SwipeToClose]). */
         swipe: Float = 0f,
+        /** O painel da legenda aberto (1.0.9): Off, o idioma do app, o original (japonês) e inglês. */
+        captionChoices: Boolean = false,
     ) {
         ytslim.player.SleepBrightness.set(brightness)
         try {
-            playerShotAt(name, tv, jumped, scrub, captions, hidden, live, channelFocused, captionsAtMs, rolling, loading, sleep, swipe)
+            playerShotAt(name, tv, jumped, scrub, captions, hidden, live, channelFocused, captionsAtMs, rolling, loading, sleep, swipe, captionChoices)
         } finally {
             ytslim.player.SleepBrightness.set(100)
         }
@@ -1236,6 +1283,7 @@ class ScreenShots {
         loading: String?,
         sleep: Boolean,
         swipe: Float,
+        captionChoices: Boolean,
     ) {
         val context = org.robolectric.RuntimeEnvironment.getApplication()
         // O qualificador "television" não chega ao UiModeManager do Robolectric: sem isso o player
@@ -1259,13 +1307,6 @@ class ScreenShots {
         when (loading) {
             // A miniatura do card (aqui não há rede para o carregador de imagens buscá-la).
             "opening" -> loadingView.showPoster(thumb)
-            // Como o closeBySwipe deixa a tela no fim da volta da miniatura ([PlayerLoading.blurBack]).
-            "closing" -> {
-                loadingView.stop()
-                loadingView.showPoster(thumb)
-                loadingView.blurBack(0)
-                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-            }
             "buffering" -> {
                 loadingView.stop()
                 loadingView.setBusy(true)
@@ -1273,7 +1314,7 @@ class ScreenShots {
             }
             else -> loadingView.stop()
         }
-        if (loading != "opening" && loading != "closing") playerView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)?.background =
+        if (loading != "opening") playerView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)?.background =
             android.graphics.drawable.BitmapDrawable(activity.resources, thumb)
         playerView.findViewById<android.view.View>(ytslim.R.id.player_actions)?.visibility = android.view.View.VISIBLE
         playerView.findViewById<android.view.View>(ytslim.R.id.player_save)?.visibility = android.view.View.VISIBLE
@@ -1333,6 +1374,21 @@ class ScreenShots {
             playerView.findViewById<android.view.View>(ytslim.R.id.player_channel).apply { isFocusableInTouchMode = true }.requestFocus()
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         }
+        if (captionChoices) {
+            // Um vídeo em japonês: o app traduz para o idioma dele e para o inglês ([ytslim.data.SubtitleRules]).
+            val app = activity.resources.configuration.locales[0].language
+            val list = listOf(
+                ytslim.data.Caption("https://x/t?lang=ja&kind=asr", "text/vtt", "ja", "Japanese", auto = true, translatable = true),
+            )
+            val options = ytslim.data.SubtitleRules.options(list, app, "ja")
+            val controls = ytslim.player.PlaybackController.Controls(captionOptions = options, captionShown = options.first())
+            ytslim.player.PlayerActivity::class.java
+                .getDeclaredMethod("renderCaptions", ytslim.player.PlaybackController.Controls::class.java)
+                .apply { isAccessible = true }
+                .invoke(activity, controls)
+            playerView.findViewById<android.view.View>(ytslim.R.id.player_captions).performClick()
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(600))
+        }
         if (sleep) {
             playerView.findViewById<android.view.View>(ytslim.R.id.player_sleep).performClick()
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(600))
@@ -1368,11 +1424,11 @@ class ScreenShots {
         playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_detail)?.text = spacedDotsForViews("· ${v.published}")
         relayout(activity)
         if (swipe > 0f) {
-            // Como o SwipeToClose deixa a tela do player com o dedo ainda arrastando.
-            val screen = playerView.parent as android.view.View
-            val distance = screen.height * swipe
-            screen.translationY = distance
-            ytslim.player.SwipeRules.scale(distance, screen.height).let { screen.scaleX = it; screen.scaleY = it }
+            // Como o SwipeToClose deixa a tela do player com o dedo ainda arrastando (o vídeo parado).
+            loadingView.stop()
+            loadingView.showPoster(thumb)
+            loadingView.drag(swipe)
+            relayout(activity)
         }
         val view = activity.window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
@@ -1410,12 +1466,12 @@ class ScreenShots {
 
     @Test
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
-    fun playerPhoneSwiping() = playerShot("player-phone-swiping", hidden = true, swipe = 0.18f)
+    fun playerPhoneSwiping() = playerShot("player-phone-swiping", hidden = true, swipe = 0.5f)
 
-    /** Solto depois de arrastar (1.0.8): a miniatura desfocada já voltou por cima do vídeo, e o player fecha. */
+    /** Arrastado até onde soltar fecha (1.0.9): a miniatura desfocada cobre o vídeo, com a tela escura; soltando, vai ao preto e fecha. */
     @Test
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
-    fun playerPhoneSwipeClosing() = playerShot("player-phone-swipe-closing", loading = "closing", hidden = true, swipe = 0.22f)
+    fun playerPhoneSwipeClosing() = playerShot("player-phone-swipe-closing", hidden = true, swipe = 1f)
 
     @Test
     @Config(qualifiers = "w411dp-h891dp-port-xxhdpi")
@@ -1475,6 +1531,23 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun playerTvSleep() = playerShot("player-tv-sleep", tv = true, sleep = true)
+
+    @Test
+    @Config(qualifiers = "pt-w960dp-h540dp-land-television-xhdpi")
+    fun playerTvCaptionChoicesPortuguese() = playerShot("player-tv-caption-choices-pt", tv = true, captionChoices = true)
+
+    @Test
+    @Config(qualifiers = "pt-w411dp-h891dp-port-xxhdpi")
+    fun playerPhoneCaptionChoicesPortuguese() = playerShot("player-phone-caption-choices-pt", captionChoices = true)
+
+    /** O espanhol tem os nomes mais compridos ("Desactivados"): cabe no celular em pé? */
+    @Test
+    @Config(qualifiers = "es-w360dp-h780dp-port-xxhdpi")
+    fun playerPhoneCaptionChoicesSpanish() = playerShot("player-phone-caption-choices-es", captionChoices = true)
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneCaptionChoices() = playerShot("player-phone-caption-choices", captionChoices = true)
 
     @Test
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")

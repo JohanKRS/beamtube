@@ -169,6 +169,22 @@
                 android:layout_marginTop="10dp" />
         </LinearLayout>
 
+        <!-- A legenda: desligada, no idioma do app, no original ou em inglês (PlayerActivity.renderCaptions). -->
+        <LinearLayout
+            android:id="@+id/player_captions_panel"
+            style="@style/PlayerPanel"
+            android:visibility="gone">
+
+            <TextView
+                style="@style/PlayerPanelTitle"
+                android:text="@string/player_captions" />
+
+            <LinearLayout
+                android:id="@+id/player_captions_options"
+                style="@style/PlayerSegments"
+                android:layout_marginTop="10dp" />
+        </LinearLayout>
+
         <LinearLayout
             android:id="@+id/player_sleep_panel"
             style="@style/PlayerPanel"

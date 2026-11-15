@@ -203,8 +203,9 @@
     <string name="player_saved_to">Salvo em %1$s</string>
     <string name="player_removed_from">Tirado de %1$s</string>
     <string name="player_jumped_ahead">Pulou para a frente</string>
-    <string name="player_captions">Ligar legendas</string>
-    <string name="player_captions_off">Desligar legendas</string>
+    <string name="player_captions">Legendas</string>
+    <string name="player_captions_none">Desligada</string>
+    <string name="player_captions_original">Original</string>
     <string name="player_quality">Qualidade</string>
     <string name="player_live">AO VIVO</string>
     <string name="player_go_live">Ir para o ao vivo</string>
