@@ -15,13 +15,9 @@ import ytslim.data.AppIcons
 import ytslim.data.AppScope
 import ytslim.data.Engine
 import ytslim.data.EngineWarmup
-import ytslim.data.ExploreRepository
-import ytslim.data.FeedCache
 import ytslim.data.FirstRun
-import ytslim.data.ListCache
-import ytslim.data.PlaylistSubscriptions
-import ytslim.data.WatchPositions
 import ytslim.data.SettingsRepository
+import ytslim.data.Users
 import ytslim.player.AccessibilityRebind
 import ytslim.player.ScreenOffService
 import ytslim.ui.Accents
@@ -37,20 +33,17 @@ class App : Application(), SingletonImageLoader.Factory {
         AppLanguage.init(this)
         AppVisibility.init(this)
         Engine.init(this)
+        // Antes dos dados de cada usuário: eles ficam na pasta e nas preferências do usuário aberto.
+        Users.init(this)
         SettingsRepository.init(this)
         FirstRun.init(this)
-        PlaylistSubscriptions.init(this)
-        ExploreRepository.init(this)
-        FeedCache.init(this)
-        ListCache.init(this)
-        WatchPositions.init(this)
         AppIcons.init(this)
         Accents.init(this)
         TvLayouts.init(this)
         AppScope.launch { SettingsRepository.dropOldExplore() }
         // De volta ao app (a TV ligou de novo, outro app fechou): o token do YouTube e o da conta podem
         // ter vencido, e o primeiro vídeo esperaria por eles. O que ainda vale não é refeito.
-        AppScope.launch { AppVisibility.returns.collect { if (Engine.signIn.isSigned) EngineWarmup.start() } }
+        AppScope.launch { AppVisibility.returns.collect { if (Users.current.value != null) EngineWarmup.start() } }
         val tv = isTv()
         Look.tones = if (tv) Tones.TV else Tones.PHONE
         if (tv) keepScreenOffServiceBound() else removeScreenOffService()

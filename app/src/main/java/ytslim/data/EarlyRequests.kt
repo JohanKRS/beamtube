@@ -56,6 +56,15 @@ internal class EarlyRequests<T : Any>(
     /** O último vídeo que o usuário pediu: de volta do player, o foco cai no card dele, e isso não é um palpite. */
     private var lastAsked: String? = null
 
+    /** Esquece tudo o que foi pedido (outro usuário abriu: os pedidos foram feitos com a conta anterior). */
+    @Synchronized
+    fun clear() {
+        cancelDwell()
+        early.values.forEach { it.result.cancel() }
+        early.clear()
+        lastAsked = null
+    }
+
     /** O usuário pediu o vídeo (toque ou OK): começa a pedir já, ou aproveita o que já foi pedido. */
     fun asked(id: String) {
         synchronized(this) {

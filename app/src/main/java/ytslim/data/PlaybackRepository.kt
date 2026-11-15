@@ -89,6 +89,9 @@ object PlaybackRepository {
      */
     fun prefetch(videoId: String) = early.asked(videoId)
 
+    /** Outro usuário abriu: os vídeos pedidos antes da hora foram pedidos com a conta anterior. */
+    fun forget() = early.clear()
+
     /**
      * TV: o foco chegou no card do vídeo. Se ficar parado nele, o vídeo é pedido antes do OK, e o
      * [load] depois do OK já encontra a resposta (pedido do Johan, 2026-11-13: o vídeo demorava a começar).

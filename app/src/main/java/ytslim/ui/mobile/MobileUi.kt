@@ -69,6 +69,8 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Search
@@ -141,6 +143,8 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -166,7 +170,13 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import ytslim.R
 import ytslim.data.AppIcon
+import ytslim.data.AppScope
 import ytslim.data.AuthRepository
+import ytslim.data.User
+import ytslim.data.Users
+import kotlinx.coroutines.launch
+import ytslim.ui.LocalAddAccount
+import ytslim.ui.homeTabs
 import ytslim.data.Channel
 import ytslim.data.ChannelPhotos
 import ytslim.data.Playlist
@@ -403,11 +413,11 @@ object MobileUi : Screens {
     }
 
     @Composable
-    override fun SignIn(vm: SignInViewModel, onSignedIn: () -> Unit) {
+    override fun SignIn(vm: SignInViewModel, onGuest: (() -> Unit)?, onCancel: (() -> Unit)?) {
         val state by vm.state.collectAsStateWithLifecycle()
         val context = LocalContext.current
         val clipboard = LocalClipboardManager.current
-        LaunchedEffect(state) { if (state == SignInViewModel.State.SignedIn) onSignedIn() }
+        BackHandler(enabled = onCancel != null) { onCancel?.invoke() }
 
         Column(
             modifier = Modifier.fillMaxSize().background(Look.Ground).windowInsetsPadding(WindowInsets.systemBars).padding(28.dp),
@@ -449,6 +459,13 @@ object MobileUi : Screens {
                     Button(onClick = vm::requestCode) { Text(stringResource(R.string.retry)) }
                 }
             }
+            // Sem conta: o convidado (só na primeira vez); ao acrescentar uma conta, voltar.
+            if (onGuest != null || onCancel != null) {
+                Spacer(Modifier.height(28.dp))
+                TextButton(onClick = { (onGuest ?: onCancel)?.invoke() }) {
+                    Text(stringResource(if (onGuest != null) R.string.sign_in_guest else R.string.cancel), color = Look.Sub)
+                }
+            }
         }
     }
 
@@ -456,7 +473,8 @@ object MobileUi : Screens {
 
     /**
      * As abas da barra de baixo, na ordem do deslizar de lado. A Busca abre pela lupa da barra de
-     * cima e as Configurações pelo avatar da conta, também em cima.
+     * cima e as Configurações pelo menu da foto do usuário, também em cima. O convidado só tem os
+     * Recomendados e a busca ([homeTabs]).
      */
     private val tabs = listOf(
         TabInfo(HomeTab.SUBSCRIPTIONS, R.string.tab_subscriptions, Icons.Outlined.Subscriptions),
@@ -465,8 +483,6 @@ object MobileUi : Screens {
         TabInfo(HomeTab.PLAYLISTS, R.string.tab_playlists, Icons.AutoMirrored.Outlined.PlaylistPlay),
         TabInfo(HomeTab.HISTORY, R.string.tab_history, Icons.Outlined.History),
     )
-    private val swipeTabs = tabs.map { it.tab }
-
     /** No trilho lateral (tela deitada) cabe a Busca também. */
     private val railTabs = tabs.take(3) + TabInfo(HomeTab.SEARCH, R.string.tab_search, Icons.Outlined.Search) + tabs.drop(3)
 
@@ -475,17 +491,21 @@ object MobileUi : Screens {
 
     @Composable
     override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, onReload: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
+        val allowed = remember { homeTabs() }
+        val barTabs = remember(allowed) { tabs.filter { it.tab in allowed } }
+        val swipe = remember(barTabs) { barTabs.map { it.tab } }
         // Voltar, na Busca e nas Configurações, leva de volta à aba de onde elas foram abertas.
-        var lastTab by rememberSaveable { mutableStateOf(HomeTab.SUBSCRIPTIONS) }
-        LaunchedEffect(tab) { if (tab in swipeTabs) lastTab = tab }
-        val aside = tab !in swipeTabs
+        var lastTab by rememberSaveable { mutableStateOf(swipe.first()) }
+        LaunchedEffect(tab) { if (tab in swipe) lastTab = tab }
+        val aside = tab !in swipe
         BackHandler(enabled = aside) { onTab(lastTab) }
 
         val haze = rememberHazeState()
         val config = LocalConfiguration.current
         // Tela deitada (tablet, ou celular de lado): trilho de ícones à esquerda em vez da barra de baixo.
         val rail = config.screenWidthDp > config.screenHeightDp && config.screenWidthDp >= 600
-        val showBottom = !rail && !aside
+        // Com uma aba só (o convidado), a barra de baixo não tem o que trocar.
+        val showBottom = !rail && !aside && swipe.size > 1
         val system = systemInsets()
         val railWidth = RailWidth + system.start
         val bars = PaddingValues(
@@ -498,7 +518,7 @@ object MobileUi : Screens {
         Box(Modifier.fillMaxSize().background(Look.Ground)) {
             Box(Modifier.fillMaxSize().hazeSource(haze)) {
                 CompositionLocalProvider(LocalBars provides bars) {
-                    if (aside) content(tab) else SwipeTabs(tab, onTab, content)
+                    if (aside) content(tab) else SwipeTabs(swipe, tab, onTab, content)
                 }
             }
             val title = stringResource(titles.first { it.tab == tab }.label)
@@ -517,12 +537,12 @@ object MobileUi : Screens {
                         Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.tab_search))
                     }
                 }
-                if (tab != HomeTab.SETTINGS) AccountButton { onTab(HomeTab.SETTINGS) }
+                if (tab != HomeTab.SETTINGS) UserButton(onSettings = if (HomeTab.SETTINGS in allowed) ({ onTab(HomeTab.SETTINGS) }) else null)
             }
             if (rail) {
-                Rail(haze, system, railTabs, tab, onTab, Modifier.align(Alignment.CenterStart))
+                Rail(haze, system, railTabs.filter { it.tab in allowed }, tab, onTab, Modifier.align(Alignment.CenterStart))
             } else if (showBottom) {
-                BottomNav(haze, system, tab, onTab, Modifier.align(Alignment.BottomCenter))
+                BottomNav(haze, system, barTabs, tab, onTab, Modifier.align(Alignment.BottomCenter))
             }
         }
     }
@@ -532,7 +552,7 @@ object MobileUi : Screens {
      * desliza até ela. Cada aba guarda a própria posição da lista (ver AppRoot).
      */
     @Composable
-    private fun SwipeTabs(tab: HomeTab, onTab: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
+    private fun SwipeTabs(swipeTabs: List<HomeTab>, tab: HomeTab, onTab: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
         val pager = rememberPagerState(initialPage = swipeTabs.indexOf(tab).coerceAtLeast(0)) { swipeTabs.size }
         val currentOnTab by rememberUpdatedState(onTab)
         LaunchedEffect(tab) {
@@ -548,13 +568,91 @@ object MobileUi : Screens {
         }
     }
 
-    /** O avatar da conta, no canto da barra de cima: abre as Configurações (com o Sign out). */
+    /**
+     * A foto do usuário, no canto da barra de cima (pedido do Johan, 2026-11-14): abre o menu com o
+     * usuário aberto em cima (a foto e o nome), as outras contas, o convidado, "Add account" e os
+     * Ajustes ([onSettings]; o convidado não tem). Tocar num usuário troca na hora.
+     */
     @Composable
-    private fun AccountButton(onClick: () -> Unit) {
-        val account = remember { AuthRepository.account() }
-        val name = account?.name.orEmpty()
-        IconButton(onClick = onClick) {
-            Avatar(name.ifBlank { "?" }, account?.photo, 30.dp)
+    private fun UserButton(onSettings: (() -> Unit)?) {
+        val user by Users.current.collectAsStateWithLifecycle()
+        val accounts by Users.accounts.collectAsStateWithLifecycle()
+        val addAccount = LocalAddAccount.current
+        var open by remember { mutableStateOf(false) }
+        Box {
+            IconButton(onClick = { open = true }) {
+                UserPhoto(user, 30.dp, contentDescription = stringResource(R.string.user_menu))
+            }
+            DropdownMenu(
+                expanded = open,
+                onDismissRequest = { open = false },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = Look.SurfaceHigh,
+                modifier = Modifier.widthIn(min = 248.dp),
+            ) {
+                // O usuário aberto, em cima, maior.
+                Row(Modifier.padding(start = 16.dp, end = 20.dp, top = 6.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    UserPhoto(user, 40.dp)
+                    Text(
+                        userName(user),
+                        style = RowTitle.copy(fontSize = 16.sp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
+                }
+                Hairline(Modifier.fillMaxWidth().height(1.dp))
+                val others = accounts.filter { it.slot != user?.slot } + listOfNotNull(Users.guestUser.takeIf { user?.guest != true })
+                others.forEach { other ->
+                    DropdownMenuItem(
+                        text = { Text(userName(other), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingIcon = { UserPhoto(other, 28.dp) },
+                        onClick = {
+                            open = false
+                            AppScope.launch { Users.switchTo(other) }
+                        },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.user_add)) },
+                    leadingIcon = { Icon(Icons.Outlined.PersonAdd, contentDescription = null, tint = Look.Sub, modifier = Modifier.size(28.dp).padding(2.dp)) },
+                    onClick = {
+                        open = false
+                        addAccount()
+                    },
+                )
+                if (onSettings != null) {
+                    Hairline(Modifier.fillMaxWidth().height(1.dp))
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.tab_settings)) },
+                        leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null, tint = Look.Sub, modifier = Modifier.size(28.dp).padding(2.dp)) },
+                        onClick = {
+                            open = false
+                            onSettings()
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    /** O nome de um usuário no menu e nos Ajustes ("Guest" no convidado). */
+    @Composable
+    private fun userName(user: User?): String =
+        if (user == null || user.guest) stringResource(R.string.user_guest) else user.name.orEmpty().ifBlank { "?" }
+
+    /** A foto de um usuário: a da conta, ou um círculo com um boneco no convidado. */
+    @Composable
+    private fun UserPhoto(user: User?, size: Dp, contentDescription: String? = null) {
+        val modifier = if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier
+        Box(modifier) {
+            if (user == null || user.guest) {
+                Box(Modifier.size(size).background(Look.SurfaceHigh, CircleShape).border(1.dp, Look.Outline, CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Outlined.Person, contentDescription = null, tint = Look.Sub, modifier = Modifier.size(size * 0.62f))
+                }
+            } else {
+                Avatar(user.name.orEmpty().ifBlank { "?" }, user.photo, size)
+            }
         }
     }
 
@@ -588,7 +686,7 @@ object MobileUi : Screens {
 
     /** Barra de abas de vidro, só com ícones: vai até o fim da tela, por trás da barra de gestos. */
     @Composable
-    private fun BottomNav(haze: HazeState, system: SystemInsets, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
+    private fun BottomNav(haze: HazeState, system: SystemInsets, tabs: List<TabInfo>, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
         Box(modifier.fillMaxWidth().height(system.bottom + BottomBarHeight).hazeEffect(haze, BottomGlass, block = LightGlass)) {
             Hairline(Modifier.align(Alignment.TopStart).fillMaxWidth().height(1.dp))
             Row(
@@ -958,8 +1056,10 @@ object MobileUi : Screens {
     }
 
     @Composable
-    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onOpenTopics: () -> Unit, onSignedOut: () -> Unit) {
+    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onOpenTopics: () -> Unit, onAddAccount: () -> Unit) {
         val settings by vm.settings.collectAsStateWithLifecycle()
+        val user by vm.user.collectAsStateWithLifecycle()
+        val accounts by vm.accounts.collectAsStateWithLifecycle()
         val playlists by vm.playlists.collectAsStateWithLifecycle()
         val ownPlaylists by vm.ownPlaylists.collectAsStateWithLifecycle()
         val error by vm.error.collectAsStateWithLifecycle()
@@ -969,23 +1069,47 @@ object MobileUi : Screens {
         var editing by remember { mutableStateOf<Pair<TopicList, Int?>?>(null) }
 
         // Em grupos (cartões arredondados com as linhas dentro), com a explicação embaixo de cada
-        // um, em letra pequena. A conta fica em cima: as Configurações abrem pelo avatar.
+        // um, em letra pequena. Os usuários ficam em cima: as Configurações abrem pelo menu da foto.
         LazyColumn(
             Modifier.fillMaxSize(),
             contentPadding = barsPlus(top = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            item(key = "account") {
-                SettingsGroup(null) {
-                    val account = remember { AuthRepository.account() }
-                    val name = account?.name ?: vm.accountName
+            // Os usuários (pedido do Johan, 2026-11-14): o aberto em cima, com o Sign out; tocar em
+            // outro troca na hora; o convidado e "Add account" no fim.
+            item(key = "users") {
+                SettingsGroup(stringResource(R.string.users_title), hint = stringResource(R.string.users_hint)) {
+                    val current = user
                     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Avatar(name.orEmpty().ifBlank { "?" }, account?.photo, 44.dp)
+                        UserPhoto(current, 44.dp)
                         Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
-                            Text(name.orEmpty(), style = RowTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(userName(current), style = RowTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(stringResource(R.string.settings_account), style = Meta)
                         }
-                        TextButton(onClick = { vm.signOut(onSignedOut) }) { Text(stringResource(R.string.sign_out)) }
+                        TextButton(onClick = vm::signOut) { Text(stringResource(R.string.sign_out)) }
+                    }
+                    (accounts.filter { it.slot != current?.slot } + Users.guestUser).forEach { other ->
+                        RowDivider()
+                        Row(
+                            Modifier.fillMaxWidth().clickable { vm.switchTo(other) }
+                                .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            UserPhoto(other, 36.dp)
+                            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                                Text(userName(other), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (other.guest) Text(stringResource(R.string.user_guest_desc), style = Meta, maxLines = 2)
+                            }
+                        }
+                    }
+                    RowDivider()
+                    Row(
+                        Modifier.fillMaxWidth().clickable(onClick = onAddAccount).padding(horizontal = 16.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(stringResource(R.string.user_add), style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp), color = Look.Glow)
                     }
                 }
             }
@@ -1615,7 +1739,9 @@ object MobileUi : Screens {
         val saved by SavedVideos.ids.collectAsStateWithLifecycle()
         val photos by ChannelPhotos.photos.collectAsStateWithLifecycle()
         val res = LocalContext.current.resources
-        return CardState(saved, photos, showSaved, if (showSaved) { video -> toggleSaved(res, video) } else null)
+        // O convidado não tem conta: nem playlist do Save, nem marcador.
+        val save = showSaved && !Users.isGuest
+        return CardState(saved, photos, save, if (save) { video -> toggleSaved(res, video) } else null)
     }
 
     @Composable

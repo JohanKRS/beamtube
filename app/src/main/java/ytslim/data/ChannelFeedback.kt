@@ -31,13 +31,23 @@ import java.util.concurrent.ConcurrentHashMap
 object ChannelFeedback {
     private const val TAG = "BeamTube"
 
-    private val known = Registry()
+    private var known = Registry()
 
     /** Canais que já tiveram um pedido mandado sozinho desde que o app abriu (um por abertura). */
     private val tried: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
-    /** Uma página dos Recomendados chegou: anota os pedidos e manda os dos canais bloqueados. */
+    /** Outro usuário abriu: os pedidos eram dos Recomendados da conta anterior. */
+    fun reset() {
+        known = Registry()
+        tried.clear()
+    }
+
+    /**
+     * Uma página dos Recomendados chegou: anota os pedidos e manda os dos canais bloqueados. O
+     * convidado não tem conta para receber o pedido (nem canais bloqueados).
+     */
     fun note(videos: List<Video>) {
+        if (Users.isGuest) return
         if (!known.note(videos)) return
         AppScope.launch {
             val blocked = runCatching { SettingsRepository.current().filters.blocked }.getOrElse { return@launch }
@@ -56,6 +66,7 @@ object ChannelFeedback {
      * (o pedido vai na próxima vez que o YouTube recomendar o canal).
      */
     suspend fun dontRecommend(channel: BlockedChannel): Boolean {
+        if (Users.isGuest) return false
         val request = known.find(channel) ?: return false
         tried += channel.id
         val sent = send(request, channel)

@@ -13,7 +13,7 @@ import org.robolectric.RobolectricTestRunner
 class WatchPositionsTest {
     @Before
     fun setUp() = runTest {
-        WatchPositions.init(ApplicationProvider.getApplicationContext())
+        Users.init(ApplicationProvider.getApplicationContext())
         WatchPositions.clear()
     }
 
@@ -46,7 +46,7 @@ class WatchPositionsTest {
     fun theSpotsSurviveTheAppClosing() = runTest {
         WatchPositions.save("abc", positionMs = 200_000, durationMs = 900_000)
         // Abrir de novo lê do arquivo.
-        WatchPositions.init(ApplicationProvider.getApplicationContext())
+        Users.init(ApplicationProvider.getApplicationContext())
         val fresh = WatchPositions::class.java.getDeclaredField("spots").apply { isAccessible = true }
         fresh.set(WatchPositions, null)
         assertEquals(200_000, WatchPositions.startAt("abc", hintMs = 0))

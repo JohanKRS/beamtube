@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
@@ -39,6 +40,11 @@ import ytslim.ui.VideoListContent
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
 class SideMenuFocusTest {
+    private companion object {
+        /** O nome da foto do usuário para a Acessibilidade (R.string.user_menu). */
+        const val PHOTO = "Switch user"
+    }
+
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     private val videos = (1..12).map { i ->
@@ -57,12 +63,17 @@ class SideMenuFocusTest {
     @After
     fun topTabs() = TvLayouts.select(TvLayout.TOP_TABS)
 
-    /** O que pode ter o foco fora do menu lateral (os cards). */
+    /** O que pode ter o foco fora do menu lateral e da foto do usuário (os cards). */
     private fun cards(): List<androidx.compose.ui.semantics.SemanticsNode> {
         val menuEdge = with(compose.density) { 88.dp.toPx() }
         return compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused)).fetchSemanticsNodes()
-            .filter { it.boundsInRoot.left > menuEdge }
+            .filter { it.boundsInRoot.left > menuEdge && !isPhoto(it) }
     }
+
+    private fun isPhoto(node: androidx.compose.ui.semantics.SemanticsNode) =
+        node.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(PHOTO) == true
+
+    private fun focusedIsThePhoto(): Boolean = compose.onAllNodes(isFocused()).fetchSemanticsNodes().singleOrNull()?.let(::isPhoto) == true
 
     /** O foco no primeiro card da grade, como quando a página abre. */
     private fun focusFirstCard() {
@@ -107,15 +118,34 @@ class SideMenuFocusTest {
         compose.onNodeWithContentDescription("Subscriptions").assertIsFocused()
     }
 
+    /**
+     * Subir da primeira fileira não cai no menu: só pode chegar na foto do usuário, no canto da barra
+     * do título, que não troca nada com o foco (os vários usuários, 2026-11-14).
+     */
     @Test
-    fun upFromTheFirstRowStaysOnTheGrid() {
+    fun upFromTheFirstRowStaysOffTheMenu() {
         var tab by mutableStateOf(HomeTab.SUBSCRIPTIONS)
         home({ tab }, { tab = it })
         focusFirstCard()
         press(KeyEvent.KEYCODE_DPAD_UP)
         assertEquals(HomeTab.SUBSCRIPTIONS, tab)
-        assertTrue(focusedIsACard())
+        assertTrue(focusedIsACard() || focusedIsThePhoto())
         compose.onNodeWithContentDescription("Subscriptions").assertIsNotFocused()
+    }
+
+    /** A foto no canto da barra do título: o foco nela não troca a página, e Voltar leva ao menu. */
+    @Test
+    fun thePhotoChangesNothingOnFocus() {
+        var tab by mutableStateOf(HomeTab.RECOMMENDED)
+        home({ tab }, { tab = it })
+        compose.onNodeWithContentDescription(PHOTO).requestFocus()
+        compose.waitForIdle()
+        assertEquals(HomeTab.RECOMMENDED, tab)
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals(HomeTab.RECOMMENDED, tab)
+        assertTrue(focusedIsACard())
+        press(KeyEvent.KEYCODE_BACK)
+        compose.onNodeWithContentDescription("Recommended").assertIsFocused()
     }
 
     @Test

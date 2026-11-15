@@ -23,7 +23,7 @@ class FeedCacheTest {
 
     @Before
     fun setUp() {
-        FeedCache.init(ApplicationProvider.getApplicationContext())
+        Users.init(ApplicationProvider.getApplicationContext())
         runBlocking { FeedCache.clear() }
     }
 

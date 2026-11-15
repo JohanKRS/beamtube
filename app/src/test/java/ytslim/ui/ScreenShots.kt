@@ -19,6 +19,10 @@ import ytslim.R
 import ytslim.data.AppIcon
 import ytslim.data.BlockedChannel
 import ytslim.data.SettingsRepository
+import ytslim.data.User
+import androidx.compose.ui.semantics.getOrNull
+import ytslim.data.Users
+import androidx.compose.ui.test.performClick
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -162,9 +166,37 @@ class ScreenShots {
         // O captureToImage espera um quadro do sistema que o Robolectric não manda: desenha a tela direto.
         val view = compose.activity.window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-        view.draw(android.graphics.Canvas(bitmap))
+        val canvas = android.graphics.Canvas(bitmap)
+        view.draw(canvas)
+        drawOtherWindows(canvas, view)
         val out = File(dir, "out").apply { mkdirs() }
         File(out, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    /**
+     * Os menus e os diálogos abertos (o menu da foto, por exemplo) ficam em janelas próprias: desenha
+     * cada uma no lugar dela, com o escurecido do diálogo por baixo.
+     */
+    private fun drawOtherWindows(canvas: android.graphics.Canvas, main: android.view.View) {
+        val global = Class.forName("android.view.WindowManagerGlobal").getMethod("getInstance").invoke(null)
+        @Suppress("UNCHECKED_CAST")
+        val roots = global.javaClass.getDeclaredField("mViews").apply { isAccessible = true }.get(global) as List<android.view.View>
+        roots.filter { it !== main && it.isAttachedToWindow && it.width > 0 }.forEach { root ->
+            val params = root.layoutParams as? android.view.WindowManager.LayoutParams ?: return@forEach
+            if (params.flags and android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND != 0) {
+                canvas.drawColor(Color.Black.copy(alpha = params.dimAmount).let { android.graphics.Color.argb(it.alpha, it.red, it.green, it.blue) })
+            }
+            val place = android.graphics.Rect()
+            android.view.Gravity.apply(
+                params.gravity.takeIf { it != 0 } ?: android.view.Gravity.CENTER,
+                root.width, root.height, android.graphics.Rect(0, 0, main.width, main.height),
+                params.x, params.y, place, main.layoutDirection,
+            )
+            canvas.save()
+            canvas.translate(place.left.toFloat(), place.top.toFloat())
+            root.draw(canvas)
+            canvas.restore()
+        }
     }
 
     private fun feed(list: List<Video> = videos) = VideoListContent(list, hasMore = true, loadingMore = false)
@@ -186,6 +218,7 @@ class ScreenShots {
         Look.accent = Accent.DEFAULT
         Look.tones = Tones.PHONE
         TvLayouts.select(TvLayout.TOP_TABS)
+        Users.show(null, emptyList())
     }
 
     @Test
@@ -832,7 +865,7 @@ class ScreenShots {
         val focusable = androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.Focused)
         val menuEdge = with(compose.density) { 88.dp.toPx() }
         val first = compose.onAllNodes(focusable).fetchSemanticsNodes()
-            .filter { it.boundsInRoot.left > menuEdge }
+            .filter { it.boundsInRoot.left > menuEdge && it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription) == null }
             .minWith(compareBy({ it.boundsInRoot.top }, { it.boundsInRoot.left }))
         compose.onNode(androidx.compose.ui.test.SemanticsMatcher("card") { it.id == first.id }).requestFocus()
     })
@@ -863,6 +896,150 @@ class ScreenShots {
             TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) }
         }
     }
+
+    /** Os vários usuários (pedido do Johan, 2026-11-14): três contas no aparelho. */
+    private val family: List<User> by lazy {
+        // As fotos ficam em avatars/user-johan.jpg e avatars/user-maria.jpg (sem elas, um quadro cinza).
+        listOf(
+            User(Users.LEGACY, name = "Johan", photo = "avatar:user-johan"),
+            User("1", name = "Maria", photo = "avatar:user-maria"),
+            User("2", name = "Lucas"),
+        )
+    }
+
+    /** Abre o usuário [index] da [family], ou o convidado com null. */
+    private fun openUser(index: Int?) = Users.show(index?.let { family[it] } ?: Users.guestUser, family)
+
+    /** O nome da foto para a Acessibilidade, no idioma da foto de tela. */
+    private fun photoLabel() = org.robolectric.RuntimeEnvironment.getApplication().getString(R.string.user_menu)
+
+    private fun tapPhoto() {
+        compose.onNode(androidx.compose.ui.test.hasContentDescription(photoLabel()) and hasClickAction()).performClick()
+    }
+
+    /** Uma tecla do controle põe o Compose no modo de teclado; depois o foco vai para a foto e OK abre o menu. */
+    private fun focusPhoto(open: Boolean) {
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        val photo = compose.onNode(androidx.compose.ui.test.hasContentDescription(photoLabel()) and hasClickAction())
+        photo.requestFocus()
+        if (open) {
+            compose.waitForIdle()
+            photo.performKeyInput { pressKey(Key.DirectionCenter) }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneUsers() {
+        openUser(0)
+        shot("phone-users") {
+            MobileUi.Theme { MobileUi.Home(HomeTab.SUBSCRIPTIONS, {}, {}) { MobileUi.VideoGrid(feed(), "", {}, {}, {}) } }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneUsersMenu() {
+        openUser(0)
+        shot("phone-users-menu", action = ::tapPhoto) {
+            MobileUi.Theme { MobileUi.Home(HomeTab.SUBSCRIPTIONS, {}, {}) { MobileUi.VideoGrid(feed(), "", {}, {}, {}) } }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "pt-w411dp-h891dp-xxhdpi")
+    fun phoneUsersMenuPortuguese() {
+        openUser(1)
+        shot("phone-users-menu-pt", action = ::tapPhoto) {
+            MobileUi.Theme { MobileUi.Home(HomeTab.SUBSCRIPTIONS, {}, {}) { MobileUi.VideoGrid(feed(), "", {}, {}, {}) } }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneUsersSettings() {
+        openUser(0)
+        shot("phone-users-settings") {
+            MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+        }
+    }
+
+    /** O convidado: só Recomendados e a busca, sem a barra de baixo. */
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneGuest() {
+        openUser(null)
+        shot("phone-guest") {
+            MobileUi.Theme { MobileUi.Home(HomeTab.RECOMMENDED, {}, {}) { MobileUi.VideoGrid(feed(videos.drop(4)), "", {}, {}, {}) } }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneGuestMenu() {
+        openUser(null)
+        shot("phone-guest-menu", action = ::tapPhoto) {
+            MobileUi.Theme { MobileUi.Home(HomeTab.RECOMMENDED, {}, {}) { MobileUi.VideoGrid(feed(videos.drop(4)), "", {}, {}, {}) } }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w1480dp-h924dp-xhdpi")
+    fun tabletGuest() {
+        openUser(null)
+        shot("tablet-guest") {
+            MobileUi.Theme { MobileUi.Home(HomeTab.RECOMMENDED, {}, {}) { MobileUi.VideoGrid(feed(videos.drop(4)), "", {}, {}, {}) } }
+        }
+    }
+
+    private fun tvUsersShot(name: String, user: Int?, tab: HomeTab, side: Boolean = false, action: () -> Unit = {}) {
+        openUser(user)
+        if (side) TvLayouts.select(TvLayout.SIDE_MENU)
+        shot(name, action) {
+            TvUi.Theme {
+                TvUi.Home(tab, {}, {}) { shown ->
+                    if (shown == HomeTab.SETTINGS) TvUi.Settings(SettingsViewModel(), {}, {}, {})
+                    else TvUi.VideoGrid(feed(if (user == null) videos.drop(4) else videos), "", {}, {}, {}, takeFocus = false, onFocusTaken = {})
+                }
+            }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvUsers() = tvUsersShot("tv-users", 0, HomeTab.SUBSCRIPTIONS)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvUsersPhotoFocused() = tvUsersShot("tv-users-photo-focused", 0, HomeTab.SUBSCRIPTIONS, action = { focusPhoto(open = false) })
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvUsersMenu() = tvUsersShot("tv-users-menu", 0, HomeTab.SUBSCRIPTIONS, action = { focusPhoto(open = true) })
+
+    @Test
+    @Config(qualifiers = "pt-w960dp-h540dp-land-television-xhdpi")
+    fun tvUsersMenuPortuguese() = tvUsersShot("tv-users-menu-pt", 1, HomeTab.SUBSCRIPTIONS, action = { focusPhoto(open = true) })
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvUsersSideMenu() = tvUsersShot("tv-users-side-menu", 0, HomeTab.SUBSCRIPTIONS, side = true, action = { focusPhoto(open = false) })
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvUsersSettings() = tvUsersShot("tv-users-settings", 0, HomeTab.SETTINGS)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvGuest() = tvUsersShot("tv-guest", null, HomeTab.RECOMMENDED)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvGuestSideMenu() = tvUsersShot("tv-guest-side-menu", null, HomeTab.RECOMMENDED, side = true)
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvGuestMenu() = tvUsersShot("tv-guest-menu", null, HomeTab.RECOMMENDED, action = { focusPhoto(open = true) })
 
     /**
      * O player de verdade (PlayerActivity) com os controles abertos e uma miniatura no lugar do
