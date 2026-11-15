@@ -199,6 +199,13 @@ object Users {
         save(user?.slot)
     }
 
+    /** Só para as fotos de tela e os testes: mostra [current] e [accounts] sem o motor e sem guardar. */
+    @androidx.annotation.VisibleForTesting
+    internal fun show(current: User?, accounts: List<User>) {
+        _accounts.value = accounts
+        _current.value = current
+    }
+
     private fun save(current: String? = _current.value?.slot) {
         prefs.edit()
             .putString(RECORDS, json.encodeToString(serializer, records))

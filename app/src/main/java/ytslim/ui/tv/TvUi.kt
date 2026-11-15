@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -51,9 +52,16 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Subscriptions
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -122,6 +130,7 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Icon
 import androidx.tv.material3.IconButton
 import androidx.tv.material3.IconButtonDefaults
@@ -181,6 +190,7 @@ import ytslim.ui.findActivity
 import ytslim.ui.label
 import ytslim.ui.TypeScale
 import ytslim.ui.Wordmark
+import ytslim.ui.BeamGlyph
 import ytslim.ui.Notice
 import ytslim.ui.Notices
 import ytslim.ui.blockNotice
@@ -227,6 +237,23 @@ private fun Modifier.entersAt(selected: FocusRequester) =
             // Só se entra nas abas subindo ou descendo. Com as abas encostadas à direita, a seta para a
             // direita no último card de uma fileira achava uma aba "mais à direita" e pulava para lá.
             if (requestedFocusDirection == FocusDirection.Left || requestedFocusDirection == FocusDirection.Right) {
+                cancelFocusChange()
+            } else {
+                selected.requestFocus()
+            }
+        }
+    }.focusGroup()
+
+/**
+ * Entrar no menu lateral (pela esquerda, vindo do conteúdo) para na aba aberta ([selected]), como
+ * subir até as abas de cima ([entersAt]). Subindo ou descendo não se entra: o menu fica ao lado, e
+ * subir da primeira fileira de cards (ou descer da última) achava o item mais perto dele e trocava a
+ * página.
+ */
+private fun Modifier.sideEntersAt(selected: FocusRequester) =
+    focusProperties {
+        onEnter = {
+            if (requestedFocusDirection == FocusDirection.Up || requestedFocusDirection == FocusDirection.Down) {
                 cancelFocusChange()
             } else {
                 selected.requestFocus()
@@ -410,6 +437,19 @@ object TvUi : Screens {
         HomeTab.SETTINGS to R.string.tab_settings,
     )
 
+    /**
+     * O menu lateral ([TvLayout.SIDE_MENU]): os ícones do trilho do tablet deitado, na mesma ordem,
+     * com a Busca no meio das abas. Os Ajustes ficam no pé do trilho.
+     */
+    private val sideTabs = listOf(
+        HomeTab.SUBSCRIPTIONS to Icons.Outlined.Subscriptions,
+        HomeTab.RECOMMENDED to Icons.Outlined.Explore,
+        HomeTab.EXPLORE to Icons.Outlined.GridView,
+        HomeTab.SEARCH to Icons.Outlined.Search,
+        HomeTab.PLAYLISTS to Icons.AutoMirrored.Outlined.PlaylistPlay,
+        HomeTab.HISTORY to Icons.Outlined.History,
+    )
+
     @Composable
     override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, onReload: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
         val initialFocus = rememberSaveable { mutableStateOf(true) }
@@ -417,66 +457,202 @@ object TvUi : Screens {
         // OK na aba aberta recarrega a lista dela (1.0.6, pedido do Johan: "quando tiver em cima da
         // aba e apertar OK, recarrega"; até a 1.0.5 só segurando o OK). Conta só o OK que desceu
         // nesta aba: a subida de um OK apertado em outro lugar (no launcher, ao abrir o app) não
-        // recarrega nada. O Tab segue recebendo as teclas (o clique dele só escolhe a aba, que já
-        // está escolhida).
-        var pressedTab by remember { mutableStateOf<HomeTab?>(null) }
+        // recarrega nada. A aba segue recebendo as teclas (o clique dela só escolhe a aba, que já
+        // está escolhida). Vale nas abas de cima e no menu lateral.
+        val pressedTab = remember { mutableStateOf<HomeTab?>(null) }
         val selectedTab = remember { FocusRequester() }
-        // Voltar, de dentro do conteúdo, sobe para as abas; nas abas, sai do app.
+        // Voltar, de dentro do conteúdo, vai para as abas (ou o menu lateral); nelas, sai do app.
         BackHandler(enabled = !tabsFocused) { runCatching { selectedTab.requestFocus() } }
+        // O convidado só tem os Recomendados e a busca ([homeTabs]), nos dois layouts.
+        val allowed = remember { homeTabs() }
+        val tabs = remember(allowed) { allTabs.filter { it.first in allowed } }
+        val labels = tabs.map { stringResource(it.second) }
+        // As abas em cima (o padrão) ou o menu lateral do tablet (pedido do Johan, 2026-11-14), à
+        // escolha nos Ajustes. O conteúdo fica no mesmo lugar da composição nos dois, então trocar
+        // nos Ajustes não perde a posição nem o foco da linha escolhida.
+        val side = TvLayouts.current == TvLayout.SIDE_MENU
 
-        Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
-          // O logotipo inteiro (a fresta, o facho com a poeira e o nome), sem fundo, na mesma linha
-          // das abas (pedido do Johan, 2026-11-13), com a letra do tamanho da das abas (ele achou o de
-          // 22sp grande demais). O logotipo fica à esquerda e as abas, encostadas à direita (pedido dele
-          // do mesmo dia): o nome da última aba termina na linha da borda direita dos cards.
-          // O convidado só tem os Recomendados e a busca ([homeTabs]). A foto do usuário fica no fim
-          // da linha, à direita das abas, e abre o menu de troca (pedido do Johan, 2026-11-14).
-          val allowed = remember { homeTabs() }
-          val tabs = remember(allowed) { allTabs.filter { it.first in allowed } }
-          val labels = tabs.map { stringResource(it.second) }
-          LogoAndTabs(labels, logo = { Wordmark(LogoSize.toFixedSp()) }, trailing = { UserButton() }) { labelSize ->
-            val selectedIndex = tabs.indexOfFirst { it.first == tab }
-            TabRow(
-                selectedTabIndex = selectedIndex,
-                modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
-                separator = { Spacer(Modifier.width(TabSeparator)) },
-                indicator = { positions, _ -> positions.getOrNull(selectedIndex)?.let { SlitIndicator(it) } },
-            ) {
-                tabs.forEach { (item, label) ->
-                    Tab(
-                        selected = item == tab,
-                        onFocus = { onTab(item) },
-                        onClick = { onTab(item) },
-                        colors = TabDefaults.underlinedIndicatorTabColors(
-                            contentColor = Look.Sub,
-                            inactiveContentColor = Look.Sub,
-                            selectedContentColor = Look.Text,
-                            focusedContentColor = Look.GlowSoft,
-                            focusedSelectedContentColor = Look.GlowSoft,
-                        ),
-                        modifier = (if (item == tab) Modifier.focusRequester(selectedTab) else Modifier)
-                            .onPreviewKeyEvent { event ->
-                                val key = event.nativeKeyEvent
-                                if (key.keyCode in OkKeys) {
-                                    if (event.type == KeyEventType.KeyDown && key.repeatCount == 0) {
-                                        pressedTab = item
-                                    } else if (event.type == KeyEventType.KeyUp) {
-                                        if (pressedTab == item) onReload(item)
-                                        pressedTab = null
-                                    }
-                                }
-                                false
-                            },
+        Row(Modifier.fillMaxSize()) {
+            if (side) {
+                SideMenu(
+                    tab = tab,
+                    onTab = onTab,
+                    tabs = tabs.map { it.first },
+                    labels = labels,
+                    itemModifier = { item ->
+                        (if (item == tab) Modifier.focusRequester(selectedTab) else Modifier).reloadsOnOk(item, pressedTab, onReload)
+                    },
+                    modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.sideEntersAt(selectedTab),
+                )
+            }
+            Column(Modifier.weight(1f).fillMaxHeight().padding(if (side) sideScreenPadding else listScreenPadding)) {
+                // A foto do usuário abre o menu de troca (pedido do Johan, 2026-11-14): no fim da
+                // linha das abas, ou no canto direito da barra do título no menu lateral.
+                if (side) {
+                    TitleBar(labels[tabs.indexOfFirst { it.first == tab }], trailing = { UserButton(Modifier.photoFocus(selectedTab, side = true)) })
+                } else {
+                  // O logotipo inteiro (a fresta, o facho com a poeira e o nome), sem fundo, na mesma linha
+                  // das abas (pedido do Johan, 2026-11-13), com a letra do tamanho da das abas (ele achou o de
+                  // 22sp grande demais). O logotipo fica à esquerda e as abas, encostadas à direita (pedido dele
+                  // do mesmo dia): o nome da última aba termina na linha da borda direita dos cards.
+                  LogoAndTabs(labels, logo = { Wordmark(LogoSize.toFixedSp()) }, trailing = { UserButton(Modifier.photoFocus(selectedTab, side = false)) }) { labelSize ->
+                    val selectedIndex = tabs.indexOfFirst { it.first == tab }
+                    TabRow(
+                        selectedTabIndex = selectedIndex,
+                        modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
+                        separator = { Spacer(Modifier.width(TabSeparator)) },
+                        indicator = { positions, _ -> positions.getOrNull(selectedIndex)?.let { SlitIndicator(it) } },
                     ) {
-                        TabLabel(labels[tabs.indexOfFirst { it.first == item }], selected = item == tab, size = labelSize)
+                        tabs.forEach { (item, label) ->
+                            Tab(
+                                selected = item == tab,
+                                onFocus = { onTab(item) },
+                                onClick = { onTab(item) },
+                                colors = TabDefaults.underlinedIndicatorTabColors(
+                                    contentColor = Look.Sub,
+                                    inactiveContentColor = Look.Sub,
+                                    selectedContentColor = Look.Text,
+                                    focusedContentColor = Look.GlowSoft,
+                                    focusedSelectedContentColor = Look.GlowSoft,
+                                ),
+                                modifier = (if (item == tab) Modifier.focusRequester(selectedTab) else Modifier)
+                                    .reloadsOnOk(item, pressedTab, onReload),
+                            ) {
+                                TabLabel(labels[tabs.indexOfFirst { it.first == item }], selected = item == tab, size = labelSize)
+                            }
+                        }
                     }
+                  }
+                }
+                Spacer(Modifier.height(24.dp))
+                CompositionLocalProvider(LocalInitialFocus provides initialFocus) {
+                    Box(Modifier.fillMaxSize()) { content(tab) }
                 }
             }
-          }
-            Spacer(Modifier.height(24.dp))
-            CompositionLocalProvider(LocalInitialFocus provides initialFocus) {
-                Box(Modifier.fillMaxSize()) { content(tab) }
+        }
+    }
+
+    /**
+     * O foco da foto do usuário ao lado das abas. Com as abas em cima, subir do conteúdo continua
+     * parando na aba aberta (0.6.0), mesmo debaixo da foto: ela só se alcança andando pelas abas até
+     * o fim. Com o menu lateral, subir da primeira fileira chega nela. Nos dois, a seta para a
+     * esquerda volta para a aba aberta.
+     */
+    private fun Modifier.photoFocus(selected: FocusRequester, side: Boolean): Modifier =
+        focusProperties {
+            onEnter = {
+                if (!side && requestedFocusDirection == FocusDirection.Up) selected.requestFocus()
             }
+        }.focusGroup().onPreviewKeyEvent { event ->
+            val key = event.nativeKeyEvent
+            if (key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT && event.type == KeyEventType.KeyDown) {
+                runCatching { selected.requestFocus() }
+                true
+            } else {
+                false
+            }
+        }
+
+    /** OK nesta aba ([item]) recarrega a lista dela, se o OK desceu nela (ver [Home]). */
+    private fun Modifier.reloadsOnOk(item: HomeTab, pressed: MutableState<HomeTab?>, onReload: (HomeTab) -> Unit): Modifier =
+        onPreviewKeyEvent { event ->
+            val key = event.nativeKeyEvent
+            if (key.keyCode in OkKeys) {
+                if (event.type == KeyEventType.KeyDown && key.repeatCount == 0) {
+                    pressed.value = item
+                } else if (event.type == KeyEventType.KeyUp) {
+                    if (pressed.value == item) onReload(item)
+                    pressed.value = null
+                }
+            }
+            false
+        }
+
+    /** A largura do menu lateral, da borda da tela até o fio que o separa do conteúdo. */
+    private val SideMenuWidth = 88.dp
+
+    /** O espaço de cima do menu lateral e da barra do título, que ficam na mesma linha. */
+    private val SideTop = 22.dp
+
+    /** A altura da barra do título, a mesma da fresta com o facho no alto do menu. */
+    private val SideTitleHeight = 30.dp
+
+    /** O conteúdo ao lado do menu lateral: a margem da direita é a mesma das abas em cima. */
+    private val sideScreenPadding = PaddingValues(start = 40.dp, end = 48.dp, top = SideTop)
+
+    /**
+     * O menu lateral, como o trilho do tablet deitado: a fresta com o facho em cima, os ícones das abas
+     * e os Ajustes no pé, com um fio separando do conteúdo. Como nas abas de cima, a aba muda com o
+     * foco, e a aberta tem a fresta de luz ao lado. O foco é um círculo na cor de destaque.
+     * [itemModifier] vai em cada item (o foco da aba aberta e o OK que recarrega). [tabs] são as
+     * abas do usuário aberto, na ordem de [labels] (o convidado não tem os Ajustes nem as outras abas).
+     */
+    @Composable
+    private fun SideMenu(
+        tab: HomeTab,
+        onTab: (HomeTab) -> Unit,
+        tabs: List<HomeTab>,
+        labels: List<String>,
+        itemModifier: (HomeTab) -> Modifier,
+        modifier: Modifier,
+    ) {
+        Box(Modifier.fillMaxHeight().width(SideMenuWidth)) {
+            Column(
+                modifier.fillMaxSize().padding(top = SideTop, bottom = SideTop),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                BeamGlyph(Modifier.size(width = 40.dp, height = SideTitleHeight))
+                Spacer(Modifier.height(28.dp))
+                sideTabs.filter { it.first in tabs }.forEach { (item, icon) ->
+                    SideItem(item, icon, labels[tabs.indexOf(item)], item == tab, onTab, itemModifier(item))
+                }
+                Spacer(Modifier.weight(1f))
+                if (HomeTab.SETTINGS in tabs) {
+                    SideItem(HomeTab.SETTINGS, Icons.Outlined.Tune, labels[tabs.indexOf(HomeTab.SETTINGS)], tab == HomeTab.SETTINGS, onTab, itemModifier(HomeTab.SETTINGS))
+                }
+            }
+            Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(1.dp).background(Look.Hairline))
+        }
+    }
+
+    @Composable
+    private fun SideItem(item: HomeTab, icon: ImageVector, label: String, selected: Boolean, onTab: (HomeTab) -> Unit, modifier: Modifier) {
+        Box(Modifier.fillMaxWidth().height(52.dp), contentAlignment = Alignment.Center) {
+            if (selected) LightSlit(Modifier.align(Alignment.CenterStart).padding(start = 10.dp).size(3.dp, 22.dp))
+            Surface(
+                onClick = { onTab(item) },
+                modifier = modifier.size(46.dp).onFocusChanged { if (it.isFocused) onTab(item) },
+                shape = ClickableSurfaceDefaults.shape(CircleShape),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = Color.Transparent,
+                    contentColor = if (selected) Look.Text else Look.Sub,
+                    focusedContainerColor = Look.GlowSoft,
+                    focusedContentColor = Look.OnGlow,
+                ),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(icon, contentDescription = label, modifier = Modifier.size(24.dp))
+                }
+            }
+        }
+    }
+
+    /**
+     * O nome da aba aberta em cima do conteúdo, no menu lateral (como a barra de cima do tablet), com
+     * [trailing] (a foto do usuário) no canto direito.
+     */
+    @Composable
+    private fun TitleBar(title: String, trailing: @Composable () -> Unit) {
+        Row(Modifier.fillMaxWidth().height(SideTitleHeight), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp, letterSpacing = (-0.2).sp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            trailing()
         }
     }
 
@@ -576,23 +752,27 @@ object TvUi : Screens {
     }
 
     /**
-     * A foto do usuário aberto, no fim da linha das abas (pedido do Johan, 2026-11-14). O foco não
-     * troca nada (subir dos cards pode cair nela); OK abre o menu de troca ([UserMenu]).
+     * A foto do usuário aberto, no fim da linha das abas ou no canto da barra do título (pedido do
+     * Johan, 2026-11-14). O foco não troca nada; OK abre o menu de troca ([UserMenu]). [modifier]
+     * diz como o foco chega e sai dela ([photoFocus]).
      */
     @Composable
-    internal fun UserButton() {
+    internal fun UserButton(modifier: Modifier = Modifier) {
         val user by Users.current.collectAsStateWithLifecycle()
         var open by remember { mutableStateOf(false) }
         val label = stringResource(R.string.user_menu)
-        Card(
-            onClick = { open = true },
-            shape = CardDefaults.shape(CircleShape),
-            colors = CardDefaults.colors(containerColor = Look.Surface),
-            scale = CardDefaults.scale(focusedScale = 1.12f),
-            border = CardDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Look.GlowSoft), shape = CircleShape)),
-            modifier = Modifier.size(UserPhotoSize).semantics { contentDescription = label },
-        ) {
-            UserPhoto(user, UserPhotoSize)
+        Box(modifier) {
+            Card(
+                onClick = { open = true },
+                shape = CardDefaults.shape(CircleShape),
+                colors = CardDefaults.colors(containerColor = Look.Surface),
+                scale = CardDefaults.scale(focusedScale = 1.12f),
+                border = CardDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Look.GlowSoft), shape = CircleShape)),
+                // Do tamanho dela mesmo na barra do título do menu lateral, um pouco mais baixa.
+                modifier = Modifier.requiredSize(UserPhotoSize).semantics { contentDescription = label },
+            ) {
+                UserPhoto(user, UserPhotoSize)
+            }
         }
         if (open) UserMenu(user, onDismiss = { open = false })
     }
@@ -1236,6 +1416,23 @@ object TvUi : Screens {
                 }
             }
             group("playlists", R.string.settings_playlists, hint = R.string.settings_playlists_hint, rows = playlistRows)
+
+            // O layout do início (pedido do Johan, 2026-11-14): as abas em cima, como sempre foi, ou o
+            // menu lateral do tablet. Muda na hora, sem sair dos Ajustes.
+            group(
+                "layout",
+                R.string.settings_tv_layout,
+                hint = R.string.settings_tv_layout_hint,
+                rows = TvLayout.entries.map { layout ->
+                    row(layout.name) {
+                        SettingsRow(
+                            onClick = { TvLayouts.select(layout) },
+                            headlineContent = { Text(stringResource(layout.label)) },
+                            trailingContent = { RadioButton(selected = TvLayouts.current == layout, onClick = null) },
+                        )
+                    }
+                },
+            )
 
             // O idioma do app (pedido do Johan, 2026-11-13); cada um com o nome na própria língua.
             group(

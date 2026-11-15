@@ -307,4 +307,10 @@
     <string name="settings_remote_state_ready">O botão YouTube abre o BeamTube.</string>
     <string name="settings_remote_hint">Em Acessibilidade, escolha o BeamTube e ative. Na primeira vez que você apertar o botão YouTube, o YouTube abre e o BeamTube vem logo em seguida. Dali em diante, o botão abre o BeamTube direto. O mesmo ajuste deixa o modo dormir desligar a TV. O BeamTube só vê as teclas apertadas no controle e quando o app do YouTube abre, nunca o que está na tela.</string>
     <string name="settings_remote_no_settings">Esta TV não abriu os ajustes. Procure Acessibilidade no menu de configurações da TV.</string>
+
+    <!-- Layout do início (Settings, só na TV) -->
+    <string name="settings_tv_layout">Layout</string>
+    <string name="settings_tv_layout_hint">O menu lateral é o layout do tablet: os ícones das abas à esquerda e o nome da aba aberta em cima.</string>
+    <string name="tv_layout_top_tabs">Abas em cima</string>
+    <string name="tv_layout_side_menu">Menu lateral</string>
 </resources>
