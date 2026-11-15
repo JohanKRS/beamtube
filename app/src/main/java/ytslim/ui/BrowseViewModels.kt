@@ -154,12 +154,10 @@ class RecommendedViewModel : ViewModel(), Refreshable {
                 // Sem rede, a lista que está na tela (a guardada, ou a de antes do puxar) fica.
                 .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false) }, { if (quiet) raw.value else Raw.Error(it.toMessage()) })
             val old = raw.value
-            raw.value = if (quiet && !byUser && onScreen && fresh is Raw.Loaded && old is Raw.Loaded && fresh !== old) {
-                val keep = withContext(Dispatchers.Default) { FreshBelow.keep(shown(old.pages, settings.value), seen) }
-                fresh.copy(pages = listOf(keep) + fresh.pages, kept = true)
-            } else {
-                fresh
-            }
+            val below = quiet && !byUser && onScreen && fresh is Raw.Loaded && old is Raw.Loaded && fresh !== old
+            val keep = if (below) withContext(Dispatchers.Default) { FreshBelow.keep(shown(old.pages, settings.value), seen) } else null
+            // A aba pode ter saído da tela enquanto os filtros rodavam: aí a lista nova entra inteira.
+            raw.value = if (keep != null && onScreen && fresh is Raw.Loaded) fresh.copy(pages = listOf(keep) + fresh.pages, kept = true) else fresh
             _refreshing.value = false
             fill(extra = 0)
         }
