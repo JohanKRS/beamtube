@@ -47,7 +47,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AudioRules
 import ytslim.data.AuthRepository
 import ytslim.data.Caption
-import ytslim.data.CaptionOption
 import ytslim.data.Chapter
 import ytslim.data.HeatSegment
 import ytslim.data.HeatmapRepository
@@ -99,10 +98,10 @@ class PlaybackController(
 
     /** Botões da página do vídeo. [page] é null enquanto carrega ou sem login. */
     data class Controls(
-        /** As legendas do painel: no idioma do app, no original e em inglês, sem repetir ([SubtitleRules.options]). */
-        val captionOptions: List<CaptionOption> = emptyList(),
-        /** A legenda na tela; null = desligada. */
-        val captionShown: CaptionOption? = null,
+        /** O vídeo tem uma legenda para o botão ligar (no idioma de Settings > Captions ou outra, [SubtitleRules.choose]). */
+        val captionsAvailable: Boolean = false,
+        /** A legenda ligada (o botão aceso). */
+        val captionsOn: Boolean = false,
         /** Onde começa cada trecho que o avanço pula inteiro ([jumpAhead]), para marcar na barra de tempo. */
         val skipSpots: List<Long> = emptyList(),
         /** Os capítulos do vídeo (divisões na barra e o nome do atual); vazio sem capítulos. */
@@ -191,9 +190,6 @@ class PlaybackController(
     private var lastPlaybackState = Player.STATE_IDLE
 
     private var current: PlaybackInfo? = null
-    /** O vídeo que está no player e a legenda que foi junto com ele (trocar de idioma remonta o vídeo). */
-    private var ready: PlaybackResult.Ready? = null
-    private var loadedCaption: Caption? = null
     private var saveHistory = true
     private var errorRetries = 0
     private var loadJob: Job? = null
@@ -396,12 +392,12 @@ class PlaybackController(
             originalLanguage = SubtitleRules.originalLanguage(result.info.originalAudioLabel, result.info.captions),
         )
         val settings = SettingsRepository.current()
-        // A legenda do idioma escolhido vai junto mesmo desligada: ligar pelo painel é na hora.
+        // O idioma vem de Settings > Captions; sem legenda nele, a do original ou a que houver. Ela vai
+        // junto mesmo desligada: ligar pelo botão é na hora.
         val option = SubtitleRules.choose(options, settings.captionLanguage)
         val caption = option?.caption
         val captionsOn = caption != null && settings.captionsOn
-        ready = result
-        loadedCaption = caption
+        if (option != null) Log.i(TAG, "captions: ${option.language}${if (caption?.translated == true) " (translated)" else ""}, wanted ${settings.captionLanguage}")
         // Cada vídeo começa com as regras padrão: o que o usuário mudar vale só para o atual.
         player.trackSelectionParameters = TrackRules.defaults(
             player.trackSelectionParameters,
@@ -413,7 +409,7 @@ class PlaybackController(
         if (preparedInMs < 0) preparedInMs = SystemClock.elapsedRealtime() - requestedAt
         // Daqui em diante, o próprio player segura o processador enquanto toca.
         letSleep()
-        _controls.update { it.copy(captionOptions = options, captionShown = option.takeIf { captionsOn }) }
+        _controls.update { it.copy(captionsAvailable = caption != null, captionsOn = captionsOn) }
         _state.value = State.Playing(result.info)
         if (!result.info.isLive) prefetchNextNearEnd()
     }
@@ -516,38 +512,19 @@ class PlaybackController(
     }
 
     /**
-     * Painel de legenda: [option] liga a legenda nela, null desliga. A escolha vale para os próximos
-     * vídeos ([CaptionLanguage]): tocar no inglês de um vídeo em inglês, com "original" guardado,
-     * continua "original". Uma legenda que não veio com o vídeo remonta o vídeo no mesmo ponto.
+     * O botão de legenda só liga e desliga (pedido do Johan depois da 1.0.9: o painel com os idiomas
+     * no player não agradou; o idioma fica em Settings > Captions). Ligada ou não, vale para os
+     * próximos vídeos.
      */
-    fun chooseCaption(option: CaptionOption?) {
+    fun toggleCaptions() {
         val controls = _controls.value
-        if (option == null) {
-            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                .build()
-            _controls.update { it.copy(captionShown = null) }
-            scope.launch { SettingsRepository.setCaptionsOn(false) }
-            return
-        }
-        if (option !in controls.captionOptions) return
-        _controls.update { it.copy(captionShown = option) }
-        scope.launch {
-            val saved = SettingsRepository.current().captionLanguage
-            SettingsRepository.setCaptions(if (saved in option.choices) saved else option.main)
-        }
+        if (!controls.captionsAvailable) return
+        val on = !controls.captionsOn
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !on)
             .build()
-        if (option.caption == loadedCaption) return
-        val result = ready ?: return
-        Log.i(TAG, "captions: switching to ${option.language}${if (option.caption.translated) " (translated)" else ""}")
-        loadedCaption = option.caption
-        // O vídeo volta no mesmo ponto, e a resolução é escolhida de novo (a escolha à mão continua).
-        qualityChecked = false
-        expectBuffering = true
-        player.setMediaSource(buildSource(result, option.caption), player.currentPosition)
-        player.prepare()
+        _controls.update { it.copy(captionsOn = on) }
+        scope.launch { SettingsRepository.setCaptionsOn(on) }
     }
 
     /**

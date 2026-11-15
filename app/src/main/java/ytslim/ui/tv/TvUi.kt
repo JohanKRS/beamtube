@@ -217,6 +217,7 @@ import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
 import ytslim.ui.openChannelOf
 import ytslim.ui.exploreFilterChoices
+import ytslim.ui.captionChoices
 import ytslim.ui.endActionOptions
 import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
@@ -1322,6 +1323,23 @@ object TvUi : Screens {
                             onClick = { vm.setEndAction(action) },
                             headlineContent = { Text(stringResource(label)) },
                             trailingContent = { RadioButton(selected = settings.endAction == action, onClick = null) },
+                        )
+                    }
+                },
+            )
+
+            // O idioma da legenda (pedido do Johan depois da 1.0.9): o botão do player só liga e desliga.
+            group(
+                "captions",
+                R.string.settings_captions,
+                hint = R.string.settings_captions_hint,
+                rows = captionChoices(context, settings.captionLanguage).map { choice ->
+                    row(choice.value) {
+                        SettingsRow(
+                            onClick = { vm.setCaptionLanguage(choice.value) },
+                            headlineContent = { Text(choice.title) },
+                            supportingContent = if (choice.subtitle != null) ({ Text(choice.subtitle) }) else null,
+                            trailingContent = { RadioButton(selected = choice.selected, onClick = null) },
                         )
                     }
                 },

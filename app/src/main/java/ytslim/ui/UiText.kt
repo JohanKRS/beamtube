@@ -6,13 +6,17 @@ import android.content.ContextWrapper
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
+import androidx.core.os.ConfigurationCompat
+import java.util.Locale
 import ytslim.R
+import ytslim.data.CaptionLanguage
 import ytslim.data.EndAction
 import ytslim.data.ExternalLinks
 import ytslim.data.ResultType
 import ytslim.data.SearchDuration
 import ytslim.data.SearchFilters
 import ytslim.data.SortBy
+import ytslim.data.SubtitleRules
 import ytslim.data.SuggestedTopic
 import ytslim.data.Topic
 import ytslim.data.UploadDate
@@ -40,6 +44,40 @@ val endActionOptions = listOf(
     EndAction.NEXT to R.string.settings_end_next,
     EndAction.STAY to R.string.settings_end_stay,
 )
+
+/**
+ * Uma linha de Settings > Captions: o idioma guardado ([CaptionLanguage]), o nome e a linha de baixo.
+ * [selected] já leva em conta o inglês que coincide com o idioma do app.
+ */
+class CaptionChoice(val value: CaptionLanguage, val title: String, val subtitle: String?, val selected: Boolean)
+
+/**
+ * Settings > Captions (pedido do Johan depois da 1.0.9, que tinha a escolha num painel do player): a
+ * legenda no idioma do app, no idioma original de cada vídeo ou em inglês. Os idiomas aparecem pelo
+ * nome, no idioma do app ("Português", "Inglês"). Com o app em inglês, as duas são a mesma: fica só a
+ * do idioma do app, marcada também quando o guardado é "inglês".
+ */
+fun captionChoices(context: Context, saved: CaptionLanguage): List<CaptionChoice> {
+    val locale = ConfigurationCompat.getLocales(context.resources.configuration)[0] ?: Locale.getDefault()
+    fun name(language: String) = Locale.forLanguageTag(language).getDisplayLanguage(locale)
+        .replaceFirstChar { it.titlecase(locale) }
+        .ifBlank { language }
+    val app = SubtitleRules.base(locale.language) ?: SubtitleRules.ENGLISH
+    val english = app == SubtitleRules.ENGLISH
+    val shown = if (english && saved == CaptionLanguage.ENGLISH) CaptionLanguage.APP else saved
+    return buildList {
+        add(CaptionChoice(CaptionLanguage.APP, name(app), context.getString(R.string.settings_captions_app), shown == CaptionLanguage.APP))
+        add(
+            CaptionChoice(
+                CaptionLanguage.ORIGINAL,
+                context.getString(R.string.settings_captions_original),
+                context.getString(R.string.settings_captions_original_desc),
+                shown == CaptionLanguage.ORIGINAL,
+            ),
+        )
+        if (!english) add(CaptionChoice(CaptionLanguage.ENGLISH, name(SubtitleRules.ENGLISH), null, shown == CaptionLanguage.ENGLISH))
+    }
+}
 
 /** Um filtro na tela (busca e Explore): o nome e as opções, cada uma já com os filtros que ela aplica. */
 class SearchFilterChoice(@StringRes val label: Int, val options: List<Option>) {

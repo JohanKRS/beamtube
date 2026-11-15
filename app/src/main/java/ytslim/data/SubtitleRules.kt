@@ -16,29 +16,21 @@ data class Caption(
 )
 
 /**
- * As escolhas do botão de legenda (1.0.9, pedido do Johan): no idioma do app, no idioma original do
- * vídeo ou em inglês. A escolha fica para os próximos vídeos, então o que se guarda é o tipo, não o
- * idioma (o original muda de vídeo para vídeo).
+ * Em que idioma a legenda aparece (Settings > Captions; até a 1.0.9 era um painel no player): no
+ * idioma do app, no idioma original do vídeo ou em inglês. O que se guarda é o tipo, não o idioma
+ * (o original muda de vídeo para vídeo).
  */
 enum class CaptionLanguage { APP, ORIGINAL, ENGLISH }
 
 /**
- * Uma opção do painel de legenda: [language] (o código base, "pt"), as escolhas que ela atende (no
+ * Uma legenda possível para o vídeo: [language] (o código base, "pt"), as escolhas que ela atende (no
  * vídeo em inglês, "original" e "inglês" são a mesma) e a legenda que ela carrega.
  */
-data class CaptionOption(val language: String, val choices: Set<CaptionLanguage>, val caption: Caption) {
-    /** A escolha que fica guardada ao tocar nesta opção, se a guardada ainda não for uma das dela. */
-    val main: CaptionLanguage
-        get() = when {
-            CaptionLanguage.APP in choices -> CaptionLanguage.APP
-            CaptionLanguage.ENGLISH in choices -> CaptionLanguage.ENGLISH
-            else -> CaptionLanguage.ORIGINAL
-        }
-}
+data class CaptionOption(val language: String, val choices: Set<CaptionLanguage>, val caption: Caption)
 
 /**
- * Quais legendas o painel oferece, nesta ordem: no idioma do app, no original e em inglês, sem repetir
- * (se o original for o do app ou o inglês, ficam só essas). Para cada idioma:
+ * As legendas possíveis para um vídeo, nesta ordem: no idioma do app, no original e em inglês, sem
+ * repetir (se o original for o do app ou o inglês, ficam só essas). Para cada idioma:
  * 1. uma feita por pessoa nele;
  * 2. a automática, se ele for o original (a fala do vídeo);
  * 3. a tradução automática do YouTube, menos para o original: da feita por pessoa no original, da
@@ -65,7 +57,10 @@ object SubtitleRules {
         return listOf(CaptionOption(base(any.language).orEmpty(), CaptionLanguage.entries.toSet(), any))
     }
 
-    /** A opção de [choice] ou, se o vídeo não tiver, a do original, ou a primeira. */
+    /**
+     * A legenda que vai com o vídeo: a de [choice] (Settings > Captions) ou, se o vídeo não tiver
+     * nenhuma nesse idioma (nem a tradução automática), a do original, ou a que houver.
+     */
     fun choose(options: List<CaptionOption>, choice: CaptionLanguage): CaptionOption? =
         options.firstOrNull { choice in it.choices }
             ?: options.firstOrNull { CaptionLanguage.ORIGINAL in it.choices }
