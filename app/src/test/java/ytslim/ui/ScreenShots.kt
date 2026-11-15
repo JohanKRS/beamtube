@@ -165,11 +165,49 @@ class ScreenShots {
 
     private fun feed(list: List<Video> = videos) = VideoListContent(list, hasMore = true, loadingMore = false)
 
-    /** A cor de destaque é global ([Look.accent]): cada foto começa e termina no âmbar. */
+    /** A cor de destaque e o tom do fundo são globais ([Look]): cada foto começa e termina no padrão. */
     @After
     fun resetAccent() {
         Look.accent = Accent.DEFAULT
+        Look.tones = Tones.PHONE
     }
+
+    /** Tons de fundo da TV para comparar (2026-11-15): o de hoje e quatro mais escuros. */
+    private fun toneShot(name: String, ground: Int?, settings: Boolean) {
+        Look.tones = ground?.let(Tones::from) ?: Tones.PHONE
+        shot(name) {
+            TvUi.Theme {
+                if (settings) {
+                    TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) }
+                } else {
+                    TvUi.Home(HomeTab.SUBSCRIPTIONS, {}, {}) {
+                        TvUi.VideoGrid(feed(), "", {}, {}, {}, takeFocus = false, onFocusTaken = {})
+                    }
+                }
+            }
+        }
+    }
+
+    @Test @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTone0Grid() = toneShot("tone-0-grid", null, settings = false)
+    @Test @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTone0Settings() = toneShot("tone-0-settings", null, settings = true)
+    @Test @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTone1Grid() = toneShot("tone-1-grid", 0x131416, settings = false)
+    @Test @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTone1Settings() = toneShot("tone-1-settings", 0x131416, settings = true)
+    @Test @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTone2Grid() = toneShot("tone-2-grid", 0x0E0F11, settings = false)
+    @Test @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTone2Settings() = toneShot("tone-2-settings", 0x0E0F11, settings = true)
+    @Test @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTone3Grid() = toneShot("tone-3-grid", 0x0A0A0C, settings = false)
+    @Test @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTone3Settings() = toneShot("tone-3-settings", 0x0A0A0C, settings = true)
+    @Test @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTone4Grid() = toneShot("tone-4-grid", 0x050506, settings = false)
+    @Test @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTone4Settings() = toneShot("tone-4-settings", 0x050506, settings = true)
 
     @Test
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")

@@ -277,7 +277,7 @@ private val Type: Typography = Typography(
 )
 
 /** Sem vidro na TV: as caixas de TV costumam ter pouca GPU, e o desfoque não compensa. */
-private val Floating = Color(0xF528292D)
+private val Floating: Color get() = Look.Floating
 
 private val CardShape = RoundedCornerShape(14.dp)
 
