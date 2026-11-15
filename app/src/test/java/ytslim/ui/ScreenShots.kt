@@ -64,7 +64,10 @@ import ytslim.data.SearchFilters
 import ytslim.data.SuggestedTopic
 import ytslim.data.Video
 import ytslim.ui.mobile.MobileUi
+import ytslim.ui.tv.TvLayout
+import ytslim.ui.tv.TvLayouts
 import ytslim.ui.tv.TvUi
+import androidx.compose.ui.test.performScrollToNode
 import java.io.File
 
 /**
@@ -174,11 +177,15 @@ class ScreenShots {
         Look.tones = if (mode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) Tones.TV else Tones.PHONE
     }
 
-    /** A cor de destaque e o tom do fundo são globais ([Look]): cada foto termina no padrão. */
+    /**
+     * A cor de destaque e o tom do fundo ([Look]) e o layout da TV ([TvLayouts]) são globais: cada
+     * foto termina no padrão.
+     */
     @After
     fun resetAccent() {
         Look.accent = Accent.DEFAULT
         Look.tones = Tones.PHONE
+        TvLayouts.select(TvLayout.TOP_TABS)
     }
 
     @Test
@@ -769,6 +776,85 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvTabReloading() = tvTabReloadShot("tv-tab-reloading", ok = true)
+
+    /**
+     * O menu lateral da TV (pedido do Johan, 2026-11-14): o layout do tablet deitado, escolhido nos
+     * Ajustes. A aba muda com o foco, como no aparelho. [action] recebe o estado da aba.
+     */
+    private fun tvSideMenuShot(
+        name: String,
+        tab: HomeTab = HomeTab.SUBSCRIPTIONS,
+        takeFocus: Boolean = false,
+        action: () -> Unit = {},
+    ) {
+        TvLayouts.select(TvLayout.SIDE_MENU)
+        val current = androidx.compose.runtime.mutableStateOf(tab)
+        shot(name, action) {
+            TvUi.Theme {
+                TvUi.Home(current.value, onTab = { current.value = it }, onReload = {}) { shown ->
+                    if (shown == HomeTab.SETTINGS) {
+                        TvUi.Settings(SettingsViewModel(), {}, {}, {})
+                    } else {
+                        TvUi.VideoGrid(feed(), "", {}, {}, {}, takeFocus = takeFocus, onFocusTaken = {})
+                    }
+                }
+            }
+        }
+    }
+
+    /** Uma tecla do controle põe o Compose no modo de teclado; depois o foco vai para o item do menu. */
+    private fun focusSideItem(label: String) {
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onNode(androidx.compose.ui.test.hasContentDescription(label) and hasClickAction(), useUnmergedTree = false).requestFocus()
+    }
+
+    /** O grupo do layout nos Ajustes da TV, rolado até o nome dele ([title]) no alto, com o foco na [row]. */
+    private fun focusLayoutRow(row: String, title: String = "Layout") {
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNode(androidx.compose.ui.test.hasScrollToIndexAction()).performScrollToNode(hasText(title))
+        compose.waitForIdle()
+        compose.onNode(hasText(row) and hasClickAction(), useUnmergedTree = false).requestFocus()
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSideMenu() = tvSideMenuShot("tv-side-menu")
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSideMenuFocused() = tvSideMenuShot("tv-side-menu-focused", action = { focusSideItem("Explore") })
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSideMenuCardFocused() = tvSideMenuShot("tv-side-menu-card-focused", action = {
+        // O foco no primeiro card, o que fica junto do menu: ele cresce e não pode sair cortado.
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionUp) }
+        val focusable = androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.Focused)
+        val menuEdge = with(compose.density) { 88.dp.toPx() }
+        val first = compose.onAllNodes(focusable).fetchSemanticsNodes()
+            .filter { it.boundsInRoot.left > menuEdge }
+            .minWith(compareBy({ it.boundsInRoot.top }, { it.boundsInRoot.left }))
+        compose.onNode(androidx.compose.ui.test.SemanticsMatcher("card") { it.id == first.id }).requestFocus()
+    })
+
+    @Test
+    @Config(qualifiers = "pt-w960dp-h540dp-land-television-xhdpi")
+    fun tvSideMenuPortuguese() = tvSideMenuShot("tv-side-menu-pt")
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSideMenuSettings() = tvSideMenuShot("tv-side-menu-settings", tab = HomeTab.SETTINGS, action = { focusLayoutRow("Side menu") })
+
+    /** A escolha nos Ajustes com as abas em cima (o padrão). */
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSettingsLayout() = shot("tv-settings-layout", action = { focusLayoutRow("Tabs on top") }) {
+        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+    }
+
+    @Test
+    @Config(qualifiers = "es-w960dp-h540dp-land-television-xhdpi")
+    fun tvSideMenuSettingsSpanish() = tvSideMenuShot("tv-side-menu-settings-es", tab = HomeTab.SETTINGS, action = { focusLayoutRow("Menú lateral", title = "Diseño") })
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")

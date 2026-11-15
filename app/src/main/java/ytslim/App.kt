@@ -29,6 +29,7 @@ import ytslim.ui.AppLanguage
 import ytslim.ui.ImageHttp
 import ytslim.ui.Look
 import ytslim.ui.Tones
+import ytslim.ui.tv.TvLayouts
 
 class App : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
@@ -45,6 +46,7 @@ class App : Application(), SingletonImageLoader.Factory {
         WatchPositions.init(this)
         AppIcons.init(this)
         Accents.init(this)
+        TvLayouts.init(this)
         AppScope.launch { SettingsRepository.dropOldExplore() }
         // De volta ao app (a TV ligou de novo, outro app fechou): o token do YouTube e o da conta podem
         // ter vencido, e o primeiro vídeo esperaria por eles. O que ainda vale não é refeito.
