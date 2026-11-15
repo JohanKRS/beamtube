@@ -11,6 +11,7 @@ the fonts or the screenshots change. Everything it writes is committed.
   - site/assets/brand/logo.svg: the whole logo, still, for the header.
   - site/assets/brand/icon-<color>.svg: the app icon in each of the seven colors (option C).
   - site/favicon.svg, site/apple-touch-icon.png, site/icon-192.png.
+  - site/og-image.png: the picture a link to the site shows in chats and social networks.
   - site/assets/fonts/outfit-*.woff2: Outfit, cut down to the Latin letters the three languages use.
   - site/assets/img/*.webp: the screenshots from docs/screenshots that index.html uses.
 
@@ -38,6 +39,9 @@ HERO_VIEWBOX = (100, 30, 600, 240)
 # above and below for the light to fade out.
 LOGO_VIEWBOX = (104, 52, 538, 196)
 
+# The link preview: the size Facebook, X, WhatsApp, Telegram and Discord all show in full.
+OG_SIZE = (1200, 630)
+
 # Light (300) for the name's "tube" and big text, Regular for running text, Medium and SemiBold for
 # labels and headings. Bold is only in the logo, which is drawn as paths.
 FONT_WEIGHTS = {"light": 300, "regular": 400, "medium": 500, "semibold": 600}
@@ -58,7 +62,7 @@ class Raw:
         self.defs, self.body = defs, body
 
 
-def soft_beam(light, glow):
+def soft_beam(light, glow, blur=True):
     cone = mi.mix(light, glow, 0.5)
     x0, x1, top0, bottom0, top1, bottom1 = mi.LOCKUP_BEAM
     # The layers end between x1 - 36 and x1; the light fades to nothing over that stretch.
@@ -71,6 +75,8 @@ def soft_beam(light, glow):
         f'<stop offset="1" stop-color="{cone}" stop-opacity="0"/></linearGradient>',
         f'<filter id="soft" x="-5%" y="-15%" width="110%" height="130%"><feGaussianBlur stdDeviation="{mi.LOCKUP_BEAM_SOFT * 0.8:g}"/></filter>',
     ]
+    if not blur:
+        return Raw(defs[:1], f'<path d="{d}" fill="url(#beam)"/>')
     return Raw(defs, f'<path d="{d}" fill="url(#beam)" filter="url(#soft)"/>')
 
 
@@ -120,6 +126,43 @@ def hero():
     light_part = shapes_svg(back + dots, defs, "l")
     body = f'<g mask="url(#my)"><g mask="url(#mx)">{light_part}</g></g>' + mi.svg_shapes(slit + word, defs, "n")
     (BRAND / "logo.svg").write_text(svg(LOGO_VIEWBOX, defs, body, ' role="img" aria-label="BeamTube"'))
+
+
+def og_image():
+    """The hero logo on the night blue, 1200 x 630, for link previews.
+
+    cairosvg has no blur, so the glow and the beam are drawn sharp and blurred here with Pillow (on
+    premultiplied colors, so the edges don't go dark), then the dust, the slit and the name go on top.
+    """
+    import io
+    import cairosvg
+    from PIL import Image, ImageFilter
+
+    top, bottom, diagonal, light, glow, letters = mi.PALETTE["night"]
+    shapes, _ = mi.lockup(light, glow, letters, flat=False)
+    width, height = OG_SIZE
+    # Centered between the slit and the end of the name, like the hero and the TV banner.
+    middle_x, middle_y = (mi.LOCKUP_SLIT[0] + 603) / 2, mi.LOCKUP_MIDDLE
+    units = 700
+    box = (middle_x - units / 2, middle_y - units * height / width / 2, units, units * height / width)
+    scale = width / units
+
+    def render(part, background=""):
+        defs = []
+        body = background + shapes_svg(part, defs, "o")
+        png = cairosvg.svg2png(bytestring=svg(box, defs, body).encode(), output_width=width, output_height=height)
+        return Image.open(io.BytesIO(png)).convert("RGBA")
+
+    x, y, w, h = box
+    sky = render([], f'<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b1f3b"/>'
+                     f'<stop offset="1" stop-color="#161931"/></linearGradient>'
+                     f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="url(#sky)"/>')
+    beam = render(shapes[:1] + [soft_beam(light, glow, blur=False)])
+    beam = beam.convert("RGBa").filter(ImageFilter.GaussianBlur(mi.LOCKUP_BEAM_SOFT * 0.8 * scale)).convert("RGBA")
+    image = Image.alpha_composite(sky, beam)
+    image = Image.alpha_composite(image, render(shapes[6:-4]))
+    image = Image.alpha_composite(image, render(shapes[-4:]))
+    image.convert("RGB").save(SITE / "og-image.png", optimize=True)
 
 
 def icons():
@@ -175,6 +218,7 @@ def main():
     for folder in (BRAND, FONTS, IMG):
         folder.mkdir(parents=True, exist_ok=True)
     hero()
+    og_image()
     icons()
     fonts()
     screenshots()

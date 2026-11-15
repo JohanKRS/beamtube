@@ -209,6 +209,12 @@ class ScreenShots {
         Look.tones = if (mode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) Tones.TV else Tones.PHONE
     }
 
+    /** As fotos mostram uma conta aberta, com a foto dela no alto, como o app fica quase sempre. */
+    @Before
+    fun signedIn() {
+        openUser(0)
+    }
+
     /**
      * A cor de destaque e o tom do fundo ([Look]) e o layout da TV ([TvLayouts]) são globais: cada
      * foto termina no padrão.

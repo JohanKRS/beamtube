@@ -7,9 +7,21 @@
 <meta name="description" data-i18n-content="meta.description" content="BeamTube is a free, open-source YouTube client for Android phones, tablets and TVs. It opens on your subscriptions, leaves out Shorts and comments, and adds tools for long videos and for falling asleep to playlists.">
 <meta name="theme-color" content="#12131c">
 <meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://beamtube.johankrs.com/">
+<link rel="alternate" hreflang="en" href="https://beamtube.johankrs.com/?lang=en">
+<link rel="alternate" hreflang="pt-BR" href="https://beamtube.johankrs.com/?lang=pt">
+<link rel="alternate" hreflang="es" href="https://beamtube.johankrs.com/?lang=es">
+<link rel="alternate" hreflang="x-default" href="https://beamtube.johankrs.com/">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://beamtube.johankrs.com/">
+<meta property="og:site_name" content="BeamTube">
 <meta property="og:title" content="BeamTube">
 <meta property="og:description" data-i18n-content="meta.description" content="BeamTube is a free, open-source YouTube client for Android phones, tablets and TVs. It opens on your subscriptions, leaves out Shorts and comments, and adds tools for long videos and for falling asleep to playlists.">
+<meta property="og:image" content="https://beamtube.johankrs.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The BeamTube logo">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -152,6 +164,8 @@
       <div><dt data-i18n="long.captionsT">Captions you can read</dt><dd data-i18n="long.captionsD">Always centered, white with a thin outline. Automatic captions show up two lines at a time instead of scrolling word by word.</dd></div>
       <div><dt data-i18n="long.queueT">Playlists play in order</dt><dd data-i18n="long.queueD">Watch later works as a real queue. Drag to reorder, swipe a video to the top or away, with Undo.</dd></div>
       <div><dt data-i18n="long.qualityT">The best picture your screen can show</dt><dd data-i18n="long.qualityD">On the TV the player goes for 4K first and only steps down when it really has to. Phones and tablets start at 1080p. A resolution you pick by hand stays.</dd></div>
+      <div><dt data-i18n="long.loadT">Loading takes the video’s colors</dt><dd data-i18n="long.loadD">While a video loads, its thumbnail fills the screen, blurred, and the video fades in from those colors. No black screen and no black bars.</dd></div>
+      <div><dt data-i18n="long.openT">The player opens and closes in a blink</dt><dd data-i18n="long.openD">It grows in over the list and shrinks away when you go back, in a fifth of a second. On the phone, drag the video down to close it.</dd></div>
       <div><dt data-i18n="long.endT">No autoplay into the next thing</dt><dd data-i18n="long.endD">When a video ends you get a few suggestions: the next video from your list, one from the same channel and related videos that respect your topics. Pick nothing, and you’re back on your list after 15 seconds.</dd></div>
     </dl>
     <div class="gallery">
@@ -264,6 +278,7 @@
           <li data-i18n="devices.tv4">The YouTube button on your remote can open BeamTube. It learns your remote’s key by itself.</li>
           <li data-i18n="devices.tv5">Come back after a while and Subscriptions are already refreshed, with the new videos on top.</li>
           <li data-i18n="devices.tv6">Rest the focus on a video for a moment and it starts getting ready, so it opens faster.</li>
+          <li data-i18n="devices.tv7">Choose the layout: tabs across the top, or a side menu like the tablet’s.</li>
         </ul>
       </div>
       <div class="device">
@@ -278,7 +293,7 @@
       </div>
     </div>
     <div class="gallery">
-      <figure class="screen tv" style="--ar:1.778"><img src="assets/img/tv-channel.webp" width="1280" height="720" loading="lazy" alt="A channel page on a TV" data-i18n-alt="alt.channel"></figure>
+      <figure class="screen tv" style="--ar:1.778"><img src="assets/img/tv-side-menu.webp" width="1280" height="720" loading="lazy" alt="BeamTube on a TV with the side menu" data-i18n-alt="alt.sideMenu"></figure>
       <figure class="screen tablet" style="--ar:1.602"><img src="assets/img/tablet-landscape.webp" width="1280" height="799" loading="lazy" alt="BeamTube on a tablet in landscape" data-i18n-alt="alt.tablet"></figure>
     </div>
   </div>
@@ -313,10 +328,11 @@
         </div>
       </div>
     </div>
+    <p class="langs" data-i18n="yours.users"><strong>One BeamTube for the whole house.</strong> Each person signs in with their own YouTube account and keeps their own topics, blocked channels and history. The photo at the top switches users, and a guest mode shows only Recommended and Search, with no account.</p>
     <p class="langs" data-i18n="yours.langs"><strong>English, Portuguese and Spanish.</strong> BeamTube follows your device’s language, or you can pick one in Settings.</p>
     <div class="gallery">
+      <figure class="screen phone" style="--ar:0.4615"><img src="assets/img/phone-users-menu.webp" width="540" height="1170" loading="lazy" alt="The photo menu, to switch users" data-i18n-alt="alt.users"></figure>
       <figure class="screen phone" style="--ar:0.4615"><img src="assets/img/phone-accent-teal.webp" width="540" height="1170" loading="lazy" alt="The Teal highlight color on a phone" data-i18n-alt="alt.teal"></figure>
-      <figure class="screen phone" style="--ar:0.4615"><img src="assets/img/phone-subscriptions-pt.webp" width="540" height="1170" loading="lazy" alt="BeamTube in Portuguese" data-i18n-alt="alt.pt"></figure>
       <figure class="screen tv" style="--ar:1.778"><img src="assets/img/tv-accent-plum.webp" width="1280" height="720" loading="lazy" alt="The Plum highlight color on a TV" data-i18n-alt="alt.plum"></figure>
     </div>
   </div>
@@ -387,7 +403,7 @@
     <ul class="privacy">
       <li data-i18n="privacy.p1"><strong>Nothing goes to the developer.</strong> BeamTube has no servers, no ads, no analytics and no crash reporting of its own.</li>
       <li data-i18n="privacy.p2"><strong>It talks only to YouTube and Google.</strong> That’s how it signs you in, loads your lists and plays videos, like any YouTube client.</li>
-      <li data-i18n="privacy.p3"><strong>Your settings stay on your device.</strong> Topics, blocked channels and watch positions too. Signing out deletes the lists cached on it.</li>
+      <li data-i18n="privacy.p3"><strong>Your settings stay on your device.</strong> Topics, blocked channels and watch positions too, kept apart for each user, and the guest keeps nothing. Signing out deletes the account’s cached lists; its settings stay, in case it signs in again.</li>
       <li data-i18n="privacy.p4"><strong>Links stay out of your history.</strong> Videos opened from other apps aren’t added to your watch history, unless you choose otherwise.</li>
     </ul>
   </div>
