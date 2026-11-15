@@ -23,6 +23,8 @@ import ytslim.player.ScreenOffService
 import ytslim.ui.Accents
 import ytslim.ui.AppLanguage
 import ytslim.ui.ImageHttp
+import ytslim.ui.Look
+import ytslim.ui.Tones
 import ytslim.ui.tv.TvLayouts
 
 class App : Application(), SingletonImageLoader.Factory {
@@ -42,7 +44,9 @@ class App : Application(), SingletonImageLoader.Factory {
         // De volta ao app (a TV ligou de novo, outro app fechou): o token do YouTube e o da conta podem
         // ter vencido, e o primeiro vídeo esperaria por eles. O que ainda vale não é refeito.
         AppScope.launch { AppVisibility.returns.collect { if (Users.current.value != null) EngineWarmup.start() } }
-        if (isTv()) keepScreenOffServiceBound() else removeScreenOffService()
+        val tv = isTv()
+        Look.tones = if (tv) Tones.TV else Tones.PHONE
+        if (tv) keepScreenOffServiceBound() else removeScreenOffService()
         logCompilation()
     }
 
