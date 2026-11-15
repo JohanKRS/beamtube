@@ -87,7 +87,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
             ListCache.read(CACHE_KEY)?.let { saved ->
                 raw.value = Raw.Loaded(listOf(saved.videos), VideoPage(emptyList(), null), loadingMore = false, cached = true)
             }
-            load(quiet = raw.value is Raw.Loaded)
+            load(quiet = raw.value is Raw.Loaded, byUser = false)
         }
         // Guarda as páginas da conta como vieram (os filtros valem na hora de mostrar), depois que
         // a tela enche.
@@ -102,22 +102,53 @@ class RecommendedViewModel : ViewModel(), Refreshable {
 
     override fun refresh() = load(quiet = raw.value is Raw.Loaded)
 
-    private fun load(quiet: Boolean) {
+    /** A lista da conta que chegou com a guardada na tela, esperando a aba sair da tela ([QuietSwap]). */
+    private val swap = QuietSwap<Raw.Loaded>()
+
+    /**
+     * A aba apareceu ou saiu da tela. A lista não troca com a aba na tela (pedido do Johan, 1.0.11):
+     * a da conta que chegou nesse meio-tempo entra quando a aba sai, ou vai para o fim da lista
+     * quando a pessoa desce até lá ([loadMore]).
+     */
+    fun onScreen(shown: Boolean) {
+        val fresh = swap.onScreen(shown) ?: return
         job?.cancel()
+        raw.value = fresh
+        fill(extra = 0)
+    }
+
+    /**
+     * @param byUser a pessoa pediu (OK na aba, puxar para atualizar): a lista nova entra na hora.
+     * Na carga da abertura, com a guardada na tela, ela espera a aba sair da tela ([onScreen]).
+     */
+    private fun load(quiet: Boolean, byUser: Boolean = true) {
+        job?.cancel()
+        swap.take()
         _refreshing.value = quiet
         if (!quiet) raw.value = Raw.Loading
         job = viewModelScope.launch {
-            raw.value = runCatching { LibraryRepository.recommended() }
+            val fresh = runCatching { LibraryRepository.recommended() }
                 .onSuccess { ChannelFeedback.note(it.videos) }
                 // Sem rede, a lista que está na tela (a guardada, ou a de antes do puxar) fica.
                 .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false) }, { if (quiet) raw.value else Raw.Error(it.toMessage()) })
             _refreshing.value = false
+            val held = quiet && !byUser && fresh is Raw.Loaded && fresh !== raw.value && swap.arrived(fresh) == null
+            if (held) return@launch
+            raw.value = fresh
             fill(extra = 0)
         }
     }
 
-    /** Fim da lista na tela: busca a próxima página (e mais, se os filtros deixarem poucos vídeos). */
-    fun loadMore() = fill(extra = MIN_NEW)
+    /**
+     * Fim da lista na tela: busca a próxima página (e mais, se os filtros deixarem poucos vídeos).
+     * Com a lista da conta esperando ([swap]), ela continua a lista da tela: os vídeos que já
+     * estão nela ficam onde estão, e os novos entram embaixo.
+     */
+    fun loadMore() {
+        val shown = raw.value as? Raw.Loaded
+        if (shown != null && !shown.loadingMore) swap.take()?.let { fresh -> raw.value = fresh.copy(pages = shown.pages + fresh.pages) }
+        fill(extra = MIN_NEW)
+    }
 
     /** Busca páginas até a tela ter pelo menos [MIN_ON_SCREEN] vídeos (e [extra] a mais que agora), até [MAX_PAGES]. */
     private fun fill(extra: Int) {

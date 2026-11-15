@@ -938,6 +938,11 @@ object TvUi : Screens {
     @Composable
     override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
+        // Com a aba na tela, a lista não troca sozinha ([RecommendedViewModel.onScreen]).
+        DisposableEffect(vm) {
+            vm.onScreen(true)
+            onDispose { vm.onScreen(false) }
+        }
         Loadable(state, onRetry = vm::reload) { content ->
             VideoGrid(content, stringResource(R.string.recommended_empty), vm::loadMore, onPlay, onOpenChannel, takeFocus = false, onFocusTaken = {})
         }

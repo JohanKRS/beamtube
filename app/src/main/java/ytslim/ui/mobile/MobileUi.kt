@@ -108,6 +108,7 @@ import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -912,6 +913,13 @@ object MobileUi : Screens {
     @Composable
     override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
+        // Com a aba na tela (e não só preparada ao lado, no deslizar), a lista não troca sozinha
+        // ([RecommendedViewModel.onScreen]).
+        val tabShown = LocalTabShown.current
+        DisposableEffect(vm, tabShown) {
+            vm.onScreen(tabShown)
+            onDispose { vm.onScreen(false) }
+        }
         Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton() }) { content ->
             VideoGrid(content, emptyText = stringResource(R.string.recommended_empty), onNearEnd = vm::loadMore, onPlay = onPlay, onOpenChannel = onOpenChannel)
         }
