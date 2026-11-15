@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -45,7 +46,9 @@ class TabFocusTest {
     /** O foco no primeiro card da grade, como quando a página abre. */
     private fun focusFirstCard() {
         val focusable = SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused) and
-            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab).not()
+            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab).not() and
+            // A foto do usuário, no fim da linha das abas, não é um card.
+            SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Switch user")).not()
         val cards = compose.onAllNodes(focusable).fetchSemanticsNodes()
         val first = cards.indexOf(cards.minWith(compareBy({ it.boundsInRoot.top }, { it.boundsInRoot.left })))
         compose.onAllNodes(focusable)[first].requestFocus()
@@ -123,6 +126,38 @@ class TabFocusTest {
         press(KeyEvent.KEYCODE_DPAD_UP)
         assertEquals(HomeTab.SUBSCRIPTIONS, tab)
         compose.onNodeWithText("Subscriptions").assertIsFocused()
+    }
+
+    /**
+     * A foto do usuário no fim da linha das abas (os vários usuários, 2026-11-14): subir do card de
+     * baixo dela ainda para na aba aberta; ela fica logo depois de Settings, o foco nela não troca a
+     * página, e a seta para a esquerda volta para a aba aberta.
+     */
+    @Test
+    fun thePhotoAfterTheTabsChangesNothing() {
+        var tab by mutableStateOf(HomeTab.SUBSCRIPTIONS)
+        compose.setContent {
+            TvUi.Theme {
+                TvUi.Home(tab, onTab = { tab = it }, onReload = {}) {
+                    TvUi.VideoGrid(grid(), "", {}, {}, null, takeFocus = true, onFocusTaken = {})
+                }
+            }
+        }
+        compose.waitForIdle()
+        focusFirstCard()
+        press(KeyEvent.KEYCODE_DPAD_RIGHT, times = 5)
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals(HomeTab.SUBSCRIPTIONS, tab)
+        compose.onNodeWithText("Subscriptions").assertIsFocused()
+        // Pela direita, até Settings e depois a foto.
+        press(KeyEvent.KEYCODE_DPAD_RIGHT, times = 6)
+        assertEquals(HomeTab.SETTINGS, tab)
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals(HomeTab.SETTINGS, tab)
+        compose.onNodeWithContentDescription("Switch user").assertIsFocused()
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals(HomeTab.SETTINGS, tab)
+        compose.onNodeWithText("Settings").assertIsFocused()
     }
 
     /** OK na aba aberta recarrega a lista dela, sem precisar segurar (1.0.6, pedido do Johan). */

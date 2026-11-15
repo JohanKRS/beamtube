@@ -20,7 +20,7 @@ class ListCacheTest {
 
     @Before
     fun setUp() {
-        ListCache.init(ApplicationProvider.getApplicationContext())
+        Users.init(ApplicationProvider.getApplicationContext())
         runBlocking { ListCache.clear() }
     }
 

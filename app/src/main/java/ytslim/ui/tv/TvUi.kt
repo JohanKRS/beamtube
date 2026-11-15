@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -57,6 +58,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material.icons.outlined.Tune
@@ -100,6 +102,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -148,7 +152,10 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import ytslim.R
 import ytslim.data.AppIcon
+import ytslim.data.AppScope
 import ytslim.data.AuthRepository
+import ytslim.data.User
+import ytslim.data.Users
 import ytslim.data.Channel
 import ytslim.data.PlaybackRepository
 import ytslim.data.Playlist
@@ -169,6 +176,9 @@ import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
 import ytslim.ui.LightSlit
+import ytslim.ui.LocalAddAccount
+import ytslim.ui.homeTabs
+import ytslim.ui.monogramOf
 import ytslim.ui.ListTop
 import ytslim.ui.MetaLine
 import ytslim.ui.metaAfterChannel
@@ -357,9 +367,9 @@ object TvUi : Screens {
     }
 
     @Composable
-    override fun SignIn(vm: SignInViewModel, onSignedIn: () -> Unit) {
+    override fun SignIn(vm: SignInViewModel, onGuest: (() -> Unit)?, onCancel: (() -> Unit)?) {
         val state by vm.state.collectAsStateWithLifecycle()
-        LaunchedEffect(state) { if (state == SignInViewModel.State.SignedIn) onSignedIn() }
+        BackHandler(enabled = onCancel != null) { onCancel?.invoke() }
 
         Column(
             Modifier.fillMaxSize().padding(screenPadding),
@@ -403,10 +413,21 @@ object TvUi : Screens {
                     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
                 }
             }
+            // Sem conta: o convidado (só na primeira vez); ao acrescentar uma conta, voltar. O botão
+            // fica com o foco, que não tem outro lugar para ir enquanto o código está na tela.
+            val other = onGuest ?: onCancel
+            if (other != null && state !is SignInViewModel.State.Error) {
+                Spacer(Modifier.height(32.dp))
+                val focus = remember { FocusRequester() }
+                OutlinedButton(onClick = other, modifier = Modifier.focusRequester(focus)) {
+                    Text(stringResource(if (onGuest != null) R.string.sign_in_guest else R.string.cancel))
+                }
+                LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+            }
         }
     }
 
-    private val tabs = listOf(
+    private val allTabs = listOf(
         HomeTab.SUBSCRIPTIONS to R.string.tab_subscriptions,
         HomeTab.RECOMMENDED to R.string.tab_recommended,
         HomeTab.EXPLORE to R.string.tab_explore,
@@ -442,6 +463,9 @@ object TvUi : Screens {
         val selectedTab = remember { FocusRequester() }
         // Voltar, de dentro do conteúdo, vai para as abas (ou o menu lateral); nelas, sai do app.
         BackHandler(enabled = !tabsFocused) { runCatching { selectedTab.requestFocus() } }
+        // O convidado só tem os Recomendados e a busca ([homeTabs]), nos dois layouts.
+        val allowed = remember { homeTabs() }
+        val tabs = remember(allowed) { allTabs.filter { it.first in allowed } }
         val labels = tabs.map { stringResource(it.second) }
         // As abas em cima (o padrão) ou o menu lateral do tablet (pedido do Johan, 2026-11-14), à
         // escolha nos Ajustes. O conteúdo fica no mesmo lugar da composição nos dois, então trocar
@@ -453,6 +477,7 @@ object TvUi : Screens {
                 SideMenu(
                     tab = tab,
                     onTab = onTab,
+                    tabs = tabs.map { it.first },
                     labels = labels,
                     itemModifier = { item ->
                         (if (item == tab) Modifier.focusRequester(selectedTab) else Modifier).reloadsOnOk(item, pressedTab, onReload)
@@ -461,14 +486,16 @@ object TvUi : Screens {
                 )
             }
             Column(Modifier.weight(1f).fillMaxHeight().padding(if (side) sideScreenPadding else listScreenPadding)) {
+                // A foto do usuário abre o menu de troca (pedido do Johan, 2026-11-14): no fim da
+                // linha das abas, ou no canto direito da barra do título no menu lateral.
                 if (side) {
-                    TitleBar(labels[tabs.indexOfFirst { it.first == tab }])
+                    TitleBar(labels[tabs.indexOfFirst { it.first == tab }], trailing = { UserButton(Modifier.photoFocus(selectedTab, side = true)) })
                 } else {
                   // O logotipo inteiro (a fresta, o facho com a poeira e o nome), sem fundo, na mesma linha
                   // das abas (pedido do Johan, 2026-11-13), com a letra do tamanho da das abas (ele achou o de
                   // 22sp grande demais). O logotipo fica à esquerda e as abas, encostadas à direita (pedido dele
                   // do mesmo dia): o nome da última aba termina na linha da borda direita dos cards.
-                  LogoAndTabs(labels, logo = { Wordmark(LogoSize.toFixedSp()) }) { labelSize ->
+                  LogoAndTabs(labels, logo = { Wordmark(LogoSize.toFixedSp()) }, trailing = { UserButton(Modifier.photoFocus(selectedTab, side = false)) }) { labelSize ->
                     val selectedIndex = tabs.indexOfFirst { it.first == tab }
                     TabRow(
                         selectedTabIndex = selectedIndex,
@@ -505,6 +532,27 @@ object TvUi : Screens {
         }
     }
 
+    /**
+     * O foco da foto do usuário ao lado das abas. Com as abas em cima, subir do conteúdo continua
+     * parando na aba aberta (0.6.0), mesmo debaixo da foto: ela só se alcança andando pelas abas até
+     * o fim. Com o menu lateral, subir da primeira fileira chega nela. Nos dois, a seta para a
+     * esquerda volta para a aba aberta.
+     */
+    private fun Modifier.photoFocus(selected: FocusRequester, side: Boolean): Modifier =
+        focusProperties {
+            onEnter = {
+                if (!side && requestedFocusDirection == FocusDirection.Up) selected.requestFocus()
+            }
+        }.focusGroup().onPreviewKeyEvent { event ->
+            val key = event.nativeKeyEvent
+            if (key.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT && event.type == KeyEventType.KeyDown) {
+                runCatching { selected.requestFocus() }
+                true
+            } else {
+                false
+            }
+        }
+
     /** OK nesta aba ([item]) recarrega a lista dela, se o OK desceu nela (ver [Home]). */
     private fun Modifier.reloadsOnOk(item: HomeTab, pressed: MutableState<HomeTab?>, onReload: (HomeTab) -> Unit): Modifier =
         onPreviewKeyEvent { event ->
@@ -536,12 +584,14 @@ object TvUi : Screens {
      * O menu lateral, como o trilho do tablet deitado: a fresta com o facho em cima, os ícones das abas
      * e os Ajustes no pé, com um fio separando do conteúdo. Como nas abas de cima, a aba muda com o
      * foco, e a aberta tem a fresta de luz ao lado. O foco é um círculo na cor de destaque.
-     * [itemModifier] vai em cada item (o foco da aba aberta e o OK que recarrega).
+     * [itemModifier] vai em cada item (o foco da aba aberta e o OK que recarrega). [tabs] são as
+     * abas do usuário aberto, na ordem de [labels] (o convidado não tem os Ajustes nem as outras abas).
      */
     @Composable
     private fun SideMenu(
         tab: HomeTab,
         onTab: (HomeTab) -> Unit,
+        tabs: List<HomeTab>,
         labels: List<String>,
         itemModifier: (HomeTab) -> Modifier,
         modifier: Modifier,
@@ -553,11 +603,13 @@ object TvUi : Screens {
             ) {
                 BeamGlyph(Modifier.size(width = 40.dp, height = SideTitleHeight))
                 Spacer(Modifier.height(28.dp))
-                sideTabs.forEach { (item, icon) ->
-                    SideItem(item, icon, labels[tabs.indexOfFirst { it.first == item }], item == tab, onTab, itemModifier(item))
+                sideTabs.filter { it.first in tabs }.forEach { (item, icon) ->
+                    SideItem(item, icon, labels[tabs.indexOf(item)], item == tab, onTab, itemModifier(item))
                 }
                 Spacer(Modifier.weight(1f))
-                SideItem(HomeTab.SETTINGS, Icons.Outlined.Tune, labels[tabs.indexOfFirst { it.first == HomeTab.SETTINGS }], tab == HomeTab.SETTINGS, onTab, itemModifier(HomeTab.SETTINGS))
+                if (HomeTab.SETTINGS in tabs) {
+                    SideItem(HomeTab.SETTINGS, Icons.Outlined.Tune, labels[tabs.indexOf(HomeTab.SETTINGS)], tab == HomeTab.SETTINGS, onTab, itemModifier(HomeTab.SETTINGS))
+                }
             }
             Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(1.dp).background(Look.Hairline))
         }
@@ -586,9 +638,12 @@ object TvUi : Screens {
         }
     }
 
-    /** O nome da aba aberta em cima do conteúdo, no menu lateral (como a barra de cima do tablet). */
+    /**
+     * O nome da aba aberta em cima do conteúdo, no menu lateral (como a barra de cima do tablet), com
+     * [trailing] (a foto do usuário) no canto direito.
+     */
     @Composable
-    private fun TitleBar(title: String) {
+    private fun TitleBar(title: String, trailing: @Composable () -> Unit) {
         Row(Modifier.fillMaxWidth().height(SideTitleHeight), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 title,
@@ -597,6 +652,7 @@ object TvUi : Screens {
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            trailing()
         }
     }
 
@@ -623,6 +679,9 @@ object TvUi : Screens {
     /** O espaço mínimo entre o logotipo e o nome da primeira aba. */
     private val LogoGap = 40.dp
 
+    /** O espaço entre o nome da última aba e a foto do usuário. */
+    private val TrailingGap = 24.dp
+
     /**
      * A altura da letra do logotipo, a mesma das abas no tamanho normal. Ela não cresce com a letra
      * maior da Acessibilidade ([toFixedSp]), para sobrar espaço para os nomes das abas.
@@ -640,7 +699,12 @@ object TvUi : Screens {
      * última terminar na linha dos cards. [tabs] recebe o tamanho da letra dos nomes.
      */
     @Composable
-    private fun LogoAndTabs(labels: List<String>, logo: @Composable () -> Unit, tabs: @Composable (TextUnit) -> Unit) {
+    private fun LogoAndTabs(
+        labels: List<String>,
+        logo: @Composable () -> Unit,
+        trailing: @Composable () -> Unit,
+        tabs: @Composable (TextUnit) -> Unit,
+    ) {
         val measurer = rememberTextMeasurer(cacheSize = 16)
         // O nome escolhido fica em bold, e cada aba já tem a largura do bold ([TabLabel]).
         val style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
@@ -650,9 +714,13 @@ object TvUi : Screens {
             val loose = constraints.copy(minWidth = 0, minHeight = 0)
             val logoPlaceables = subcompose("logo", logo).map { it.measure(loose) }
             val logoWidth = logoPlaceables.maxOfOrNull { it.width } ?: 0
+            val trailingPlaceables = subcompose("trailing", trailing).map { it.measure(loose) }
+            val trailingWidth = trailingPlaceables.maxOfOrNull { it.width } ?: 0
+            // A foto encosta na borda direita dos cards, a [TrailingGap] do nome da última aba.
+            val trailingRoom = if (trailingWidth > 0) trailingWidth + TrailingGap.roundToPx() else 0
             val padding = TabLabelPadding.roundToPx()
             // Cabe quando o começo do primeiro nome fica a [LogoGap] do logotipo.
-            val room = constraints.maxWidth - logoWidth - LogoGap.roundToPx() -
+            val room = constraints.maxWidth - logoWidth - LogoGap.roundToPx() - trailingRoom -
                 (labels.size * 2 - 2) * padding - (labels.size - 1).coerceAtLeast(0) * TabSeparator.roundToPx()
             val size = fitted.getOrPut(room) {
                 fun width(size: TextUnit) =
@@ -670,10 +738,113 @@ object TvUi : Screens {
             }
             val tabPlaceables = subcompose("tabs") { tabs(size) }.map { it.measure(loose) }
             val tabsWidth = tabPlaceables.maxOfOrNull { it.width } ?: 0
-            val height = maxOf(logoPlaceables.maxOfOrNull { it.height } ?: 0, tabPlaceables.maxOfOrNull { it.height } ?: 0)
+            val height = maxOf(
+                logoPlaceables.maxOfOrNull { it.height } ?: 0,
+                tabPlaceables.maxOfOrNull { it.height } ?: 0,
+                trailingPlaceables.maxOfOrNull { it.height } ?: 0,
+            )
             layout(constraints.maxWidth, height) {
                 logoPlaceables.forEach { it.placeRelative(0, (height - it.height) / 2) }
-                tabPlaceables.forEach { it.placeRelative(constraints.maxWidth - tabsWidth + padding, (height - it.height) / 2) }
+                tabPlaceables.forEach { it.placeRelative(constraints.maxWidth - trailingRoom - tabsWidth + padding, (height - it.height) / 2) }
+                trailingPlaceables.forEach { it.placeRelative(constraints.maxWidth - it.width, (height - it.height) / 2) }
+            }
+        }
+    }
+
+    /**
+     * A foto do usuário aberto, no fim da linha das abas ou no canto da barra do título (pedido do
+     * Johan, 2026-11-14). O foco não troca nada; OK abre o menu de troca ([UserMenu]). [modifier]
+     * diz como o foco chega e sai dela ([photoFocus]).
+     */
+    @Composable
+    internal fun UserButton(modifier: Modifier = Modifier) {
+        val user by Users.current.collectAsStateWithLifecycle()
+        var open by remember { mutableStateOf(false) }
+        val label = stringResource(R.string.user_menu)
+        Box(modifier) {
+            Card(
+                onClick = { open = true },
+                shape = CardDefaults.shape(CircleShape),
+                colors = CardDefaults.colors(containerColor = Look.Surface),
+                scale = CardDefaults.scale(focusedScale = 1.12f),
+                border = CardDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Look.GlowSoft), shape = CircleShape)),
+                // Do tamanho dela mesmo na barra do título do menu lateral, um pouco mais baixa.
+                modifier = Modifier.requiredSize(UserPhotoSize).semantics { contentDescription = label },
+            ) {
+                UserPhoto(user, UserPhotoSize)
+            }
+        }
+        if (open) UserMenu(user, onDismiss = { open = false })
+    }
+
+    /** O tamanho da foto do usuário na linha das abas. */
+    private val UserPhotoSize = 34.dp
+
+    /**
+     * O menu da foto: o usuário aberto em cima (a foto e o nome), as outras contas, o convidado e
+     * "Add account". OK num usuário troca na hora; Voltar fecha.
+     */
+    @Composable
+    private fun UserMenu(user: User?, onDismiss: () -> Unit) {
+        val accounts by Users.accounts.collectAsStateWithLifecycle()
+        val addAccount = LocalAddAccount.current
+        val others = accounts.filter { it.slot != user?.slot } + listOfNotNull(Users.guestUser.takeIf { user?.guest != true })
+        val first = remember { FocusRequester() }
+        val dim = sleepDim()
+        Dialog(onDismissRequest = onDismiss) {
+            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(440.dp).sleepDim(dim, RoundedCornerShape(16.dp))) {
+                Column(Modifier.padding(vertical = 20.dp, horizontal = 16.dp)) {
+                    Row(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        UserPhoto(user, 48.dp)
+                        Text(
+                            userName(user),
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 16.dp),
+                        )
+                    }
+                    others.forEachIndexed { index, other ->
+                        SettingsRow(
+                            onClick = {
+                                onDismiss()
+                                AppScope.launch { Users.switchTo(other) }
+                            },
+                            headlineContent = { Text(userName(other), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = if (other.guest) ({ Text(stringResource(R.string.user_guest_desc)) }) else null,
+                            leadingContent = { UserPhoto(other, 32.dp) },
+                            modifier = if (index == 0) Modifier.focusRequester(first) else Modifier,
+                        )
+                    }
+                    SettingsRow(
+                        onClick = {
+                            onDismiss()
+                            addAccount()
+                        },
+                        headlineContent = { Text("+ " + stringResource(R.string.user_add), color = Look.Glow) },
+                        modifier = if (others.isEmpty()) Modifier.focusRequester(first) else Modifier,
+                    )
+                }
+            }
+            // Dentro do diálogo: a janela dele já existe quando o foco é pedido.
+            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+        }
+    }
+
+    /** O nome de um usuário no menu e nos Ajustes ("Guest" no convidado). */
+    @Composable
+    private fun userName(user: User?): String =
+        if (user == null || user.guest) stringResource(R.string.user_guest) else user.name.orEmpty().ifBlank { "?" }
+
+    /** A foto de um usuário: a da conta (sem foto, a inicial num círculo), ou um boneco no convidado. */
+    @Composable
+    private fun UserPhoto(user: User?, size: Dp) {
+        val name = user?.name.orEmpty()
+        Box(Modifier.size(size).clip(CircleShape).background(if (user == null || user.guest) Look.SurfaceHigh else Look.monogramTone(name)), contentAlignment = Alignment.Center) {
+            when {
+                user == null || user.guest -> Icon(Icons.Outlined.Person, contentDescription = null, tint = Look.Sub, modifier = Modifier.size(size * 0.62f))
+                user.photo != null -> AsyncImage(model = user.photo, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                else -> Text(monogramOf(name), style = MaterialTheme.typography.labelLarge.copy(fontSize = (size.value * 0.45f).sp), color = Look.Text)
             }
         }
     }
@@ -964,8 +1135,10 @@ object TvUi : Screens {
     }
 
     @Composable
-    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onOpenTopics: () -> Unit, onSignedOut: () -> Unit) {
+    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onOpenTopics: () -> Unit, onAddAccount: () -> Unit) {
         val settings by vm.settings.collectAsStateWithLifecycle()
+        val user by vm.user.collectAsStateWithLifecycle()
+        val accounts by vm.accounts.collectAsStateWithLifecycle()
         val playlists by vm.playlists.collectAsStateWithLifecycle()
         val ownPlaylists by vm.ownPlaylists.collectAsStateWithLifecycle()
         val error by vm.error.collectAsStateWithLifecycle()
@@ -991,6 +1164,48 @@ object TvUi : Screens {
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(bottom = 48.dp),
         ) {
+            // Os usuários (pedido do Johan, 2026-11-14): o aberto primeiro; OK em outro troca na hora.
+            // O Sign out continua no fim dos Ajustes, longe do foco que chega aqui em cima.
+            group(
+                "users",
+                R.string.users_title,
+                hint = R.string.users_hint,
+                rows = buildList<Pair<Any, @Composable () -> Unit>> {
+                    add(
+                        row("current") {
+                            SettingsRow(
+                                onClick = {},
+                                headlineContent = { Text(userName(user), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                supportingContent = { Text(stringResource(R.string.settings_account)) },
+                                leadingContent = { UserPhoto(user, 32.dp) },
+                                trailingContent = { RadioButton(selected = true, onClick = null) },
+                            )
+                        },
+                    )
+                    (accounts.filter { it.slot != user?.slot } + Users.guestUser).forEach { other ->
+                        add(
+                            row("user:${other.slot}") {
+                                SettingsRow(
+                                    onClick = { vm.switchTo(other) },
+                                    headlineContent = { Text(userName(other), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    supportingContent = if (other.guest) ({ Text(stringResource(R.string.user_guest_desc)) }) else null,
+                                    leadingContent = { UserPhoto(other, 32.dp) },
+                                    trailingContent = { RadioButton(selected = false, onClick = null) },
+                                )
+                            },
+                        )
+                    }
+                    add(
+                        row("add") {
+                            SettingsRow(
+                                onClick = onAddAccount,
+                                headlineContent = { Text("+ " + stringResource(R.string.user_add), color = Look.Glow) },
+                            )
+                        },
+                    )
+                },
+            )
+
             group(
                 "lives",
                 R.string.settings_subscriptions,
@@ -1273,9 +1488,9 @@ object TvUi : Screens {
                 rows = listOf(
                     row("signout") {
                         SettingsRow(
-                            onClick = { vm.signOut(onSignedOut) },
+                            onClick = vm::signOut,
                             headlineContent = { Text(stringResource(R.string.sign_out)) },
-                            supportingContent = vm.accountName?.let { { Text(stringResource(R.string.settings_signed_in_as, it)) } },
+                            supportingContent = user?.name?.let { { Text(stringResource(R.string.settings_signed_in_as, it)) } },
                         )
                     },
                 ),
@@ -1867,6 +2082,9 @@ object TvUi : Screens {
         onRemove: Pair<String, (Video) -> Unit>? = null,
         onClick: () -> Unit,
     ) {
+        // O convidado não tem conta: nem playlist do Save, nem marcador.
+        @Suppress("NAME_SHADOWING")
+        val showSaved = showSaved && !Users.isGuest
         var menu by remember { mutableStateOf(false) }
         // O menu aparece no toque longo, com o OK ainda apertado (pedido do Johan), mas só pega o
         // foco quando o OK é solto: se pegasse antes, o "soltar" iria para o menu (e escolheria a

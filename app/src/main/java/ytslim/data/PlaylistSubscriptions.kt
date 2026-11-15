@@ -1,6 +1,5 @@
 package ytslim.data
 
-import android.content.Context
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -21,11 +20,13 @@ object PlaylistSubscriptions {
     private const val MAX_PAGES = 10
     private const val PARALLEL = 4
 
-    private lateinit var ledger: LedgerStore
-
-    fun init(context: Context) {
-        ledger = LedgerStore(File(context.filesDir, "playlist_ledger.json"))
-    }
+    /** O que já estava em cada playlist inscrita, de cada usuário ([Users]). */
+    private val ledgers = HashMap<String, LedgerStore>()
+    private val ledger: LedgerStore
+        get() {
+            val file = Users.file("playlist_ledger.json")
+            return synchronized(ledgers) { ledgers.getOrPut(file.absolutePath) { LedgerStore(file) } }
+        }
 
     /** IDs das playlists do próprio usuário (com Assistir mais tarde). null se não deu para saber. */
     suspend fun ownPlaylistIds(): Set<String>? = runCatching {

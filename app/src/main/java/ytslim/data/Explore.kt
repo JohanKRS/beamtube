@@ -1,6 +1,5 @@
 package ytslim.data
 
-import android.content.Context
 import android.util.Log
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
 import kotlinx.coroutines.async
@@ -207,14 +206,16 @@ object ExploreRepository {
     private const val PARALLEL = 4
     private const val BACKGROUND_PARALLEL = 2
 
-    private lateinit var file: File
+    /** Na pasta de cada usuário ([Users]): os canais destacados vêm das inscrições da conta. */
+    private val file: File get() = Users.file("explore.json")
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
     private var cache: ExploreCache? = null
     private val scanning = AtomicBoolean(false)
 
-    fun init(context: Context) {
-        file = File(context.filesDir, "explore.json")
+    /** Outro usuário abriu: o cache dele vem do arquivo dele. */
+    fun forget() {
+        cache = null
     }
 
     /**

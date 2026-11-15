@@ -57,7 +57,9 @@ class TvListTopTest {
     /** O foco no primeiro card da grade, como quando a página abre. */
     private fun focusFirstCard() {
         val card = SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused) and
-            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab).not()
+            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab).not() and
+            // A foto do usuário, no fim da linha das abas, não é um card.
+            SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Switch user")).not()
         val cards = compose.onAllNodes(card).fetchSemanticsNodes()
         val first = cards.indexOf(cards.minWith(compareBy({ it.boundsInRoot.top }, { it.boundsInRoot.left })))
         compose.onAllNodes(card)[first].requestFocus()

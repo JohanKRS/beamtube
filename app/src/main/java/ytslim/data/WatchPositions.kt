@@ -1,6 +1,5 @@
 package ytslim.data
 
-import android.content.Context
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -20,16 +19,15 @@ object WatchPositions {
     @Serializable
     data class Spot(val videoId: String, val positionMs: Long, val durationMs: Long)
 
-    private lateinit var file: File
+    /** O arquivo, na pasta de cada usuário ([Users]). */
+    const val FILE = "positions.json"
+
+    private val file: File get() = Users.file(FILE)
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
 
-    /** Do mais antigo para o mais novo; null até a primeira leitura do arquivo. */
+    /** Do mais antigo para o mais novo; null até a primeira leitura do arquivo do usuário aberto. */
     private var spots: MutableList<Spot>? = null
-
-    fun init(context: Context) {
-        file = File(context.filesDir, "positions.json")
-    }
 
     /** Onde [videoId] começa: o ponto guardado aqui ou, sem ele, o do card ([hintMs]), pelas [ResumeRules]. */
     suspend fun startAt(videoId: String, hintMs: Long): Long = mutex.withLock {
@@ -37,7 +35,16 @@ object WatchPositions {
         if (spot != null) ResumeRules.startAt(spot.positionMs, spot.durationMs) else ResumeRules.startAt(hintMs, durationMs = 0)
     }
 
-    suspend fun save(videoId: String, positionMs: Long, durationMs: Long) = mutex.withLock {
+    /**
+     * Guarda onde [videoId] parou. O convidado não guarda nada: ele existe para ver alguma coisa fora
+     * do histórico (pedido do Johan, 2026-11-14).
+     */
+    suspend fun save(videoId: String, positionMs: Long, durationMs: Long) {
+        if (Users.isGuest) return
+        mutex.withLock { saveLocked(videoId, positionMs, durationMs) }
+    }
+
+    private suspend fun saveLocked(videoId: String, positionMs: Long, durationMs: Long) {
         val list = loaded()
         list.removeAll { it.videoId == videoId }
         list += Spot(videoId, positionMs, durationMs.coerceAtLeast(0))
@@ -45,10 +52,15 @@ object WatchPositions {
         runCatching { io { file.writeText(json.encodeToString(ListSerializer(Spot.serializer()), list)) } }
     }
 
-    /** Ao sair da conta: os pontos eram dela. */
+    /** Apaga os pontos do usuário aberto. */
     suspend fun clear() = mutex.withLock {
         spots = mutableListOf()
         io { file.delete() }
+    }
+
+    /** Outro usuário abriu: os pontos dele vêm do arquivo dele. */
+    fun forget() {
+        spots = null
     }
 
     private suspend fun loaded(): MutableList<Spot> = spots ?: io {

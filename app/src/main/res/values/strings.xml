@@ -152,6 +152,13 @@
     <string name="icon_red">Red</string>
     <string name="settings_account">Account</string>
     <string name="settings_signed_in_as">Signed in as %1$s</string>
+    <string name="users_title">Users</string>
+    <string name="users_hint">Each account has its own topics, blocked channels and settings on this device. BeamTube opens with the last one used.</string>
+    <string name="user_guest">Guest</string>
+    <string name="user_guest_desc">Recommended and search only, with no account and no history.</string>
+    <string name="user_add">Add account</string>
+    <string name="user_menu">Switch user</string>
+    <string name="sign_in_guest">Use without an account</string>
 
     <string name="playlists">Playlists</string>
     <string name="sign_out">Sign out</string>
