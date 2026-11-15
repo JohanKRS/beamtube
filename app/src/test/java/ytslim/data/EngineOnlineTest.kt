@@ -81,15 +81,6 @@ class EngineOnlineTest {
     }
 
     /** A busca com filtros, as sugestões e a página do canal (achado pela própria busca). */
-    /** O convidado (sem conta) só tem os Recomendados e a busca: os Recomendados vêm sem login. */
-    @Test
-    fun guestRecommendedComeWithoutAnAccount() = withMainLooper {
-        val page = LibraryRepository.recommended()
-        println("[online] recomendados sem conta: ${page.videos.size} vídeos, tem mais: ${page.hasMore}")
-        page.videos.take(6).forEach { println("[online]   ${it.title} · ${it.channelName}".take(160)) }
-        assertTrue(page.videos.isNotEmpty())
-    }
-
     @Test
     fun searchFiltersSuggestionsAndChannelPage() = withMainLooper {
         val mixed = SearchRepository.search("3blue1brown", SearchFilters())

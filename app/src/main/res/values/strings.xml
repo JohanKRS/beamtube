@@ -136,6 +136,11 @@
     <string name="settings_app_icon_hint">The new icon can take a few seconds to show up. Some launchers remove the home screen shortcut when it changes; add BeamTube again from the app list.</string>
     <string name="settings_accent">Highlight color</string>
     <string name="settings_accent_hint">The icon colors, a little lighter where the icon is too dark to show. Used for the active tab, progress, focus and the buttons that are on, in the app and in the player.</string>
+    <string name="settings_background">Background</string>
+    <string name="settings_background_hint">The color behind the lists and the settings, on this device. Pure black switches off the pixels of OLED screens.</string>
+    <string name="background_graphite">Graphite</string>
+    <string name="background_near_black">Near black</string>
+    <string name="background_black">Pure black (OLED)</string>
     <string name="accent_amber">Amber</string>
     <string name="accent_silver">Silver</string>
     <string name="accent_teal">Teal</string>
@@ -155,7 +160,7 @@
     <string name="users_title">Users</string>
     <string name="users_hint">Each account has its own topics, blocked channels and settings on this device. BeamTube opens with the last one used.</string>
     <string name="user_guest">Guest</string>
-    <string name="user_guest_desc">Recommended and search only, with no account and no history.</string>
+    <string name="user_guest_desc">Search only, with no account and no history.</string>
     <string name="user_add">Add account</string>
     <string name="user_menu">Switch user</string>
     <string name="sign_in_guest">Use without an account</string>
@@ -244,6 +249,8 @@
     <string name="explore_intro_tv">Videos from the channels your subscriptions feature, new and old. Hold OK on the tab for a different mix.</string>
     <string name="explore_empty">Nothing to show yet. Explore uses the channels your subscriptions feature on their pages.</string>
     <string name="explore_filtered_empty">None of these channels has videos that match the filters.</string>
+    <string name="explore_filters_show">Show filters</string>
+    <string name="explore_filters_hide">Hide filters</string>
 
     <!-- Tópicos sugeridos (primeiro uso e Settings) -->
     <string name="topics_step">%1$d of %2$d</string>
@@ -258,7 +265,8 @@
     <string name="topics_done">Done</string>
     <string name="settings_topics">Topics</string>
     <string name="settings_topics_choose">Choose from suggestions</string>
-    <string name="settings_topics_hint">Pick what you want to see more and less of. Below you can fine-tune each topic or add your own.</string>
+    <string name="settings_topics_yours">Your topics</string>
+    <string name="settings_topics_hint">Pick what you want to see more and less of. In Your topics you can fine-tune each one or add your own.</string>
     <string name="topic_documentaries">Documentaries</string>
     <string name="topic_video_essays">Video essays</string>
     <string name="topic_history">History</string>

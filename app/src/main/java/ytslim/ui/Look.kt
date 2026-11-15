@@ -1,5 +1,8 @@
 package ytslim.ui
 
+import android.content.Context
+import android.content.SharedPreferences
+import androidx.annotation.StringRes
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -15,8 +18,12 @@ import ytslim.R
  * luz é a de destaque escolhida em Settings ([accent], âmbar por padrão).
  */
 object Look {
-    /** O tom do fundo e das superfícies; a TV troca pelo dela ao abrir o app ([Tones.TV]). */
-    var tones = Tones.PHONE
+    /**
+     * O tom do fundo e das superfícies, escolhido em Settings > Background ([Backgrounds]; o padrão
+     * é o do aparelho: [Tones.PHONE] no celular e no tablet, [Tones.TV] na TV). Trocar aqui redesenha
+     * as telas abertas.
+     */
+    var tones by mutableStateOf(Tones.PHONE)
 
     val Ground: Color get() = tones.ground
     val Surface: Color get() = tones.surface
@@ -114,5 +121,70 @@ class Tones(
             pill = Color(0xF2202024),
             floating = Color(0xF51A1A1D),
         )
+
+        /**
+         * Preto puro (1.0.8, pedido do Johan: "um preto 100% OLED"): nas telas OLED, o fundo apaga
+         * os pixels. Perto do preto, o mesmo passo das outras deixaria os cartões quase invisíveis;
+         * aqui eles sobem um pouco mais, para ficarem tão visíveis quanto no celular.
+         */
+        val OLED = Tones(
+            ground = Color(0xFF000000),
+            surface = Color(0xFF0F0F11),
+            surfaceHigh = Color(0xFF19191C),
+            pill = Color(0xF21B1B1E),
+            floating = Color(0xF5141416),
+        )
+    }
+}
+
+/**
+ * O fundo do app, à escolha em Settings em todo aparelho (1.0.8, pedido do Johan: "deixe essa cor
+ * que está agora no mobile e a cor da TV como opcional em todas as instalações, e um preto 100%
+ * OLED também"). Cada aparelho começa no dele, como até a 1.0.7.
+ */
+enum class Background(@StringRes val label: Int, val tones: Tones) {
+    GRAPHITE(R.string.background_graphite, Tones.PHONE),
+    NEAR_BLACK(R.string.background_near_black, Tones.TV),
+    BLACK(R.string.background_black, Tones.OLED),
+    ;
+
+    companion object {
+        /** O de cada aparelho, enquanto nada foi escolhido. */
+        fun default(tv: Boolean): Background = if (tv) NEAR_BLACK else GRAPHITE
+    }
+}
+
+/**
+ * Guarda o fundo escolhido no aparelho (preferências "look", como a cor de destaque: vale para
+ * todos os usuários) e o põe em [Look.tones], que redesenha as telas na hora.
+ */
+object Backgrounds {
+    private const val KEY = "background"
+    private var prefs: SharedPreferences? = null
+    private var tv = false
+
+    var current by mutableStateOf(Background.GRAPHITE)
+        private set
+
+    fun init(context: Context, tv: Boolean) {
+        this.tv = tv
+        val stored = context.getSharedPreferences("look", Context.MODE_PRIVATE).also { prefs = it }.getString(KEY, null)
+        apply(Background.entries.firstOrNull { it.name == stored } ?: Background.default(tv))
+    }
+
+    fun select(background: Background) {
+        apply(background)
+        prefs?.edit()?.putString(KEY, background.name)?.apply()
+    }
+
+    /** O padrão do aparelho, sem gravar nada (para as fotos de tela). */
+    fun reset(tv: Boolean) {
+        this.tv = tv
+        apply(Background.default(tv))
+    }
+
+    private fun apply(background: Background) {
+        current = background
+        Look.tones = background.tones
     }
 }

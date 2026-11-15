@@ -201,12 +201,16 @@ class ScreenShots {
 
     private fun feed(list: List<Video> = videos) = VideoListContent(list, hasMore = true, loadingMore = false)
 
-    /** O tom do fundo é o do aparelho da foto, como o App escolhe na abertura ([Tones.TV] na TV). */
+    /** O fundo é o padrão do aparelho da foto, como o App escolhe na abertura ([Background.default]). */
     @Before
     fun deviceTones() {
+        Backgrounds.reset(tv = isTvShot())
+    }
+
+    private fun isTvShot(): Boolean {
         val mode = org.robolectric.RuntimeEnvironment.getApplication().resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_TYPE_MASK
-        Look.tones = if (mode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) Tones.TV else Tones.PHONE
+        return mode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     }
 
     /** As fotos mostram uma conta aberta, com a foto dela no alto, como o app fica quase sempre. */
@@ -222,7 +226,7 @@ class ScreenShots {
     @After
     fun resetAccent() {
         Look.accent = Accent.DEFAULT
-        Look.tones = Tones.PHONE
+        Backgrounds.reset(tv = false)
         TvLayouts.select(TvLayout.TOP_TABS)
         Users.show(null, emptyList())
     }
@@ -294,12 +298,27 @@ class ScreenShots {
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
     fun phoneExplore() = phoneExploreShot("phone-explore")
 
-    private fun phoneExploreShot(name: String) = shot(name) {
-        MobileUi.Theme {
-            MobileUi.Home(HomeTab.EXPLORE, {}, {}) {
-                MobileUi.VideoGrid(feed(videos.drop(6)), "", {}, {}, {}, header = {
-                    MobileUi.FilterRow(exploreFilterChoices(SearchFilters()), onChange = {}, padding = PaddingValues())
-                })
+    /** Os filtros da Explore abertos pelo botão ao lado do nome (1.0.8), na barra de cima. */
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneExploreFilters() = phoneExploreShot("phone-explore-filters", open = true, filters = SearchFilters(date = ytslim.data.UploadDate.WEEK))
+
+    /** Fechados com um filtro mudado: o botão fica na cor de destaque. */
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneExploreFiltered() = phoneExploreShot("phone-explore-filtered", filters = SearchFilters(date = ytslim.data.UploadDate.WEEK))
+
+    @Test
+    @Config(qualifiers = "w1480dp-h924dp-xhdpi")
+    fun tabletExploreFilters() = phoneExploreShot("tablet-explore-filters", open = true)
+
+    private fun phoneExploreShot(name: String, open: Boolean = false, filters: SearchFilters = SearchFilters()) = shot(name) {
+        val bar = androidx.compose.runtime.remember { ExploreFilterBar().apply { this.open = open; this.filters = filters } }
+        CompositionLocalProvider(LocalExploreFilterBar provides bar) {
+            MobileUi.Theme {
+                MobileUi.Home(HomeTab.EXPLORE, {}, {}) {
+                    MobileUi.VideoGrid(feed(videos.drop(6)), "", {}, {}, {})
+                }
             }
         }
     }
@@ -421,14 +440,10 @@ class ScreenShots {
 
     private fun endScreenShot(name: String, tv: Boolean) {
         val end = ytslim.player.EndScreen(org.robolectric.RuntimeEnvironment.getApplication(), tv, onPlay = {}, onBack = {})
-        end.show(videos.filter { !it.isShorts && !it.isLive }.drop(2).take(ytslim.data.UpNext.MAX), playNext = false)
-        val frame = BitmapFactory.decodeFile(File(dir, "thumbs/${videos[1].id}.jpg").path).asImageBitmap()
-        shot(name) {
-            Box(Modifier.fillMaxSize().background(Color.Black)) {
-                Image(frame, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
-                end.Content()
-            }
-        }
+        end.show(videos.filter { !it.isShorts && !it.isLive }.drop(2).take(ytslim.data.UpNext.MAX), playNext = false, poster = null)
+        // O fundo é a miniatura do vídeo que acabou, desfocada (1.0.8).
+        end.showPoster(BitmapFactory.decodeFile(File(dir, "thumbs/${videos[1].id}.jpg").path))
+        shot(name) { end.Content() }
     }
 
     /** As abas da TV numa linha só, com os nomes mais compridos (espanhol e português). */
@@ -549,7 +564,7 @@ class ScreenShots {
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
     fun phoneSettings() = shot("phone-settings") {
         MobileUi.Theme {
-            MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) }
+            MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}, {}) }
         }
     }
 
@@ -557,7 +572,7 @@ class ScreenShots {
     @Config(qualifiers = "w411dp-h2200dp-xxhdpi")
     fun phoneSettingsLong() = shot("phone-settings-long") {
         MobileUi.Theme {
-            MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) }
+            MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}, {}) }
         }
     }
 
@@ -676,7 +691,7 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "pt-w411dp-h2200dp-xxhdpi")
     fun phoneSettingsPortuguese() = shot("phone-settings-pt") {
-        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
     }
 
     /**
@@ -702,19 +717,19 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w411dp-h2200dp-xxhdpi")
     fun phoneSettingsBlocked() = withBlocked("phone-settings-blocked") {
-        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
     }
 
     @Test
     @Config(qualifiers = "pt-w411dp-h2200dp-xxhdpi")
     fun phoneSettingsBlockedPortuguese() = withBlocked("phone-settings-blocked-pt") {
-        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
     }
 
     @Test
     @Config(qualifiers = "w960dp-h2000dp-television-xhdpi")
     fun tvSettingsBlocked() = withBlocked("tv-settings-blocked") {
-        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
     }
 
     /**
@@ -745,7 +760,7 @@ class ScreenShots {
                     compose.onNode(hasText(focus) and hasClickAction(), useUnmergedTree = false).requestFocus()
                 }
             }) {
-                TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+                TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
             }
         } finally {
             manager.setEnabledAccessibilityServiceList(emptyList())
@@ -774,7 +789,7 @@ class ScreenShots {
         compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         compose.onNode(hasText(row) and hasClickAction(), useUnmergedTree = false).requestFocus()
     }) {
-        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
     }
 
     @Test
@@ -832,7 +847,7 @@ class ScreenShots {
             TvUi.Theme {
                 TvUi.Home(current.value, onTab = { current.value = it }, onReload = {}) { shown ->
                     if (shown == HomeTab.SETTINGS) {
-                        TvUi.Settings(SettingsViewModel(), {}, {}, {})
+                        TvUi.Settings(SettingsViewModel(), {}, {}, {}, {})
                     } else {
                         TvUi.VideoGrid(feed(), "", {}, {}, {}, takeFocus = takeFocus, onFocusTaken = {})
                     }
@@ -850,7 +865,10 @@ class ScreenShots {
     /** O grupo do layout nos Ajustes da TV, rolado até o nome dele ([title]) no alto, com o foco na [row]. */
     private fun focusLayoutRow(row: String, title: String = "Layout") {
         compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
-        compose.onNode(androidx.compose.ui.test.hasScrollToIndexAction()).performScrollToNode(hasText(title))
+        val list = compose.onNode(androidx.compose.ui.test.hasScrollToIndexAction())
+        list.performScrollToNode(hasText(title))
+        // O nome do grupo pode parar no pé da tela, com a linha ainda fora dela.
+        list.performScrollToNode(hasText(row) and hasClickAction())
         compose.waitForIdle()
         compose.onNode(hasText(row) and hasClickAction(), useUnmergedTree = false).requestFocus()
     }
@@ -869,7 +887,7 @@ class ScreenShots {
         // O foco no primeiro card, o que fica junto do menu: ele cresce e não pode sair cortado.
         compose.onRoot().performKeyInput { pressKey(Key.DirectionUp) }
         val focusable = androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.Focused)
-        val menuEdge = with(compose.density) { 88.dp.toPx() }
+        val menuEdge = with(compose.density) { 80.dp.toPx() }
         val first = compose.onAllNodes(focusable).fetchSemanticsNodes()
             .filter { it.boundsInRoot.left > menuEdge && it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription) == null }
             .minWith(compareBy({ it.boundsInRoot.top }, { it.boundsInRoot.left }))
@@ -888,7 +906,7 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvSettingsLayout() = shot("tv-settings-layout", action = { focusLayoutRow("Tabs on top") }) {
-        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
     }
 
     @Test
@@ -899,8 +917,121 @@ class ScreenShots {
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvSettings() = shot("tv-settings") {
         TvUi.Theme {
-            TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}) }
+            TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}, {}) }
         }
+    }
+
+    /** A busca da TV com o campo na largura toda do conteúdo (1.0.8). */
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSearch() = shot("tv-search") {
+        TvUi.Theme { TvUi.Home(HomeTab.SEARCH, {}, {}) { TvUi.Search(SearchViewModel(), {}, {}, {}) } }
+    }
+
+    /** Os tópicos de ver mais e ver menos, um por um, na tela própria (1.0.8). */
+    private fun withTopics(name: String, action: () -> Unit = {}, content: @Composable () -> Unit) {
+        kotlinx.coroutines.runBlocking {
+            SettingsRepository.setPreferredTopics(
+                listOf(
+                    ytslim.data.Topic("Science", listOf("physics", "math", "biology")),
+                    ytslim.data.Topic("Cooking", listOf("recipe", "kitchen", "baking")),
+                    ytslim.data.Topic("Documentaries", listOf("documentary", "history")),
+                ),
+            )
+            SettingsRepository.setExcludedTopics(
+                listOf(
+                    ytslim.data.Topic("Celebrity gossip", listOf("gossip", "drama", "celebrity")),
+                    ytslim.data.Topic("Pranks", listOf("prank", "pranks")),
+                ),
+            )
+        }
+        try {
+            shot(name, action, content)
+        } finally {
+            kotlinx.coroutines.runBlocking {
+                SettingsRepository.setPreferredTopics(emptyList())
+                SettingsRepository.setExcludedTopics(emptyList())
+            }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneTopicLists() = withTopics("phone-topic-lists") {
+        MobileUi.Theme { MobileUi.TopicLists(TopicListsViewModel()) {} }
+    }
+
+    @Test
+    @Config(qualifiers = "pt-w411dp-h891dp-xxhdpi")
+    fun phoneTopicListsPortuguese() = withTopics("phone-topic-lists-pt") {
+        MobileUi.Theme { MobileUi.TopicLists(TopicListsViewModel()) {} }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvTopicLists() = withTopics("tv-topic-lists") {
+        TvUi.Theme { TvUi.TopicLists(TopicListsViewModel()) {} }
+    }
+
+    /** O grupo dos tópicos nos Ajustes, com a linha que leva aos tópicos um por um e quantos há. */
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneSettingsTopics() = withTopics("phone-settings-topics", action = {
+        compose.onNode(androidx.compose.ui.test.hasScrollToIndexAction()).performScrollToNode(hasText("Choose from suggestions"))
+    }) {
+        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSettingsTopics() = withTopics("tv-settings-topics", action = { focusLayoutRow("Your topics", title = "Topics") }) {
+        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
+    }
+
+    /** A cor do fundo nos Ajustes (1.0.8): o preto puro escolhido no celular. */
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneSettingsBackground() {
+        Backgrounds.select(Background.BLACK)
+        shot("phone-settings-background", action = {
+            compose.onNode(androidx.compose.ui.test.hasScrollToIndexAction()).performScrollToNode(hasText("Background"))
+        }) {
+            MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneSubscriptionsBlack() {
+        Backgrounds.select(Background.BLACK)
+        shot("phone-subscriptions-black") {
+            MobileUi.Theme { MobileUi.Home(HomeTab.SUBSCRIPTIONS, {}, {}) { MobileUi.VideoGrid(feed(), "", {}, {}, {}) } }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-xxhdpi")
+    fun phoneSubscriptionsNearBlack() {
+        Backgrounds.select(Background.NEAR_BLACK)
+        shot("phone-subscriptions-near-black") {
+            MobileUi.Theme { MobileUi.Home(HomeTab.SUBSCRIPTIONS, {}, {}) { MobileUi.VideoGrid(feed(), "", {}, {}, {}) } }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSettingsBackground() {
+        Backgrounds.select(Background.GRAPHITE)
+        shot("tv-settings-background", action = { focusLayoutRow("Graphite", title = "Background") }) {
+            TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSubscriptionsBlack() {
+        Backgrounds.select(Background.BLACK)
+        tvSubscriptionsShot("tv-subscriptions-black")
     }
 
     /** Os vários usuários (pedido do Johan, 2026-11-14): três contas no aparelho. */
@@ -966,17 +1097,17 @@ class ScreenShots {
     fun phoneUsersSettings() {
         openUser(0)
         shot("phone-users-settings") {
-            MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}) } }
+            MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
         }
     }
 
-    /** O convidado: só Recomendados e a busca, sem a barra de baixo. */
+    /** O convidado: só a busca (1.0.8), sem a barra de baixo nem o voltar. */
     @Test
     @Config(qualifiers = "w411dp-h891dp-xxhdpi")
     fun phoneGuest() {
         openUser(null)
         shot("phone-guest") {
-            MobileUi.Theme { MobileUi.Home(HomeTab.RECOMMENDED, {}, {}) { MobileUi.VideoGrid(feed(videos.drop(4)), "", {}, {}, {}) } }
+            MobileUi.Theme { MobileUi.Home(HomeTab.SEARCH, {}, {}) { MobileUi.Search(SearchViewModel(), {}, {}, {}) } }
         }
     }
 
@@ -985,7 +1116,7 @@ class ScreenShots {
     fun phoneGuestMenu() {
         openUser(null)
         shot("phone-guest-menu", action = ::tapPhoto) {
-            MobileUi.Theme { MobileUi.Home(HomeTab.RECOMMENDED, {}, {}) { MobileUi.VideoGrid(feed(videos.drop(4)), "", {}, {}, {}) } }
+            MobileUi.Theme { MobileUi.Home(HomeTab.SEARCH, {}, {}) { MobileUi.Search(SearchViewModel(), {}, {}, {}) } }
         }
     }
 
@@ -994,7 +1125,7 @@ class ScreenShots {
     fun tabletGuest() {
         openUser(null)
         shot("tablet-guest") {
-            MobileUi.Theme { MobileUi.Home(HomeTab.RECOMMENDED, {}, {}) { MobileUi.VideoGrid(feed(videos.drop(4)), "", {}, {}, {}) } }
+            MobileUi.Theme { MobileUi.Home(HomeTab.SEARCH, {}, {}) { MobileUi.Search(SearchViewModel(), {}, {}, {}) } }
         }
     }
 
@@ -1004,8 +1135,11 @@ class ScreenShots {
         shot(name, action) {
             TvUi.Theme {
                 TvUi.Home(tab, {}, {}) { shown ->
-                    if (shown == HomeTab.SETTINGS) TvUi.Settings(SettingsViewModel(), {}, {}, {})
-                    else TvUi.VideoGrid(feed(if (user == null) videos.drop(4) else videos), "", {}, {}, {}, takeFocus = false, onFocusTaken = {})
+                    when {
+                        shown == HomeTab.SETTINGS -> TvUi.Settings(SettingsViewModel(), {}, {}, {}, {})
+                        shown == HomeTab.SEARCH -> TvUi.Search(SearchViewModel(), {}, {}, {})
+                        else -> TvUi.VideoGrid(feed(videos), "", {}, {}, {}, takeFocus = false, onFocusTaken = {})
+                    }
                 }
             }
         }
@@ -1037,15 +1171,15 @@ class ScreenShots {
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
-    fun tvGuest() = tvUsersShot("tv-guest", null, HomeTab.RECOMMENDED)
+    fun tvGuest() = tvUsersShot("tv-guest", null, HomeTab.SEARCH)
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
-    fun tvGuestSideMenu() = tvUsersShot("tv-guest-side-menu", null, HomeTab.RECOMMENDED, side = true)
+    fun tvGuestSideMenu() = tvUsersShot("tv-guest-side-menu", null, HomeTab.SEARCH, side = true)
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
-    fun tvGuestMenu() = tvUsersShot("tv-guest-menu", null, HomeTab.RECOMMENDED, action = { focusPhoto(open = true) })
+    fun tvGuestMenu() = tvUsersShot("tv-guest-menu", null, HomeTab.SEARCH, action = { focusPhoto(open = true) })
 
     /**
      * O player de verdade (PlayerActivity) com os controles abertos e uma miniatura no lugar do
@@ -1125,6 +1259,13 @@ class ScreenShots {
         when (loading) {
             // A miniatura do card (aqui não há rede para o carregador de imagens buscá-la).
             "opening" -> loadingView.showPoster(thumb)
+            // Como o closeBySwipe deixa a tela no fim da volta da miniatura ([PlayerLoading.blurBack]).
+            "closing" -> {
+                loadingView.stop()
+                loadingView.showPoster(thumb)
+                loadingView.blurBack(0)
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            }
             "buffering" -> {
                 loadingView.stop()
                 loadingView.setBusy(true)
@@ -1132,7 +1273,7 @@ class ScreenShots {
             }
             else -> loadingView.stop()
         }
-        if (loading != "opening") playerView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)?.background =
+        if (loading != "opening" && loading != "closing") playerView.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_shutter)?.background =
             android.graphics.drawable.BitmapDrawable(activity.resources, thumb)
         playerView.findViewById<android.view.View>(ytslim.R.id.player_actions)?.visibility = android.view.View.VISIBLE
         playerView.findViewById<android.view.View>(ytslim.R.id.player_save)?.visibility = android.view.View.VISIBLE
@@ -1270,6 +1411,11 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
     fun playerPhoneSwiping() = playerShot("player-phone-swiping", hidden = true, swipe = 0.18f)
+
+    /** Solto depois de arrastar (1.0.8): a miniatura desfocada já voltou por cima do vídeo, e o player fecha. */
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneSwipeClosing() = playerShot("player-phone-swipe-closing", loading = "closing", hidden = true, swipe = 0.22f)
 
     @Test
     @Config(qualifiers = "w411dp-h891dp-port-xxhdpi")

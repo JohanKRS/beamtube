@@ -43,10 +43,12 @@ class UserStores : ViewModel() {
 }
 
 /**
- * As abas do início para o usuário aberto. O convidado só tem os Recomendados e a busca (pedido do
- * Johan, 2026-11-14: "nem precisa das outras telas"): sem conta não há Inscrições, Explore,
- * playlists nem Histórico, e os Ajustes são de cada conta.
+ * As abas do início para o usuário aberto. O convidado só tem a busca (1.0.8, pedido do Johan): sem
+ * conta não há Inscrições, Explore, playlists nem Histórico, e os Ajustes são de cada conta. Na 1.0.7
+ * ele tinha também os Recomendados, mas sem conta o Início do YouTube vem vazio (conferido em
+ * 2026-11-15 pelos clientes de TV e do site: a TV responde só "Deixe o YouTube com a sua cara",
+ * e o site, "Que tal uma pesquisa para começar?").
  */
 fun homeTabs(): List<HomeTab> = if (Users.isGuest) GuestTabs else HomeTab.entries
 
-private val GuestTabs = listOf(HomeTab.RECOMMENDED, HomeTab.SEARCH)
+private val GuestTabs = listOf(HomeTab.SEARCH)

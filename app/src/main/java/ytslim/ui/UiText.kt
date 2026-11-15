@@ -159,3 +159,8 @@ fun Context.findActivity(): Activity? {
     }
     return null
 }
+
+/** Quantos tópicos há em cada lista, na linha "Your topics" dos Ajustes ("See more of: 3 · See less of: 1"). */
+@Composable
+fun topicCounts(preferred: Int, excluded: Int): String =
+    "${stringResource(R.string.settings_preferred)}: $preferred · ${stringResource(R.string.settings_excluded)}: $excluded"

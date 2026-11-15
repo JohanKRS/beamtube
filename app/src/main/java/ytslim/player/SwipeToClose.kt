@@ -48,8 +48,8 @@ internal object SwipeRules {
  * Arrastar o vídeo para baixo fecha o player, no celular e no tablet (pedido do Johan, 2026-11-14:
  * ele esconde a barra de navegação e até o indicador, e para sair do vídeo só tinha o gesto de
  * voltar). O vídeo segue o dedo, encolhendo um pouco; soltar longe o bastante (ou num movimento
- * rápido) fecha, e o player termina de descer sumindo ([onClose] e a animação `player_swipe_exit`).
- * Soltar antes disso devolve o vídeo ao lugar.
+ * rápido) fecha ([onClose]: desde a 1.0.8, a miniatura desfocada volta por cima do vídeo e o player
+ * fecha encolhendo, o inverso da abertura). Soltar antes disso devolve o vídeo ao lugar.
  *
  * Só para baixo: para cima e para os lados nada muda. Os toques continuam como antes: um toque
  * mostra os controles, dois pulam 10 s; os botões e a barra de tempo pegam os toques deles antes.

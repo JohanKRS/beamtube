@@ -1,8 +1,10 @@
 package ytslim.player
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.view.View
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,13 +44,20 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.request.transformations
 import kotlinx.coroutines.delay
 import ytslim.R
 import ytslim.data.UpNext
@@ -58,8 +67,12 @@ import ytslim.ui.TypeScale
 import ytslim.ui.formatDuration
 
 /**
- * A tela do fim do vídeo ([UpNext]): por cima do último quadro, "Up next" com as sugestões numa
- * fileira e o "Back" (com o foco na TV), e embaixo do título quanto falta para ela voltar sozinha.
+ * A tela do fim do vídeo ([UpNext]): "Up next" com as sugestões numa fileira e o "Back" (com o foco
+ * na TV), e embaixo do título quanto falta para ela voltar sozinha.
+ *
+ * O fundo é a miniatura do vídeo que acabou, desfocada na tela toda, como na tela de carregando
+ * (1.0.8, pedido do Johan: "deveria ficar ali também"; até a 1.0.7 era o último quadro, coberto pelo
+ * cinza do fundo do app). Um véu escuro por cima deixa os textos e as sugestões legíveis.
  * Qualquer toque ou tecla ([touched]) recomeça a contagem; com "Play a suggestion", a contagem é
  * para tocar a primeira, e o primeiro toque a troca pela de voltar.
  */
@@ -72,6 +85,12 @@ internal class EndScreen(
     /** A tela está aberta (fechada, nada é composto e a contagem para). */
     private var active by mutableStateOf(false)
     private var videos by mutableStateOf<List<Video>>(emptyList())
+
+    /** A miniatura do vídeo que acabou (a mesma da tela de carregando, [PlayerLoading.posterUrl]). */
+    private var posterUrl by mutableStateOf<String?>(null)
+
+    /** A miniatura já baixada, no lugar de [posterUrl] (para as fotos de tela, sem rede). */
+    private var posterBitmap by mutableStateOf<Bitmap?>(null)
 
     /** A contagem leva à primeira sugestão (até o primeiro toque). */
     private var playsNext by mutableStateOf(false)
@@ -89,8 +108,9 @@ internal class EndScreen(
 
     val shown: Boolean get() = active
 
-    fun show(suggestions: List<Video>, playNext: Boolean) {
+    fun show(suggestions: List<Video>, playNext: Boolean, poster: String?) {
         videos = suggestions
+        posterUrl = poster
         playsNext = playNext && suggestions.isNotEmpty()
         interactions++
         active = true
@@ -103,6 +123,11 @@ internal class EndScreen(
         active = false
         view.visibility = View.GONE
         videos = emptyList()
+    }
+
+    /** A miniatura já baixada, desfocada aqui mesmo (para as fotos de tela). */
+    fun showPoster(thumbnail: Bitmap) {
+        posterBitmap = PosterBlur.blurred(thumbnail)
     }
 
     /** Um toque ou uma tecla com a tela do fim aberta. */
@@ -134,11 +159,9 @@ internal class EndScreen(
             runCatching { if (next) firstFocus.requestFocus() else backFocus.requestFocus() }
         }
         val side = if (tv) 48.dp else 20.dp
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(Look.Ground.copy(alpha = 0.78f), Look.Ground.copy(alpha = 0.94f)))),
-        ) {
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            Poster()
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = SCRIM_TOP), Color.Black.copy(alpha = SCRIM_BOTTOM)))))
             Column(
                 Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(vertical = if (tv) 40.dp else 20.dp),
                 verticalArrangement = Arrangement.Center,
@@ -173,6 +196,29 @@ internal class EndScreen(
                     }
                 }
             }
+        }
+    }
+
+    /** A miniatura do vídeo que acabou, desfocada e no tom da tela de carregando ([PosterBlur]). */
+    @Composable
+    private fun Poster() {
+        val tone = remember { ColorFilter.colorMatrix(ColorMatrix(PosterBlur.tone().array)) }
+        val still = posterBitmap
+        val url = posterUrl
+        if (still != null) {
+            Image(still.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, colorFilter = tone, modifier = Modifier.fillMaxSize())
+        } else if (url != null) {
+            val context = LocalContext.current
+            // O mesmo pedido da tela de carregando: a imagem desfocada já está no cache do carregador.
+            val request = remember(url) {
+                ImageRequest.Builder(context)
+                    .data(url)
+                    .size(PosterBlur.DECODE_PX, PosterBlur.DECODE_PX)
+                    .allowHardware(false)
+                    .transformations(PosterBlur.Coil)
+                    .build()
+            }
+            AsyncImage(model = request, contentDescription = null, contentScale = ContentScale.Crop, colorFilter = tone, modifier = Modifier.fillMaxSize())
         }
     }
 
@@ -248,5 +294,11 @@ internal class EndScreen(
                 )
             }
         }
+    }
+
+    private companion object {
+        /** O véu escuro por cima da miniatura: mais leve em cima, mais forte embaixo, onde ficam os títulos. */
+        const val SCRIM_TOP = 0.3f
+        const val SCRIM_BOTTOM = 0.55f
     }
 }

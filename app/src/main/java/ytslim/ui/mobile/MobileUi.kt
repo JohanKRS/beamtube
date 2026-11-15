@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -69,6 +71,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.GridView
@@ -122,6 +125,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -192,6 +196,9 @@ import ytslim.ui.ChannelViewModel
 import ytslim.ui.ExploreViewModel
 import ytslim.ui.Accent
 import ytslim.ui.Accents
+import ytslim.ui.Background
+import ytslim.ui.BackgroundSwatch
+import ytslim.ui.Backgrounds
 import ytslim.ui.BeamGlyph
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
@@ -203,6 +210,8 @@ import ytslim.ui.ListTop
 import ytslim.ui.AppLanguage
 import ytslim.ui.Language
 import ytslim.ui.Look
+import ytslim.ui.ExploreFilterBar
+import ytslim.ui.LocalExploreFilterBar
 import ytslim.ui.sleepDim
 import ytslim.ui.TopicsViewModel
 import ytslim.ui.findActivity
@@ -224,7 +233,9 @@ import ytslim.ui.Screens
 import ytslim.ui.SearchFilterChoice
 import ytslim.ui.SearchViewModel
 import ytslim.ui.SettingsViewModel
-import ytslim.ui.SettingsViewModel.TopicList
+import ytslim.ui.TopicListsViewModel
+import ytslim.ui.TopicListsViewModel.TopicList
+import ytslim.ui.topicCounts
 import ytslim.ui.SignInViewModel
 import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
@@ -245,6 +256,31 @@ private val TopBarHeight = 56.dp
 /** A chave do aviso no topo da lista de reordenar (os vídeos usam o próprio ID). */
 private val BottomBarHeight = 60.dp
 private val RailWidth = 80.dp
+
+/** O espaço em cima da fresta com o facho, no alto do trilho. */
+private val RailTop = 20.dp
+
+/** A altura da fresta com o facho, no alto do trilho. */
+private val RailGlyphHeight = 30.dp
+
+/** A altura de cada ícone do trilho (o ícone tem 24). */
+private val RailItemHeight = 56.dp
+
+/** O respiro em cima da grade de vídeos, embaixo da barra de cima. */
+private val GridTop = 20.dp
+
+/**
+ * O espaço entre a fresta e o primeiro ícone do trilho, calculado para o topo do desenho do
+ * primeiro ícone ficar na linha do topo da primeira fileira de miniaturas (1.0.8, pedido do Johan).
+ * Os ícones do Material têm 24 e começam 2 abaixo da caixa deles.
+ */
+private val RailFirstItemGap = TopBarHeight + GridTop - RailTop - RailGlyphHeight - (RailItemHeight - 24.dp) / 2 - 2.dp
+
+/** A fileira dos filtros da Explore, embaixo do nome na barra de cima, quando aberta (1.0.8). */
+private val FilterBarHeight = 50.dp
+
+/** Abrir e fechar a fileira dos filtros: a barra cresce e a lista desce, rápido. */
+private const val FILTER_BAR_MS = 180
 
 /** Quantos cartões o esqueleto de carregamento mostra (o bastante para encher a tela). */
 private const val SKELETON_CARDS = 8
@@ -283,9 +319,15 @@ private fun glassStyle(edge: GlassEdge): HazeStyle {
     )
 }
 
-private val TopGlass = glassStyle(GlassEdge.Top)
-private val BottomGlass = glassStyle(GlassEdge.Bottom)
-private val StartGlass = glassStyle(GlassEdge.Start)
+/** O vidro segue o tom do fundo escolhido nos Ajustes ([Look.tones]): refeito quando ele muda. */
+@Composable
+private fun topGlass(): HazeStyle = remember(Look.tones) { glassStyle(GlassEdge.Top) }
+
+@Composable
+private fun bottomGlass(): HazeStyle = remember(Look.tones) { glassStyle(GlassEdge.Bottom) }
+
+@Composable
+private fun startGlass(): HazeStyle = remember(Look.tones) { glassStyle(GlassEdge.Start) }
 
 /**
  * O desfoque calculado numa cópia menor do que passa por baixo e ampliado (o Haze escolhe a
@@ -362,7 +404,7 @@ object MobileUi : Screens {
 
     @Composable
     override fun Theme(content: @Composable () -> Unit) {
-        MaterialTheme(colorScheme = remember(Look.accent) { colors() }, typography = Type) {
+        MaterialTheme(colorScheme = remember(Look.accent, Look.tones) { colors() }, typography = Type) {
             // Sem Scaffold, quem dá a cor do texto é isto (senão o texto sai preto).
             CompositionLocalProvider(LocalContentColor provides Look.Text, content = content)
         }
@@ -494,45 +536,77 @@ object MobileUi : Screens {
         val allowed = remember { homeTabs() }
         val barTabs = remember(allowed) { tabs.filter { it.tab in allowed } }
         val swipe = remember(barTabs) { barTabs.map { it.tab } }
+        // O convidado só tem a busca (1.0.8): ela é o início dele, sem abas nem "voltar".
+        val searchOnly = swipe.isEmpty()
         // Voltar, na Busca e nas Configurações, leva de volta à aba de onde elas foram abertas.
-        var lastTab by rememberSaveable { mutableStateOf(swipe.first()) }
+        var lastTab by rememberSaveable { mutableStateOf(swipe.firstOrNull() ?: HomeTab.SEARCH) }
         LaunchedEffect(tab) { if (tab in swipe) lastTab = tab }
-        val aside = tab !in swipe
+        val aside = tab !in swipe && !searchOnly
         BackHandler(enabled = aside) { onTab(lastTab) }
 
         val haze = rememberHazeState()
         val config = LocalConfiguration.current
         // Tela deitada (tablet, ou celular de lado): trilho de ícones à esquerda em vez da barra de baixo.
-        val rail = config.screenWidthDp > config.screenHeightDp && config.screenWidthDp >= 600
-        // Com uma aba só (o convidado), a barra de baixo não tem o que trocar.
+        val rail = config.screenWidthDp > config.screenHeightDp && config.screenWidthDp >= 600 && !searchOnly
+        // Com uma aba só, a barra de baixo não tem o que trocar.
         val showBottom = !rail && !aside && swipe.size > 1
         val system = systemInsets()
         val railWidth = RailWidth + system.start
-        val bars = PaddingValues(
+        // Os filtros da Explore, abertos pelo botão ao lado do nome (1.0.8): a barra de cima cresce
+        // para mostrá-los, e só a lista da Explore desce junto. As outras abas ficam no lugar.
+        val exploreFilters = LocalExploreFilterBar.current
+        val filtersHeight by animateDpAsState(
+            if (exploreFilters.open) FilterBarHeight else 0.dp,
+            tween(FILTER_BAR_MS),
+            label = "explore filters",
+        )
+        val barExtra = if (tab == HomeTab.EXPLORE) filtersHeight else 0.dp
+        fun bars(extra: Dp) = PaddingValues(
             start = if (rail) railWidth else system.start,
-            top = system.top + TopBarHeight,
+            top = system.top + TopBarHeight + extra,
             end = system.end,
             bottom = system.bottom + if (showBottom) BottomBarHeight else 0.dp,
         )
+        val bars = bars(0.dp)
+        val exploreBars = bars(filtersHeight)
 
         Box(Modifier.fillMaxSize().background(Look.Ground)) {
             Box(Modifier.fillMaxSize().hazeSource(haze)) {
-                CompositionLocalProvider(LocalBars provides bars) {
-                    if (aside) content(tab) else SwipeTabs(swipe, tab, onTab, content)
+                if (aside || searchOnly) {
+                    CompositionLocalProvider(LocalBars provides bars) { content(tab) }
+                } else {
+                    SwipeTabs(swipe, tab, onTab, barsFor = { if (it == HomeTab.EXPLORE) exploreBars else bars }, content)
                 }
             }
             val title = stringResource(titles.first { it.tab == tab }.label)
-            TopBar(haze, system, Modifier.padding(start = if (rail) railWidth else 0.dp)) {
-                val back = tab == HomeTab.SETTINGS || (tab == HomeTab.SEARCH && !rail)
+            TopBar(
+                haze,
+                system,
+                Modifier.padding(start = if (rail) railWidth else 0.dp),
+                extra = barExtra,
+                below = {
+                    Box(Modifier.padding(start = if (rail) 0.dp else system.start, end = system.end)) {
+                        FilterRow(
+                            exploreFilterChoices(exploreFilters.filters),
+                            onChange = { exploreFilters.onChange(it) },
+                            padding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp),
+                        )
+                    }
+                },
+            ) {
+                val back = !searchOnly && (tab == HomeTab.SETTINGS || (tab == HomeTab.SEARCH && !rail))
                 if (back) BackButton { onTab(lastTab) } else Spacer(Modifier.width(8.dp))
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, letterSpacing = (-0.2).sp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).padding(start = 4.dp),
-                )
-                if (!aside && !rail) {
+                Row(Modifier.weight(1f).padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, letterSpacing = (-0.2).sp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (tab == HomeTab.EXPLORE) FilterToggle(exploreFilters)
+                }
+                if (!aside && !rail && tab != HomeTab.SEARCH) {
                     IconButton(onClick = { onTab(HomeTab.SEARCH) }) {
                         Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.tab_search))
                     }
@@ -548,11 +622,40 @@ object MobileUi : Screens {
     }
 
     /**
+     * O botão dos filtros da Explore, logo depois do nome dela na barra de cima (1.0.8, pedido do
+     * Johan): abre e fecha a fileira. Na cor de destaque quando algum filtro está mudado, para isso
+     * não passar despercebido com a fileira fechada; com ela aberta, um círculo claro por trás.
+     */
+    @Composable
+    private fun FilterToggle(bar: ExploreFilterBar) {
+        val label = stringResource(if (bar.open) R.string.explore_filters_hide else R.string.explore_filters_show)
+        IconButton(onClick = bar::toggle, modifier = Modifier.padding(start = 2.dp)) {
+            Box(
+                Modifier.size(34.dp).background(if (bar.open) Look.SurfaceHigh else Color.Transparent, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.FilterList,
+                    contentDescription = label,
+                    tint = if (bar.active) Look.Glow else if (bar.open) Look.Text else Look.Sub,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+
+    /**
      * As abas da barra de baixo lado a lado: deslizar para o lado troca de aba, e tocar numa aba
      * desliza até ela. Cada aba guarda a própria posição da lista (ver AppRoot).
      */
     @Composable
-    private fun SwipeTabs(swipeTabs: List<HomeTab>, tab: HomeTab, onTab: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
+    private fun SwipeTabs(
+        swipeTabs: List<HomeTab>,
+        tab: HomeTab,
+        onTab: (HomeTab) -> Unit,
+        barsFor: (HomeTab) -> PaddingValues,
+        content: @Composable (HomeTab) -> Unit,
+    ) {
         val pager = rememberPagerState(initialPage = swipeTabs.indexOf(tab).coerceAtLeast(0)) { swipeTabs.size }
         val currentOnTab by rememberUpdatedState(onTab)
         LaunchedEffect(tab) {
@@ -564,7 +667,7 @@ object MobileUi : Screens {
         }
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { swipeTabs[it].name }) { page ->
             val shown by remember(pager, page) { derivedStateOf { pager.settledPage == page } }
-            CompositionLocalProvider(LocalTabShown provides shown) { content(swipeTabs[page]) }
+            CompositionLocalProvider(LocalTabShown provides shown, LocalBars provides barsFor(swipeTabs[page])) { content(swipeTabs[page]) }
         }
     }
 
@@ -671,15 +774,29 @@ object MobileUi : Screens {
         )
     }
 
-    /** Barra de cima de vidro: passa por trás da barra de status. */
+    /**
+     * Barra de cima de vidro: passa por trás da barra de status. [extra] a mais de altura mostra
+     * [below] embaixo da linha do nome (os filtros da Explore, 1.0.8).
+     */
     @Composable
-    private fun TopBar(haze: HazeState, system: SystemInsets, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-        Box(modifier.fillMaxWidth().height(system.top + TopBarHeight).hazeEffect(haze, TopGlass, block = LightGlass)) {
-            Row(
-                Modifier.fillMaxSize().padding(top = system.top, start = 4.dp, end = system.end + 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                content = content,
-            )
+    private fun TopBar(
+        haze: HazeState,
+        system: SystemInsets,
+        modifier: Modifier = Modifier,
+        extra: Dp = 0.dp,
+        below: @Composable () -> Unit = {},
+        content: @Composable RowScope.() -> Unit,
+    ) {
+        val glass = topGlass()
+        Box(modifier.fillMaxWidth().height(system.top + TopBarHeight + extra).hazeEffect(haze, glass, block = LightGlass)) {
+            Column(Modifier.fillMaxSize().padding(top = system.top)) {
+                Row(
+                    Modifier.fillMaxWidth().height(TopBarHeight).padding(start = 4.dp, end = system.end + 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = content,
+                )
+                if (extra > 0.dp) Box(Modifier.fillMaxWidth().height(extra).clipToBounds()) { below() }
+            }
             Hairline(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp))
         }
     }
@@ -687,7 +804,7 @@ object MobileUi : Screens {
     /** Barra de abas de vidro, só com ícones: vai até o fim da tela, por trás da barra de gestos. */
     @Composable
     private fun BottomNav(haze: HazeState, system: SystemInsets, tabs: List<TabInfo>, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
-        Box(modifier.fillMaxWidth().height(system.bottom + BottomBarHeight).hazeEffect(haze, BottomGlass, block = LightGlass)) {
+        Box(modifier.fillMaxWidth().height(system.bottom + BottomBarHeight).hazeEffect(haze, bottomGlass(), block = LightGlass)) {
             Hairline(Modifier.align(Alignment.TopStart).fillMaxWidth().height(1.dp))
             Row(
                 Modifier.align(Alignment.TopCenter).widthIn(max = 520.dp).fillMaxWidth().height(BottomBarHeight)
@@ -712,17 +829,17 @@ object MobileUi : Screens {
     /** Trilho de vidro à esquerda, na tela deitada: vai de cima a baixo, por trás das barras do sistema. */
     @Composable
     private fun Rail(haze: HazeState, system: SystemInsets, items: List<TabInfo>, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
-        Box(modifier.fillMaxHeight().width(RailWidth + system.start).hazeEffect(haze, StartGlass, block = LightGlass)) {
+        Box(modifier.fillMaxHeight().width(RailWidth + system.start).hazeEffect(haze, startGlass(), block = LightGlass)) {
             Column(
-                Modifier.fillMaxHeight().padding(start = system.start, top = system.top + 20.dp, bottom = system.bottom + 16.dp).width(RailWidth),
+                Modifier.fillMaxHeight().padding(start = system.start, top = system.top + RailTop, bottom = system.bottom + 16.dp).width(RailWidth),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                BeamGlyph(Modifier.size(width = 40.dp, height = 30.dp))
-                Spacer(Modifier.height(24.dp))
+                BeamGlyph(Modifier.size(width = 40.dp, height = RailGlyphHeight))
+                Spacer(Modifier.height(RailFirstItemGap))
                 items.forEach { info ->
                     val selected = info.tab == tab
                     Box(
-                        Modifier.fillMaxWidth().height(56.dp)
+                        Modifier.fillMaxWidth().height(RailItemHeight)
                             .selectable(selected = selected, role = Role.Tab, onClick = { onTab(info.tab) }),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -803,16 +920,17 @@ object MobileUi : Screens {
         val state by vm.state.collectAsStateWithLifecycle()
         val filters by vm.filters.collectAsStateWithLifecycle()
         val showIntro by vm.showIntro.collectAsStateWithLifecycle()
-        val filterRow: @Composable () -> Unit = { FilterRow(exploreFilterChoices(filters), onChange = vm::setFilters, padding = PaddingValues(0.dp)) }
-        Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton(header = filterRow) }) { content ->
+        // Os filtros ficam na barra de cima, atrás do botão ao lado do nome (1.0.8, [ExploreFilterBar]).
+        val filterBar = LocalExploreFilterBar.current
+        LaunchedEffect(filters) { filterBar.filters = filters }
+        SideEffect { filterBar.onChange = vm::setFilters }
+        Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton() }) { content ->
             VideoGrid(
                 content,
                 emptyText = stringResource(if (filters.isDefault) R.string.explore_empty else R.string.explore_filtered_empty),
                 onNearEnd = vm::loadMore,
                 onPlay = onPlay,
                 onOpenChannel = onOpenChannel,
-                // Os filtros rolam junto com a lista, no topo dela.
-                header = filterRow,
             )
         }
         // Só na primeira vez (enquanto os primeiros vídeos carregam): o que é a Explore. Só com a
@@ -1056,7 +1174,13 @@ object MobileUi : Screens {
     }
 
     @Composable
-    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onOpenTopics: () -> Unit, onAddAccount: () -> Unit) {
+    override fun Settings(
+        vm: SettingsViewModel,
+        onOpenPlaylist: (Playlist) -> Unit,
+        onOpenTopics: () -> Unit,
+        onOpenTopicLists: () -> Unit,
+        onAddAccount: () -> Unit,
+    ) {
         val settings by vm.settings.collectAsStateWithLifecycle()
         val user by vm.user.collectAsStateWithLifecycle()
         val accounts by vm.accounts.collectAsStateWithLifecycle()
@@ -1065,8 +1189,6 @@ object MobileUi : Screens {
         val error by vm.error.collectAsStateWithLifecycle()
         val appIcon by vm.appIcon.collectAsStateWithLifecycle()
         var choosingTarget by rememberSaveable { mutableStateOf(false) }
-        // Tópico aberto no diálogo: a lista e a posição (null = tópico novo).
-        var editing by remember { mutableStateOf<Pair<TopicList, Int?>?>(null) }
 
         // Em grupos (cartões arredondados com as linhas dentro), com a explicação embaixo de cada
         // um, em letra pequena. Os usuários ficam em cima: as Configurações abrem pelo menu da foto.
@@ -1155,32 +1277,21 @@ object MobileUi : Screens {
                 }
             }
 
+            // Os tópicos um por um ficam numa tela só deles (1.0.8, pedido do Johan: as duas listas
+            // no meio dos Ajustes faziam a página crescer a cada tópico).
             item(key = "topics") {
                 SettingsGroup(stringResource(R.string.settings_topics), hint = stringResource(R.string.settings_topics_hint)) {
                     SettingsRow(
                         title = stringResource(R.string.settings_topics_choose),
                         modifier = Modifier.clickable(onClick = onOpenTopics),
                     ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Look.Sub) }
+                    RowDivider()
+                    SettingsRow(
+                        title = stringResource(R.string.settings_topics_yours),
+                        subtitle = topicCounts(settings.filters.preferred.size, settings.filters.excluded.size),
+                        modifier = Modifier.clickable(onClick = onOpenTopicLists),
+                    ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Look.Sub) }
                 }
-            }
-
-            item(key = "preferred") {
-                TopicGroup(
-                    title = R.string.settings_preferred,
-                    hint = R.string.settings_preferred_hint,
-                    topics = settings.filters.preferred,
-                    onEdit = { editing = TopicList.PREFERRED to it },
-                    onRemove = { vm.removeTopic(TopicList.PREFERRED, it) },
-                )
-            }
-            item(key = "excluded") {
-                TopicGroup(
-                    title = R.string.settings_excluded,
-                    hint = R.string.settings_excluded_hint,
-                    topics = settings.filters.excluded,
-                    onEdit = { editing = TopicList.EXCLUDED to it },
-                    onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
-                )
             }
 
             item(key = "blocked") {
@@ -1331,6 +1442,73 @@ object MobileUi : Screens {
                         style = Meta,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 14.dp),
+                    )
+                }
+            }
+
+            item(key = "background") {
+                // O fundo do app (1.0.8, pedido do Johan): o grafite do celular (o padrão aqui), o
+                // quase preto da TV ou o preto puro das telas OLED. Os três quase se confundem no
+                // cartão, então cada um leva o nome embaixo.
+                val current = Backgrounds.current
+                SettingsGroup(stringResource(R.string.settings_background), hint = stringResource(R.string.settings_background_hint)) {
+                    Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 14.dp)) {
+                        Background.entries.forEach { option ->
+                            val selected = current == option
+                            Column(
+                                Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                                    .selectable(selected = selected, role = Role.RadioButton) { Backgrounds.select(option) }
+                                    .padding(vertical = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Box(
+                                    Modifier.size(44.dp).border(2.dp, if (selected) Look.Text else Color.Transparent, CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) { BackgroundSwatch(option, 32.dp) }
+                                Text(
+                                    stringResource(option.label),
+                                    style = Meta.copy(color = if (selected) Look.Text else Look.Sub),
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
+                                    modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+
+    @Composable
+    override fun TopicLists(vm: TopicListsViewModel, onBack: () -> Unit) {
+        val settings by vm.settings.collectAsStateWithLifecycle()
+        // Tópico aberto no diálogo: a lista e a posição (null = tópico novo).
+        var editing by remember { mutableStateOf<Pair<TopicList, Int?>?>(null) }
+
+        DetailFrame(title = stringResource(R.string.settings_topics_yours), navigation = { BackButton(onBack) }) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = barsPlus(top = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                item(key = "preferred") {
+                    TopicGroup(
+                        title = R.string.settings_preferred,
+                        hint = R.string.settings_preferred_hint,
+                        topics = settings.filters.preferred,
+                        onEdit = { editing = TopicList.PREFERRED to it },
+                        onRemove = { vm.removeTopic(TopicList.PREFERRED, it) },
+                    )
+                }
+                item(key = "excluded") {
+                    TopicGroup(
+                        title = R.string.settings_excluded,
+                        hint = R.string.settings_excluded_hint,
+                        topics = settings.filters.excluded,
+                        onEdit = { editing = TopicList.EXCLUDED to it },
+                        onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
                     )
                 }
             }
@@ -1608,21 +1786,22 @@ object MobileUi : Screens {
             Loadable(state, onRetry = onRetry, refresh = refresh) { content ->
                 val hasPlaylists = content.playlists.isNotEmpty()
                 val shown = subscription as? Subscription.Shown
-                // Em cima da lista: a inscrição (o mesmo botão da playlist) e, com playlists, Vídeos e Playlists.
+                // Em cima da lista, numa linha só (1.0.8, pedido do Johan): Vídeos e Playlists à esquerda e
+                // a inscrição à direita, do mesmo tamanho. Até a 1.0.7, a inscrição era um botão maior,
+                // sozinho numa linha acima dos dois.
                 val header: (@Composable () -> Unit)? = if (!hasPlaylists && shown == null) null else {
                     {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            shown?.let { state ->
-                                SubscribeButton(state, onToggle = onSubscribe)
-                                state.error?.let { Text(stringResource(R.string.action_failed, it), color = MaterialTheme.colorScheme.error) }
-                            }
-                            if (hasPlaylists) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (hasPlaylists) {
                                     listOf(R.string.channel_videos, R.string.channel_playlists).forEachIndexed { i, label ->
                                         Segment(stringResource(label), selected = tab == i) { tab = i }
                                     }
                                 }
+                                Spacer(Modifier.weight(1f))
+                                shown?.let { SubscribeChip(it, onToggle = onSubscribe) }
                             }
+                            shown?.error?.let { Text(stringResource(R.string.action_failed, it), color = MaterialTheme.colorScheme.error) }
                         }
                     }
                 }
@@ -1656,6 +1835,39 @@ object MobileUi : Screens {
                 selectedLabelColor = Look.Text,
             ),
             border = FilterChipDefaults.filterChipBorder(enabled = true, selected = selected, borderColor = Look.Outline, selectedBorderColor = Color.Transparent),
+        )
+    }
+
+    /**
+     * A inscrição na página do canal, do tamanho de Vídeos e Playlists (1.0.8): cheia na cor de
+     * destaque ("+ Subscribe") ou contornada nela ("✓ Subscribed"). Tocar de novo cancela.
+     */
+    @Composable
+    internal fun SubscribeChip(state: Subscription.Shown, onToggle: () -> Unit) {
+        val subscribed = state.subscribed
+        val content = if (subscribed) Look.Glow else Look.OnGlow
+        FilterChip(
+            selected = false,
+            onClick = { if (!state.busy) onToggle() },
+            label = { Text(stringResource(if (subscribed) R.string.playlist_subscribed else R.string.playlist_subscribe)) },
+            leadingIcon = {
+                if (state.busy) {
+                    CircularProgressIndicator(Modifier.size(16.dp), color = content, strokeWidth = 2.dp)
+                } else {
+                    Icon(if (subscribed) Icons.Filled.Check else Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            },
+            shape = RoundedCornerShape(18.dp),
+            colors = FilterChipDefaults.filterChipColors(
+                containerColor = if (subscribed) Color.Transparent else Look.Glow,
+                labelColor = content,
+                iconColor = content,
+            ),
+            border = FilterChipDefaults.filterChipBorder(
+                enabled = true,
+                selected = false,
+                borderColor = if (subscribed) Look.Glow.copy(alpha = 0.45f) else Color.Transparent,
+            ),
         )
     }
 
@@ -1762,7 +1974,7 @@ object MobileUi : Screens {
         LazyVerticalGrid(
             state = grid,
             columns = videoColumns(),
-            contentPadding = barsPlus(top = 20.dp),
+            contentPadding = barsPlus(top = GridTop),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(26.dp),
         ) {

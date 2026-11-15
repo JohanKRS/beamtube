@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import androidx.test.core.app.ApplicationProvider
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -126,5 +127,77 @@ class PlayerKeysTest {
         focus(R.id.exo_play_pause)
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         assertTrue(playerView.isControllerFullyVisible)
+    }
+
+    /** 1.0.8, pedido do Johan: OK na lua só abre e fecha a caixa; o foco fica nela. */
+    @Test
+    fun okOnTheMoonOnlyOpensAndClosesTheBox() {
+        val sleep = playerView.findViewById<View>(R.id.player_sleep)
+        val panel = playerView.findViewById<View>(R.id.player_sleep_panel)
+        focus(R.id.player_sleep)
+        sleep.performClick()
+        settle()
+        assertEquals(View.VISIBLE, panel.visibility)
+        assertTrue(sleep.isFocused)
+        sleep.performClick()
+        settle()
+        assertEquals(View.GONE, panel.visibility)
+        assertTrue(sleep.isFocused)
+    }
+
+    /** Cima na lua entra na linha de baixo da caixa (na opção marcada); baixo dali volta para a lua. */
+    @Test
+    fun upFromTheMoonEntersTheBoxAndDownComesBack() {
+        val sleep = playerView.findViewById<View>(R.id.player_sleep)
+        focus(R.id.player_sleep)
+        sleep.performClick()
+        settle()
+        focusablesIn(playerView).forEach { it.isFocusableInTouchMode = true; it.isEnabled = true }
+        val bottom = listOf(R.id.player_sleep_end, R.id.player_sleep_queue, R.id.player_sleep_brightness)
+            .map { playerView.findViewById<ViewGroup>(it) }
+            .first { (it.parent as View).visibility == View.VISIBLE }
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        val focused = playerView.findFocus()
+        assertTrue(focused.parent == bottom)
+        assertTrue(focused.isActivated)
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertTrue(sleep.isFocused)
+        assertEquals(View.VISIBLE, playerView.findViewById<View>(R.id.player_sleep_panel).visibility)
+    }
+
+    /** 1.0.8, pedido do Johan: a linha dos botões dá a volta nas pontas. */
+    @Test
+    fun leftOnPlayGoesToTheMoonAndRightOnTheMoonBackToPlay() {
+        focus(R.id.exo_play_pause)
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertTrue(playerView.findViewById<View>(R.id.player_sleep).isFocused)
+        assertTrue(playerView.isControllerFullyVisible)
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertTrue(playerView.findViewById<View>(R.id.exo_play_pause).isFocused)
+    }
+
+    @Test
+    fun inTheMiddleOfTheRowTheArrowsAreNotWrapped() {
+        // Com mais um botão na linha, esquerda na lua acha outro botão dela: nada de dar a volta.
+        playerView.findViewById<View>(R.id.player_quality_button).visibility = View.VISIBLE
+        settle()
+        val island = PlayerIsland(playerView, tv = true)
+        val sleep = playerView.findViewById<View>(R.id.player_sleep)
+        assertTrue(sleep.requestFocus())
+        assertFalse(island.wrapFocus(sleep, View.FOCUS_LEFT))
+        assertTrue(sleep.isFocused)
+    }
+
+    /** 1.0.8, pedido do Johan: "voltar" com os controles na tela só esconde os controles. */
+    @Test
+    fun backHidesTheControlsFirstAndThenLeaves() {
+        focus(R.id.exo_play_pause)
+        activity.onBackPressedDispatcher.onBackPressed()
+        settle()
+        assertFalse(playerView.isControllerFullyVisible)
+        assertFalse(activity.isFinishing)
+        activity.onBackPressedDispatcher.onBackPressed()
+        settle()
+        assertTrue(activity.isFinishing)
     }
 }

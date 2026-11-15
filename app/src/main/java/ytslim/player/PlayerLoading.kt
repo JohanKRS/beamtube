@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.RectF
@@ -48,7 +47,7 @@ internal object LoadingRules {
  * começava a baixar o vídeo; a espera pela resposta do YouTube ficava sem sinal.
  *
  * Desde a 1.0.7 (pedido do Johan, 2026-11-14), a miniatura ocupa a tela toda, sem as faixas pretas
- * que algumas trazem, e bem desfocada: ficam só as cores dela ([PosterBlur]).
+ * que algumas trazem, e desfocada ([PosterBlur]; mais leve desde a 1.0.8).
  *
  * A miniatura some no primeiro quadro, num esmaecer curto; o círculo volta quando o vídeo para para
  * carregar. Fica por baixo do escurecer do modo dormir e dos controles.
@@ -61,7 +60,7 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
         setBackgroundColor(Color.BLACK)
         // Um pouco escurecida, para o círculo e os controles aparecerem bem por cima, e com as cores
         // reforçadas: o desfoque mistura tudo e deixa a imagem acinzentada.
-        colorFilter = posterTone()
+        colorFilter = ColorMatrixColorFilter(PosterBlur.tone())
         visibility = View.GONE
     }
     private val ring = LoadingRing(context).apply { visibility = View.GONE }
@@ -73,6 +72,9 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
     val posterShown: Boolean get() = poster.visibility == View.VISIBLE && poster.alpha == 1f
 
     val ringShown: Boolean get() = ring.visibility == View.VISIBLE
+
+    /** O endereço da miniatura do vídeo de agora (a tela do fim usa a mesma, desfocada). */
+    val posterUrl: String? get() = shownUrl
 
     init {
         // Não pega toques nem foco: os toques no vídeo e o D-pad continuam com o PlayerView.
@@ -98,7 +100,7 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
                     ImageRequest.Builder(context)
                         .data(thumbnailUrl)
                         // Pequena: só as cores importam, e o desfoque roda numa imagem de poucos pontos.
-                        .size(DECODE_PX, DECODE_PX)
+                        .size(PosterBlur.DECODE_PX, PosterBlur.DECODE_PX)
                         .allowHardware(false)
                         .transformations(PosterBlur.Coil)
                         .target(onSuccess = { image -> if (shownUrl == thumbnailUrl) poster.setImageDrawable(image.asDrawable(resources)) })
@@ -120,6 +122,21 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
         poster.animate().cancel()
         poster.animate().alpha(0f).setDuration(POSTER_FADE_MS).setInterpolator(DecelerateInterpolator())
             .withEndAction { hidePoster() }
+    }
+
+    /**
+     * O inverso da abertura, ao arrastar o vídeo para baixo e soltar (1.0.8, pedido do Johan: "o
+     * reverso da animação de entrada do vídeo, com aquele fade para blur"): a miniatura desfocada
+     * volta por cima do vídeo em [durationMs], sem o círculo. Depois disso o player fecha.
+     */
+    fun blurBack(durationMs: Long) {
+        setBusy(false)
+        poster.animate().cancel()
+        if (poster.visibility != View.VISIBLE) {
+            poster.alpha = 0f
+            poster.visibility = View.VISIBLE
+        }
+        poster.animate().alpha(1f).setDuration(durationMs).setInterpolator(DecelerateInterpolator())
     }
 
     /** O vídeo não vai tocar (o erro aparece na tela): sem miniatura e sem círculo. */
@@ -160,22 +177,6 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
         const val RING_TV_DP = 80
         /** O vídeo aparece por baixo das cores da miniatura, sem corte seco. */
         const val POSTER_FADE_MS = 300L
-
-        /** A miniatura é decodificada em no máximo isto de cada lado, antes de reduzir e desfocar. */
-        const val DECODE_PX = 320
-
-        /** O brilho da miniatura desfocada: 35% mais escura (eram 55% com ela nítida). */
-        const val POSTER_BRIGHTNESS = 0.65f
-
-        /** As cores 40% mais fortes que as da miniatura, para não ficarem lavadas depois do desfoque. */
-        const val POSTER_SATURATION = 1.4f
-
-        fun posterTone() = ColorMatrixColorFilter(
-            ColorMatrix().apply {
-                setSaturation(POSTER_SATURATION)
-                postConcat(ColorMatrix().apply { setScale(POSTER_BRIGHTNESS, POSTER_BRIGHTNESS, POSTER_BRIGHTNESS, 1f) })
-            },
-        )
     }
 }
 

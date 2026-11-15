@@ -14,6 +14,16 @@
     <!-- Na TV ligada do zero, conferir se o serviço do botão YouTube voltou (AccessibilityRebind). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Achar pelo nome as telas de ajustes do sistema que abrem a Acessibilidade (ScreenOffService.openSettings). -->
+    <queries>
+        <intent>
+            <action android:name="android.settings.ACCESSIBILITY_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.SETTINGS" />
+        </intent>
+    </queries>
+
     <!-- Um APK só: roda com ou sem tela de toque, com ou sem leanback. -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

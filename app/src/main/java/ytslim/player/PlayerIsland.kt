@@ -64,6 +64,22 @@ class PlayerIsland(root: View, private val tv: Boolean) {
         spacer.visibility = if (two) View.VISIBLE else View.GONE
     }
 
+    /**
+     * Na TV, a linha dos botões dá a volta (1.0.8, pedido do Johan): esquerda no primeiro (o tocar)
+     * vai para o último (a lua), e direita na lua volta para o tocar. Só quando o foco ([focused])
+     * está na linha e a seta não acharia outro botão dela. true se o foco deu a volta.
+     */
+    fun wrapFocus(focused: View, direction: Int): Boolean {
+        if (!tv || (direction != View.FOCUS_LEFT && direction != View.FOCUS_RIGHT)) return false
+        if (!focused.isInside(buttonRow)) return false
+        if (focused.focusSearch(direction)?.isInside(buttonRow) == true) return false
+        val buttons = buttonRow.getFocusables(View.FOCUS_FORWARD).filter { it.isShown && it.isEnabled }
+        val target = (if (direction == View.FOCUS_RIGHT) buttons.firstOrNull() else buttons.lastOrNull()) ?: return false
+        return target !== focused && target.requestFocus()
+    }
+
+    private fun View.isInside(group: View) = generateSequence(this) { it.parent as? View }.any { it === group }
+
     companion object {
         /**
          * Abaixo desta largura a ilha vira duas linhas. Sem o botão Skip ahead (2026-11-03) cabe
