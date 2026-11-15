@@ -926,6 +926,10 @@ object MobileUi : Screens {
         val filterBar = LocalExploreFilterBar.current
         LaunchedEffect(filters) { filterBar.filters = filters }
         SideEffect { filterBar.onChange = vm::setFilters }
+        // A aba abriu de verdade (e não só preparada ao lado dos Recomendados, ou por trás): o
+        // próximo sorteio pode ser preparado.
+        val tabShown = LocalTabShown.current
+        LaunchedEffect(tabShown) { if (tabShown) vm.seen() }
         Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton() }) { content ->
             VideoGrid(
                 content,

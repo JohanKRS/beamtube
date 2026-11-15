@@ -948,6 +948,8 @@ object TvUi : Screens {
         val state by vm.state.collectAsStateWithLifecycle()
         val filters by vm.filters.collectAsStateWithLifecycle()
         val showIntro by vm.showIntro.collectAsStateWithLifecycle()
+        // A aba abriu de verdade (ela carrega por trás antes disso): o próximo sorteio pode ser preparado.
+        LaunchedEffect(Unit) { vm.seen() }
         Column(Modifier.fillMaxSize()) {
             FilterButtons(exploreFilterChoices(filters), onChange = vm::setFilters)
             Spacer(Modifier.height(16.dp))

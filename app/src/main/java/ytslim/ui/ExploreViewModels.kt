@@ -12,11 +12,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AppScope
 import ytslim.data.ExploreDraw
 import ytslim.data.ExploreRepository
@@ -79,8 +81,9 @@ class ExploreViewModel : ViewModel(), Refreshable {
 
     init {
         // Abre na hora com o sorteio preparado na abertura anterior (1.0.11, pedido do Johan: logo
-        // depois de ligar a TV, a Explore demorava a aparecer). Sem ele, sorteia como antes. Depois,
-        // com a tela já assentada, prepara por trás o sorteio da próxima abertura.
+        // depois de ligar a TV, a Explore demorava a aparecer). Sem ele, sorteia como antes; como a
+        // aba carrega por trás, antes de abrir, um sorteio que ninguém viu fica guardado para a
+        // próxima abertura do app, em vez de se perder.
         viewModelScope.launch {
             val saved = ExploreRepository.next()
             if (saved != null && raw.value == Raw.Loading) {
@@ -88,12 +91,26 @@ class ExploreViewModel : ViewModel(), Refreshable {
                 fill(extra = 0)
             } else {
                 load(quiet = false)
+                val drawn = (raw.first { it !is Raw.Loading } as? Raw.Loaded)?.draws?.firstOrNull()
+                if (drawn != null && !seen) ExploreRepository.saveNext(drawn)
             }
-            AppScope.launch {
-                delay(NEXT_DRAW_DELAY_MS)
-                val shown = (raw.value as? Raw.Loaded)?.channels.orEmpty()
-                runCatching { ExploreRepository.prepareNext(shown) }
-            }
+        }
+    }
+
+    private var seen = false
+
+    /**
+     * A aba apareceu na tela. Só então (uma vez, com a tela já assentada) o app sorteia por trás o
+     * que a próxima abertura mostra, sem os canais desta: quem não abre a Explore não gasta pedidos
+     * nem canais que nunca viu.
+     */
+    fun seen() {
+        if (seen) return
+        seen = true
+        AppScope.launch {
+            delay(NEXT_DRAW_DELAY_MS)
+            val loaded = withTimeoutOrNull(NEXT_DRAW_WAIT_MS) { raw.first { it is Raw.Loaded } } as? Raw.Loaded ?: return@launch
+            runCatching { ExploreRepository.prepareNext(loaded.channels) }
         }
     }
 
@@ -182,5 +199,8 @@ class ExploreViewModel : ViewModel(), Refreshable {
 
         /** Quanto esperar para preparar o sorteio da próxima abertura (as miniaturas da tela vêm antes). */
         const val NEXT_DRAW_DELAY_MS = 5_000L
+
+        /** Quanto esperar pela lista da tela antes de desistir de preparar a próxima. */
+        const val NEXT_DRAW_WAIT_MS = 30_000L
     }
 }
