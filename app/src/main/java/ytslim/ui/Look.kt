@@ -15,9 +15,12 @@ import ytslim.R
  * luz é a de destaque escolhida em Settings ([accent], âmbar por padrão).
  */
 object Look {
-    val Ground = Color(0xFF18191B)
-    val Surface = Color(0xFF232427)
-    val SurfaceHigh = Color(0xFF2C2D31)
+    /** O tom do fundo e das superfícies; a TV troca pelo dela ao abrir o app ([Tones.TV]). */
+    var tones = Tones.PHONE
+
+    val Ground: Color get() = tones.ground
+    val Surface: Color get() = tones.surface
+    val SurfaceHigh: Color get() = tones.surfaceHigh
     val Text = Color(0xFFF3EFE4)
     val Sub = Color(0xFFA7A8AD)
     /** A cor de destaque ([Accent]); trocar aqui redesenha as telas abertas. */
@@ -34,15 +37,18 @@ object Look {
      * borda da tela (94%) e menos junto da lista (76%). Pedido do Johan, 2026-11-03 (antes, 62%
      * por igual).
      */
-    val GlassEdge = Color(0xF018191B)
-    val GlassInner = Color(0xC218191B)
+    val GlassEdge: Color get() = Ground.copy(alpha = 0xF0 / 255f)
+    val GlassInner: Color get() = Ground.copy(alpha = 0xC2 / 255f)
 
     /** Sem desfoque (Android 11 ou mais antigo), a barra fica quase opaca para o texto continuar legível. */
-    val GlassFallbackEdge = Color(0xFA18191B)
-    val GlassFallbackInner = Color(0xEB18191B)
+    val GlassFallbackEdge: Color get() = Ground.copy(alpha = 0xFA / 255f)
+    val GlassFallbackInner: Color get() = Ground.copy(alpha = 0xEB / 255f)
 
     /** Avisos e menus flutuantes. */
-    val Pill = Color(0xF22E2F33)
+    val Pill: Color get() = tones.pill
+
+    /** Menus e avisos da TV, que não tem vidro. */
+    val Floating: Color get() = tones.floating
 
     /** Fundo do selo de duração e do marcador do Watch later em cima da miniatura. */
     val Badge = Color(0xC70A0A0C)
@@ -74,3 +80,39 @@ object Look {
 /** A letra do avatar de um canal sem foto: a primeira letra ou número do nome. */
 fun monogramOf(name: String?): String =
     name.orEmpty().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "•"
+
+/**
+ * O fundo e as superfícies, do mais escuro ao mais claro. O do celular é o cinza bem escuro da
+ * etapa 6 (pedido do Johan, 2026-11-02: não é preto). A TV tem um mais escuro ([TV]).
+ */
+class Tones(
+    val ground: Color,
+    val surface: Color,
+    val surfaceHigh: Color,
+    val pill: Color,
+    val floating: Color,
+) {
+    companion object {
+        val PHONE = Tones(
+            ground = Color(0xFF18191B),
+            surface = Color(0xFF232427),
+            surfaceHigh = Color(0xFF2C2D31),
+            pill = Color(0xF22E2F33),
+            floating = Color(0xF528292D),
+        )
+
+        /**
+         * Na TV, quase preto (escolha do Johan entre quatro tons, 2026-11-15). A mesma cor do
+         * celular aparecia bem mais clara na TV: a tela LCD, com a luz de fundo sempre acesa, e os
+         * modos de imagem clareiam os cinzas escuros que o OLED do celular quase apaga. As
+         * superfícies sobem do fundo no mesmo passo das do celular (+11, +20, +22 e +16).
+         */
+        val TV = Tones(
+            ground = Color(0xFF0A0A0C),
+            surface = Color(0xFF151518),
+            surfaceHigh = Color(0xFF1E1E22),
+            pill = Color(0xF2202024),
+            floating = Color(0xF51A1A1D),
+        )
+    }
+}

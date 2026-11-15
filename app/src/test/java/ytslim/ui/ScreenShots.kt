@@ -51,6 +51,7 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -168,10 +169,22 @@ class ScreenShots {
 
     private fun feed(list: List<Video> = videos) = VideoListContent(list, hasMore = true, loadingMore = false)
 
-    /** A cor de destaque ([Look.accent]) e o layout da TV ([TvLayouts]) são globais: cada foto começa e termina no padrão. */
+    /** O tom do fundo é o do aparelho da foto, como o App escolhe na abertura ([Tones.TV] na TV). */
+    @Before
+    fun deviceTones() {
+        val mode = org.robolectric.RuntimeEnvironment.getApplication().resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_TYPE_MASK
+        Look.tones = if (mode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) Tones.TV else Tones.PHONE
+    }
+
+    /**
+     * A cor de destaque e o tom do fundo ([Look]) e o layout da TV ([TvLayouts]) são globais: cada
+     * foto termina no padrão.
+     */
     @After
     fun resetAccent() {
         Look.accent = Accent.DEFAULT
+        Look.tones = Tones.PHONE
         TvLayouts.select(TvLayout.TOP_TABS)
     }
 
