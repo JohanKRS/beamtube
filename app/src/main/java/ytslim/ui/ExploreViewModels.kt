@@ -6,6 +6,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -77,7 +78,23 @@ class ExploreViewModel : ViewModel(), Refreshable {
     }
 
     init {
-        load(quiet = false)
+        // Abre na hora com o sorteio preparado na abertura anterior (1.0.11, pedido do Johan: logo
+        // depois de ligar a TV, a Explore demorava a aparecer). Sem ele, sorteia como antes. Depois,
+        // com a tela já assentada, prepara por trás o sorteio da próxima abertura.
+        viewModelScope.launch {
+            val saved = ExploreRepository.next()
+            if (saved != null && raw.value == Raw.Loading) {
+                raw.value = Raw.Loaded(listOf(saved), saved.ids.toSet(), saved.hasMore, loadingMore = false)
+                fill(extra = 0)
+            } else {
+                load(quiet = false)
+            }
+            AppScope.launch {
+                delay(NEXT_DRAW_DELAY_MS)
+                val shown = (raw.value as? Raw.Loaded)?.channels.orEmpty()
+                runCatching { ExploreRepository.prepareNext(shown) }
+            }
+        }
     }
 
     fun reload() = load(quiet = false)
@@ -162,5 +179,8 @@ class ExploreViewModel : ViewModel(), Refreshable {
         const val MIN_ON_SCREEN = 12
         const val MIN_NEW = 6
         const val MAX_DRAWS_FILTERED = 4
+
+        /** Quanto esperar para preparar o sorteio da próxima abertura (as miniaturas da tela vêm antes). */
+        const val NEXT_DRAW_DELAY_MS = 5_000L
     }
 }

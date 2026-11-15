@@ -1,6 +1,7 @@
 package ytslim.ui.tv
 
 import android.content.Context
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -330,6 +331,7 @@ private val GroupCorner = 18.dp
 
 /** Interface da Android TV: D-pad, foco visível e cards maiores (Compose for TV). */
 object TvUi : Screens {
+    private const val TAG = "BeamTube"
     private val OkKeys = setOf(android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER)
     private val GridGapX = 20.dp
 
@@ -490,7 +492,8 @@ object TvUi : Screens {
                     itemModifier = { item ->
                         (if (item == tab) Modifier.focusRequester(selectedTab) else Modifier).reloadsOnOk(item, pressedTab, onReload)
                     },
-                    modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.sideEntersAt(selectedTab),
+                    modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.sideEntersAt(selectedTab)
+                        .oneTabPerPress(android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN),
                 )
             }
             Column(Modifier.weight(1f).fillMaxHeight().padding(if (side) sideScreenPadding else listScreenPadding)) {
@@ -507,7 +510,8 @@ object TvUi : Screens {
                     val selectedIndex = tabs.indexOfFirst { it.first == tab }
                     TabRow(
                         selectedTabIndex = selectedIndex,
-                        modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab),
+                        modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab)
+                            .oneTabPerPress(android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT),
                         separator = { Spacer(Modifier.width(TabSeparator)) },
                         indicator = { positions, _ -> positions.getOrNull(selectedIndex)?.let { SlitIndicator(it) } },
                     ) {
@@ -564,6 +568,21 @@ object TvUi : Screens {
             } else {
                 false
             }
+        }
+
+    /**
+     * Nas abas, e no menu lateral, cada toque anda uma aba só: as repetições de uma seta segurada
+     * ([keys]) não contam (1.0.11, pedido do Johan). Logo depois de ligar a TV, o controle às vezes
+     * manda a soltura da tecla atrasada, o Android repete a seta como se ela estivesse segurada, e
+     * um toque pulava duas ou três abas (das Inscrições direto para a Busca). Como cada aba troca a
+     * página, andar uma por toque é o esperado.
+     */
+    private fun Modifier.oneTabPerPress(vararg keys: Int): Modifier =
+        onPreviewKeyEvent { event ->
+            val key = event.nativeKeyEvent
+            val held = event.type == KeyEventType.KeyDown && key.repeatCount > 0 && key.keyCode in keys
+            if (held && key.repeatCount == 1) Log.i(TAG, "tabs: held arrow ignored (${key.eventTime - key.downTime} ms)")
+            held
         }
 
     /** OK nesta aba ([item]) recarrega a lista dela, se o OK desceu nela (ver [Home]). */

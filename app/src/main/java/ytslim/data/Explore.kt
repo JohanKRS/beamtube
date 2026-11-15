@@ -29,6 +29,7 @@ data class FeaturedSource(val name: String, val handle: String? = null, val scan
 data class Candidate(val channel: FeaturedChannel, val weight: Int)
 
 /** Os vídeos de um canal sorteado: os recentes (a aba de vídeos) e os das prateleiras da página dele. */
+@Serializable
 data class ChannelVideos(val channel: FeaturedChannel, val recent: List<Video>, val older: List<Video>)
 
 /**
@@ -189,7 +190,12 @@ data class ExploreCache(
  * Um sorteio da Explore: os vídeos de cada canal sorteado (a escolha do que vai para a tela é de
  * [ExploreRules.screen], com [seed]), os ids de todos os sorteados e se ainda há canais.
  */
+@Serializable
 class ExploreDraw(val channels: List<ChannelVideos>, val ids: List<String>, val hasMore: Boolean, val seed: Long)
+
+/** O sorteio guardado para a próxima abertura da Explore ([ExploreRepository.next]). */
+@Serializable
+private class SavedDraw(val savedAt: Long, val draw: ExploreDraw)
 
 /**
  * A busca da Explore. Lê a página dos canais inscritos (um pedido por canal, guardado por
@@ -338,6 +344,39 @@ object ExploreRepository {
     private suspend fun remember(channels: List<String>) = save { cache ->
         val recent = (cache.recent - channels.toSet()) + channels
         cache.copy(recent = recent.takeLast(ExploreRules.REMEMBER_CHANNELS))
+    }
+
+    /** Mais velho que isso, o sorteio guardado não aparece (o mesmo prazo das listas guardadas). */
+    const val NEXT_MAX_AGE_MS = ListCache.MAX_AGE_MS
+
+    /** O sorteio da próxima abertura, na pasta de cada usuário (sair da conta apaga). */
+    const val NEXT_FILE = "explore-next.json"
+
+    private fun nextFile(slot: String = Users.slot): File = Users.file(NEXT_FILE, slot)
+
+    /**
+     * O sorteio preparado para esta abertura ([prepareNext]), se houver um com menos de
+     * [NEXT_MAX_AGE_MS]: a Explore abre na hora com ele (1.0.11, pedido do Johan), em vez de esperar a
+     * leitura das páginas dos canais. Fica no arquivo até o próximo ficar pronto, então abrir de
+     * novo antes disso mostra o mesmo.
+     */
+    suspend fun next(nowMs: Long = System.currentTimeMillis()): ExploreDraw? = io {
+        runCatching { json.decodeFromString(SavedDraw.serializer(), nextFile().readText()) }.getOrNull()
+    }?.takeIf { nowMs - it.savedAt in 0..NEXT_MAX_AGE_MS && it.draw.channels.isNotEmpty() }?.draw
+
+    /**
+     * Sorteia por trás o que a próxima abertura da Explore mostra, sem os canais que estão na tela
+     * ([shown]). Fica com o usuário que estava aberto no começo: se outro abrir no meio, nada é guardado.
+     */
+    suspend fun prepareNext(shown: Set<String>) {
+        val slot = Users.slot
+        val draw = draw(shown)
+        if (Users.slot == slot) saveNext(draw, slot = slot)
+    }
+
+    internal suspend fun saveNext(draw: ExploreDraw, nowMs: Long = System.currentTimeMillis(), slot: String = Users.slot) {
+        if (draw.channels.isEmpty()) return
+        io { runCatching { nextFile(slot).writeText(json.encodeToString(SavedDraw.serializer(), SavedDraw(nowMs, draw))) } }
     }
 
     private suspend fun load(): ExploreCache = mutex.withLock { loadLocked() }

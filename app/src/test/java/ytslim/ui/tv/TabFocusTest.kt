@@ -10,11 +10,13 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -104,6 +106,53 @@ class TabFocusTest {
         press(KeyEvent.KEYCODE_DPAD_UP)
         assertEquals(HomeTab.RECOMMENDED, tab)
         compose.onNodeWithText("Recommended").assertIsFocused()
+    }
+
+    /**
+     * Uma seta que o Android repete [repeats] vezes antes da soltura: segurada, ou com a soltura
+     * atrasada (o controle logo depois de ligar a TV).
+     */
+    private fun hold(keyCode: Int, repeats: Int) {
+        compose.runOnUiThread {
+            val down = android.os.SystemClock.uptimeMillis()
+            for (repeat in 0..repeats) compose.activity.dispatchKeyEvent(KeyEvent(down, down + repeat * 50L, KeyEvent.ACTION_DOWN, keyCode, repeat))
+            compose.activity.dispatchKeyEvent(KeyEvent(down, down + repeats * 50L, KeyEvent.ACTION_UP, keyCode, 0))
+        }
+        compose.waitForIdle()
+    }
+
+    /**
+     * Pedido do Johan na 1.0.11: logo depois de ligar a TV, um toque para o lado pulava duas ou três
+     * abas (até a Busca). Nas abas, cada toque anda uma só, mesmo com a seta repetida.
+     */
+    @Test
+    fun aRepeatedArrowMovesOneTab() {
+        var tab by mutableStateOf(HomeTab.SUBSCRIPTIONS)
+        compose.setContent {
+            TvUi.Theme {
+                TvUi.Home(tab, onTab = { tab = it }, onReload = {}) {
+                    TvUi.VideoGrid(grid(), "", {}, {}, null, takeFocus = true, onFocusTaken = {})
+                }
+            }
+        }
+        compose.waitForIdle()
+        focusFirstCard()
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        hold(KeyEvent.KEYCODE_DPAD_RIGHT, repeats = 3)
+        assertEquals(HomeTab.RECOMMENDED, tab)
+        compose.onNodeWithText("Recommended").assertIsFocused()
+        // O próximo toque anda mais uma, e para a esquerda também é uma por vez.
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals(HomeTab.EXPLORE, tab)
+        hold(KeyEvent.KEYCODE_DPAD_LEFT, repeats = 3)
+        assertEquals(HomeTab.RECOMMENDED, tab)
+        // Na grade, segurar a seta continua andando pelos cards.
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        hold(KeyEvent.KEYCODE_DPAD_RIGHT, repeats = 2)
+        assertEquals(HomeTab.RECOMMENDED, tab)
+        val card = compose.onNode(isFocused()).fetchSemanticsNode().boundsInRoot
+        val title = compose.onNodeWithText("Video number 4").fetchSemanticsNode().boundsInRoot
+        assertTrue(title.center.x in card.left..card.right)
     }
 
     /** As abas ficam encostadas à direita: a seta para a direita no fim de uma fileira não pula para elas. */

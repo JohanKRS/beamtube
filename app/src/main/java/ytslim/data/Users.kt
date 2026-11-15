@@ -274,6 +274,7 @@ object Users {
                 File(dir(user.slot), FeedCache.FILE).delete()
                 File(dir(user.slot), ListCache.DIR).deleteRecursively()
                 File(dir(user.slot), WatchPositions.FILE).delete()
+                File(dir(user.slot), ExploreRepository.NEXT_FILE).delete()
             }
         }
         forgetSession()

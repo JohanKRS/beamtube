@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -29,6 +30,7 @@ import ytslim.data.ChannelRepository
 import ytslim.data.ContentFilters
 import ytslim.data.FeedRepository
 import ytslim.data.LibraryRepository
+import ytslim.data.ListCache
 import ytslim.data.Playlist
 import ytslim.data.SearchDuration
 import ytslim.data.SearchFilters
@@ -49,11 +51,13 @@ import ytslim.data.VideoPage
  * Recomendações vêm poucas por vez). Cada página passa antes pelo [ChannelFeedback], que manda o
  * "Don't recommend channel" dos canais bloqueados.
  */
+@OptIn(FlowPreview::class)
 class RecommendedViewModel : ViewModel(), Refreshable {
     private sealed interface Raw {
         data object Loading : Raw
         data class Error(val message: String) : Raw
-        data class Loaded(val pages: List<List<Video>>, val lastPage: VideoPage, val loadingMore: Boolean) : Raw
+        /** [cached]: a lista guardada no aparelho ([ListCache]), na tela até a da conta chegar. */
+        data class Loaded(val pages: List<List<Video>>, val lastPage: VideoPage, val loadingMore: Boolean, val cached: Boolean = false) : Raw
     }
 
     private val raw = MutableStateFlow<Raw>(Raw.Loading)
@@ -69,7 +73,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     private fun content(raw: Raw, settings: Settings): UiState<VideoListContent> = when (raw) {
         Raw.Loading -> UiState.Loading
         is Raw.Error -> UiState.Error(raw.message)
-        is Raw.Loaded -> UiState.Ready(VideoListContent(shown(raw.pages, settings), raw.lastPage.hasMore, raw.loadingMore))
+        is Raw.Loaded -> UiState.Ready(VideoListContent(shown(raw.pages, settings), raw.lastPage.hasMore, raw.loadingMore, cached = raw.cached))
     }
 
     private var job: Job? = null
@@ -77,7 +81,21 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
     init {
-        reload()
+        // Abre com a lista guardada da última vez, e a da conta chega por trás, como nas Inscrições
+        // (1.0.11, pedido do Johan: logo depois de ligar a TV, as Recomendações demoravam a aparecer).
+        viewModelScope.launch {
+            ListCache.read(CACHE_KEY)?.let { saved ->
+                raw.value = Raw.Loaded(listOf(saved.videos), VideoPage(emptyList(), null), loadingMore = false, cached = true)
+            }
+            load(quiet = raw.value is Raw.Loaded)
+        }
+        // Guarda as páginas da conta como vieram (os filtros valem na hora de mostrar), depois que
+        // a tela enche.
+        viewModelScope.launch {
+            raw.mapNotNull { loaded -> (loaded as? Raw.Loaded)?.takeIf { !it.cached && !it.loadingMore } }
+                .debounce(1_000)
+                .collect { loaded -> AppScope.launch { ListCache.save(CACHE_KEY, null, loaded.pages.flatten()) } }
+        }
     }
 
     fun reload() = load(quiet = false)
@@ -91,7 +109,8 @@ class RecommendedViewModel : ViewModel(), Refreshable {
         job = viewModelScope.launch {
             raw.value = runCatching { LibraryRepository.recommended() }
                 .onSuccess { ChannelFeedback.note(it.videos) }
-                .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false) }, { Raw.Error(it.toMessage()) })
+                // Sem rede, a lista que está na tela (a guardada, ou a de antes do puxar) fica.
+                .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false) }, { if (quiet) raw.value else Raw.Error(it.toMessage()) })
             _refreshing.value = false
             fill(extra = 0)
         }
@@ -129,6 +148,9 @@ class RecommendedViewModel : ViewModel(), Refreshable {
         const val MIN_ON_SCREEN = 12
         const val MIN_NEW = 6
         const val MAX_PAGES = 5
+
+        /** A lista no [ListCache] (os outros nomes são playlists e o Histórico). */
+        const val CACHE_KEY = "recommended"
     }
 }
 
