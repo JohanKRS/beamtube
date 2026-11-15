@@ -15,7 +15,7 @@ import ytslim.R
  * luz é a de destaque escolhida em Settings ([accent], âmbar por padrão).
  */
 object Look {
-    /** O tom do fundo e das superfícies; a TV troca pelo dela ao abrir ([Tones]). */
+    /** O tom do fundo e das superfícies; a TV troca pelo dela ao abrir o app ([Tones.TV]). */
     var tones = Tones.PHONE
 
     val Ground: Color get() = tones.ground
@@ -83,7 +83,7 @@ fun monogramOf(name: String?): String =
 
 /**
  * O fundo e as superfícies, do mais escuro ao mais claro. O do celular é o cinza bem escuro da
- * etapa 6 (pedido do Johan, 2026-11-02: não é preto).
+ * etapa 6 (pedido do Johan, 2026-11-02: não é preto). A TV tem um mais escuro ([TV]).
  */
 class Tones(
     val ground: Color,
@@ -102,17 +102,17 @@ class Tones(
         )
 
         /**
-         * Um tom com as superfícies no mesmo passo das do celular: o cartão 11 acima do fundo, o
-         * destaque 20, o menu da TV 16 e o aviso 22.
+         * Na TV, quase preto (escolha do Johan entre quatro tons, 2026-11-15). A mesma cor do
+         * celular aparecia bem mais clara na TV: a tela LCD, com a luz de fundo sempre acesa, e os
+         * modos de imagem clareiam os cinzas escuros que o OLED do celular quase apaga. As
+         * superfícies sobem do fundo no mesmo passo das do celular (+11, +20, +22 e +16).
          */
-        fun from(ground: Int): Tones {
-            fun lift(step: Int, alpha: Int = 0xFF): Color {
-                val r = (ground shr 16 and 0xFF) + step
-                val g = (ground shr 8 and 0xFF) + step
-                val b = (ground and 0xFF) + step + step / 10
-                return Color(alpha shl 24 or (r shl 16) or (g shl 8) or b)
-            }
-            return Tones(lift(0), lift(11), lift(20), lift(22, 0xF2), lift(16, 0xF5))
-        }
+        val TV = Tones(
+            ground = Color(0xFF0A0A0C),
+            surface = Color(0xFF151518),
+            surfaceHigh = Color(0xFF1E1E22),
+            pill = Color(0xF2202024),
+            floating = Color(0xF51A1A1D),
+        )
     }
 }
