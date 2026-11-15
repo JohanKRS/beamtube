@@ -185,11 +185,14 @@ class ScreenShots {
             if (params.flags and android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND != 0) {
                 canvas.drawColor(Color.Black.copy(alpha = params.dimAmount).let { android.graphics.Color.argb(it.alpha, it.red, it.green, it.blue) })
             }
-            val centered = params.gravity and android.view.Gravity.CENTER == android.view.Gravity.CENTER || params.gravity == 0 && root.width < main.width
-            val x = if (centered) (main.width - root.width) / 2f else params.x.toFloat()
-            val y = if (centered) (main.height - root.height) / 2f else params.y.toFloat()
+            val place = android.graphics.Rect()
+            android.view.Gravity.apply(
+                params.gravity.takeIf { it != 0 } ?: android.view.Gravity.CENTER,
+                root.width, root.height, android.graphics.Rect(0, 0, main.width, main.height),
+                params.x, params.y, place, main.layoutDirection,
+            )
             canvas.save()
-            canvas.translate(x, y)
+            canvas.translate(place.left.toFloat(), place.top.toFloat())
             root.draw(canvas)
             canvas.restore()
         }
@@ -894,14 +897,17 @@ class ScreenShots {
     /** Abre o usuário [index] da [family], ou o convidado com null. */
     private fun openUser(index: Int?) = Users.show(index?.let { family[it] } ?: Users.guestUser, family)
 
+    /** O nome da foto para a Acessibilidade, no idioma da foto de tela. */
+    private fun photoLabel() = org.robolectric.RuntimeEnvironment.getApplication().getString(R.string.user_menu)
+
     private fun tapPhoto() {
-        compose.onNode(androidx.compose.ui.test.hasContentDescription("Switch user") and hasClickAction()).performClick()
+        compose.onNode(androidx.compose.ui.test.hasContentDescription(photoLabel()) and hasClickAction()).performClick()
     }
 
     /** Uma tecla do controle põe o Compose no modo de teclado; depois o foco vai para a foto e OK abre o menu. */
     private fun focusPhoto(open: Boolean) {
         compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
-        val photo = compose.onNode(androidx.compose.ui.test.hasContentDescription("Switch user") and hasClickAction())
+        val photo = compose.onNode(androidx.compose.ui.test.hasContentDescription(photoLabel()) and hasClickAction())
         photo.requestFocus()
         if (open) {
             compose.waitForIdle()
