@@ -913,6 +913,27 @@ class ScreenShots {
     @Config(qualifiers = "es-w960dp-h540dp-land-television-xhdpi")
     fun tvSideMenuSettingsSpanish() = tvSideMenuShot("tv-side-menu-settings-es", tab = HomeTab.SETTINGS, action = { focusLayoutRow("Menú lateral", title = "Diseño") })
 
+    /** Settings > Captions: o idioma da legenda, que saiu do player (pedido do Johan depois da 1.0.9). */
+    @Test
+    @Config(qualifiers = "pt-w960dp-h540dp-land-television-xhdpi")
+    fun tvSettingsCaptionsPortuguese() = shot("tv-settings-captions-pt", action = { focusLayoutRow("Original", title = "Legendas") }) {
+        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun tvSettingsCaptions() = shot("tv-settings-captions", action = { focusLayoutRow("Original", title = "Captions") }) {
+        TvUi.Theme { TvUi.Home(HomeTab.SETTINGS, {}, {}) { TvUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
+    }
+
+    @Test
+    @Config(qualifiers = "pt-w411dp-h891dp-xxhdpi")
+    fun phoneSettingsCaptionsPortuguese() = shot("phone-settings-captions-pt", action = {
+        compose.onNode(androidx.compose.ui.test.hasScrollToIndexAction()).performScrollToNode(hasText("Inglês"))
+    }) {
+        MobileUi.Theme { MobileUi.Home(HomeTab.SETTINGS, {}, {}) { MobileUi.Settings(SettingsViewModel(), {}, {}, {}, {}) } }
+    }
+
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun tvSettings() = shot("tv-settings") {
@@ -1258,12 +1279,10 @@ class ScreenShots {
         brightness: Int = 100,
         /** O dedo arrastando para fechar, esta fração do caminho até onde soltar fecha ([ytslim.player.SwipeToClose]). */
         swipe: Float = 0f,
-        /** O painel da legenda aberto (1.0.9): Off, o idioma do app, o original (japonês) e inglês. */
-        captionChoices: Boolean = false,
     ) {
         ytslim.player.SleepBrightness.set(brightness)
         try {
-            playerShotAt(name, tv, jumped, scrub, captions, hidden, live, channelFocused, captionsAtMs, rolling, loading, sleep, swipe, captionChoices)
+            playerShotAt(name, tv, jumped, scrub, captions, hidden, live, channelFocused, captionsAtMs, rolling, loading, sleep, swipe)
         } finally {
             ytslim.player.SleepBrightness.set(100)
         }
@@ -1283,7 +1302,6 @@ class ScreenShots {
         loading: String?,
         sleep: Boolean,
         swipe: Float,
-        captionChoices: Boolean,
     ) {
         val context = org.robolectric.RuntimeEnvironment.getApplication()
         // O qualificador "television" não chega ao UiModeManager do Robolectric: sem isso o player
@@ -1374,21 +1392,6 @@ class ScreenShots {
             playerView.findViewById<android.view.View>(ytslim.R.id.player_channel).apply { isFocusableInTouchMode = true }.requestFocus()
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         }
-        if (captionChoices) {
-            // Um vídeo em japonês: o app traduz para o idioma dele e para o inglês ([ytslim.data.SubtitleRules]).
-            val app = activity.resources.configuration.locales[0].language
-            val list = listOf(
-                ytslim.data.Caption("https://x/t?lang=ja&kind=asr", "text/vtt", "ja", "Japanese", auto = true, translatable = true),
-            )
-            val options = ytslim.data.SubtitleRules.options(list, app, "ja")
-            val controls = ytslim.player.PlaybackController.Controls(captionOptions = options, captionShown = options.first())
-            ytslim.player.PlayerActivity::class.java
-                .getDeclaredMethod("renderCaptions", ytslim.player.PlaybackController.Controls::class.java)
-                .apply { isAccessible = true }
-                .invoke(activity, controls)
-            playerView.findViewById<android.view.View>(ytslim.R.id.player_captions).performClick()
-            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(600))
-        }
         if (sleep) {
             playerView.findViewById<android.view.View>(ytslim.R.id.player_sleep).performClick()
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(600))
@@ -1400,6 +1403,11 @@ class ScreenShots {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1))
         }
         if (captions) {
+            // O botão aceso, com a legenda ligada.
+            ytslim.player.PlayerActivity::class.java
+                .getDeclaredMethod("renderCaptions", ytslim.player.PlaybackController.Controls::class.java)
+                .apply { isAccessible = true }
+                .invoke(activity, ytslim.player.PlaybackController.Controls(captionsAvailable = true, captionsOn = true))
             // A legenda automática do YouTube como ela chega ([rollingCaptions]), em blocos ou ([rolling]) rolando.
             val parser = androidx.media3.extractor.text.webvtt.WebvttParser()
                 .let { if (rolling) it else ytslim.player.BlockCaptionParser(it) }
@@ -1532,22 +1540,14 @@ class ScreenShots {
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
     fun playerTvSleep() = playerShot("player-tv-sleep", tv = true, sleep = true)
 
+    /** O botão de legenda aceso, sem painel: o idioma vem de Settings > Captions. */
     @Test
     @Config(qualifiers = "pt-w960dp-h540dp-land-television-xhdpi")
-    fun playerTvCaptionChoicesPortuguese() = playerShot("player-tv-caption-choices-pt", tv = true, captionChoices = true)
+    fun playerTvCaptionsPortuguese() = playerShot("player-tv-captions-pt", tv = true, captions = true)
 
     @Test
     @Config(qualifiers = "pt-w411dp-h891dp-port-xxhdpi")
-    fun playerPhoneCaptionChoicesPortuguese() = playerShot("player-phone-caption-choices-pt", captionChoices = true)
-
-    /** O espanhol tem os nomes mais compridos ("Desactivados"): cabe no celular em pé? */
-    @Test
-    @Config(qualifiers = "es-w360dp-h780dp-port-xxhdpi")
-    fun playerPhoneCaptionChoicesSpanish() = playerShot("player-phone-caption-choices-es", captionChoices = true)
-
-    @Test
-    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
-    fun playerPhoneCaptionChoices() = playerShot("player-phone-caption-choices", captionChoices = true)
+    fun playerPhoneCaptionsPortuguese() = playerShot("player-phone-captions-pt", captions = true)
 
     @Test
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")

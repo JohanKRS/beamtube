@@ -111,6 +111,19 @@ class SwipeToCloseTest {
     }
 
     @Test
+    @Config(sdk = [30], qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun afterDraggingTheListComesBackFromBlack() {
+        // Pedido do Johan depois da 1.0.9: a volta era brusca. O player, já preto, some devagar, sem encolher.
+        val player = openPlayer()
+        drag(player, down = player.window.decorView.height * 0.4f)
+        shadowOf(Looper.getMainLooper()).idleFor(400, TimeUnit.MILLISECONDS)
+        assertTrue(player.isFinishing)
+        // Aqui o player é a raiz da tarefa e fecha pelo finishAndRemoveTask; aberto da lista, pelo finish.
+        player.finish()
+        assertEquals(R.anim.player_fade_exit, shadowOf(player).pendingTransitionExitAnimationResourceId)
+    }
+
+    @Test
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
     fun theVideoStaysStillDarkensAndComesBackIfLetGoEarly() {
         val player = openPlayer()

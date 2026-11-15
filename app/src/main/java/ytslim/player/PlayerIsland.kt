@@ -28,8 +28,16 @@ class PlayerIsland(root: View, private val tv: Boolean) {
         .map { root.findViewById<View>(it) }
     private val live: View = root.findViewById(R.id.player_live)
 
+    /** TV: o último botão da linha de baixo que teve o foco ([returnFocus]). */
+    private var lastButton: View? = null
+
     init {
-        if (tv) bringActionsDown(root.findViewById(R.id.player_actions))
+        if (tv) {
+            bringActionsDown(root.findViewById(R.id.player_actions))
+            buttonRow.viewTreeObserver.addOnGlobalFocusChangeListener { _, focused ->
+                if (focused != null && focused.isInside(buttonRow)) lastButton = focused
+            }
+        }
     }
 
     /** Tira a pílula de cima e põe as ações soltas na linha dos botões, depois do tocar. */
@@ -76,6 +84,19 @@ class PlayerIsland(root: View, private val tv: Boolean) {
         val buttons = buttonRow.getFocusables(View.FOCUS_FORWARD).filter { it.isShown && it.isEnabled }
         val target = (if (direction == View.FOCUS_RIGHT) buttons.firstOrNull() else buttons.lastOrNull()) ?: return false
         return target !== focused && target.requestFocus()
+    }
+
+    /**
+     * Na TV, descer de volta para a linha dos botões (da barra de tempo, ou do nome do canal passando
+     * por ela) cai no botão que tinha o foco antes de subir (pedido do Johan depois da 1.0.9: o
+     * Android escolhia o botão mais perto do meio da barra, o Subscribe). true se o foco foi para ele.
+     */
+    fun returnFocus(focused: View, direction: Int): Boolean {
+        if (!tv || direction != View.FOCUS_DOWN || focused.isInside(buttonRow)) return false
+        val next = focused.focusSearch(direction) ?: return false
+        if (!next.isInside(buttonRow)) return false
+        val last = lastButton?.takeIf { it.isShown && it.isEnabled && it.isFocusable && it.isInside(buttonRow) } ?: return false
+        return last !== next && last.requestFocus()
     }
 
     private fun View.isInside(group: View) = generateSequence(this) { it.parent as? View }.any { it === group }

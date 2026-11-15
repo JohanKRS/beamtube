@@ -34,7 +34,6 @@ class SubtitleRulesTest {
         // A feita por pessoa em português vale mais que traduzir.
         assertEquals("pt-BR", options[0].caption.language)
         assertEquals(setOf(ORIGINAL, ENGLISH), options[1].choices)
-        assertEquals(ENGLISH, options[1].main)
     }
 
     @Test
@@ -42,7 +41,6 @@ class SubtitleRulesTest {
         val options = SubtitleRules.options(listOf(caption("pt", auto = true)), "pt", "pt")
         assertEquals(listOf("pt", "en"), options.map { it.language })
         assertEquals(setOf(APP, ORIGINAL), options[0].choices)
-        assertEquals(APP, options[0].main)
         assertTrue(options[1].caption.url.endsWith("tlang=en"))
     }
 
@@ -95,6 +93,16 @@ class SubtitleRulesTest {
         assertEquals("en", SubtitleRules.choose(options, APP)?.language)
         assertEquals("en", SubtitleRules.choose(options, ORIGINAL)?.language)
         assertNull(SubtitleRules.choose(emptyList(), ORIGINAL))
+    }
+
+    @Test
+    fun withoutCaptionsInTheOriginalTheAppLanguageShows() {
+        // Um vídeo em japonês só com a legenda em inglês feita por pessoa: "Original" fica com a do idioma do app.
+        val options = SubtitleRules.options(listOf(caption("en")), "pt", "ja")
+        assertEquals(listOf("pt", "en"), options.map { it.language })
+        assertEquals("pt", SubtitleRules.choose(options, ORIGINAL)?.language)
+        assertEquals("en", SubtitleRules.choose(options, ENGLISH)?.language)
+        assertTrue(SubtitleRules.choose(options, APP)!!.caption.translated)
     }
 
     @Test

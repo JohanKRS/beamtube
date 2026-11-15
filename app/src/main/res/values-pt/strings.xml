@@ -104,6 +104,11 @@
     <string name="settings_end_next">Tocar uma sugestão</string>
     <string name="settings_end_stay">Ficar no vídeo</string>
     <string name="settings_end_hint">As sugestões voltam sozinhas depois de 15 segundos se você não escolher nenhuma. Uma playlist continua seguindo o \"Depois tocar\" do player, e no modo dormir o vídeo só para.</string>
+    <string name="settings_captions">Legendas</string>
+    <string name="settings_captions_hint">O botão de legenda do player só liga e desliga. Se um vídeo não tiver legenda neste idioma, o YouTube traduz automaticamente, ou aparece a original.</string>
+    <string name="settings_captions_app">Idioma do app</string>
+    <string name="settings_captions_original">Original</string>
+    <string name="settings_captions_original_desc">Cada vídeo no idioma dele</string>
     <string name="settings_playlists">Playlists inscritas</string>
     <string name="settings_playlists_hint">Playlists de outros canais salvas na sua conta. Para se inscrever, salve uma no YouTube ou abra o link de uma playlist no BeamTube.</string>
     <string name="settings_playlists_empty">Nenhuma playlist inscrita ainda.</string>
@@ -203,9 +208,8 @@
     <string name="player_saved_to">Salvo em %1$s</string>
     <string name="player_removed_from">Tirado de %1$s</string>
     <string name="player_jumped_ahead">Pulou para a frente</string>
-    <string name="player_captions">Legendas</string>
-    <string name="player_captions_none">Desligada</string>
-    <string name="player_captions_original">Original</string>
+    <string name="player_captions">Ligar legendas</string>
+    <string name="player_captions_off">Desligar legendas</string>
     <string name="player_quality">Qualidade</string>
     <string name="player_live">AO VIVO</string>
     <string name="player_go_live">Ir para o ao vivo</string>

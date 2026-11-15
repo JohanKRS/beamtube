@@ -60,6 +60,26 @@ class PlayerKeysTest {
         settle()
     }
 
+    /**
+     * Uma seta como o Android a trata: o app pode ficar com ela ([PlayerActivity.dispatchKeyEvent]);
+     * senão, o foco vai para o vizinho nessa direção (o que a janela faz, fora da Activity).
+     */
+    private fun arrow(keyCode: Int) {
+        val now = SystemClock.uptimeMillis()
+        val handled = activity.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0))
+        if (!handled) {
+            val direction = if (keyCode == KeyEvent.KEYCODE_DPAD_UP) View.FOCUS_UP else View.FOCUS_DOWN
+            playerView.findFocus()?.focusSearch(direction)?.requestFocus()
+        }
+        settle()
+        activity.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0))
+        settle()
+    }
+
+    private fun focusedName(): String? = playerView.findFocus()?.let { view ->
+        view.id.takeIf { it != View.NO_ID }?.let { activity.resources.getResourceEntryName(it) } ?: view.javaClass.simpleName
+    }
+
     /** Aperta e solta [keyCode]; [repeats] repetições de segurar a tecla no meio. */
     private fun press(keyCode: Int, repeats: Int = 0) {
         val down = SystemClock.uptimeMillis()
@@ -186,6 +206,36 @@ class PlayerKeysTest {
         assertTrue(sleep.requestFocus())
         assertFalse(island.wrapFocus(sleep, View.FOCUS_LEFT))
         assertTrue(sleep.isFocused)
+    }
+
+    /**
+     * Pedido do Johan depois da 1.0.9: subir da linha dos botões para a barra de tempo (ou até o
+     * canal) e descer de novo volta para o mesmo botão, em vez do mais perto do meio da barra.
+     */
+    @Test
+    fun downFromTheTimelineComesBackToTheSameButton() {
+        playerView.findViewById<View>(R.id.player_actions).visibility = View.VISIBLE
+        settle()
+        focusablesIn(playerView).forEach { it.isFocusableInTouchMode = true; it.isEnabled = true }
+        for (id in listOf(R.id.player_sleep, R.id.player_like, R.id.exo_play_pause, R.id.player_subscribe)) {
+            focus(id)
+            arrow(KeyEvent.KEYCODE_DPAD_UP)
+            assertEquals("exo_progress", focusedName())
+            arrow(KeyEvent.KEYCODE_DPAD_DOWN)
+            assertEquals(activity.resources.getResourceEntryName(id), focusedName())
+            assertTrue(playerView.isControllerFullyVisible)
+        }
+    }
+
+    @Test
+    fun downFromTheChannelComesBackToTheSameButton() {
+        focus(R.id.player_sleep)
+        arrow(KeyEvent.KEYCODE_DPAD_UP)
+        arrow(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals("player_channel", focusedName())
+        arrow(KeyEvent.KEYCODE_DPAD_DOWN)
+        arrow(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals("player_sleep", focusedName())
     }
 
     /** 1.0.8, pedido do Johan: "voltar" com os controles na tela só esconde os controles. */

@@ -104,6 +104,11 @@
     <string name="settings_end_next">Reproducir una sugerencia</string>
     <string name="settings_end_stay">Quedarse en el video</string>
     <string name="settings_end_hint">Las sugerencias vuelven solas después de 15 segundos si no eliges ninguna. Una playlist sigue el \"Después reproducir\" del reproductor, y con el modo dormir el video solo se detiene.</string>
+    <string name="settings_captions">Subtítulos</string>
+    <string name="settings_captions_hint">El botón de subtítulos del reproductor solo los activa y desactiva. Si un video no tiene subtítulos en este idioma, YouTube los traduce automáticamente, o se muestran los originales.</string>
+    <string name="settings_captions_app">Idioma de la app</string>
+    <string name="settings_captions_original">Original</string>
+    <string name="settings_captions_original_desc">Cada video en su idioma</string>
     <string name="settings_playlists">Listas suscritas</string>
     <string name="settings_playlists_hint">Listas de otros canales guardadas en tu cuenta. Para suscribirte, guarda una en YouTube o abre el enlace de una lista en BeamTube.</string>
     <string name="settings_playlists_empty">Todavía no hay listas suscritas.</string>
@@ -203,9 +208,8 @@
     <string name="player_saved_to">Guardado en %1$s</string>
     <string name="player_removed_from">Quitado de %1$s</string>
     <string name="player_jumped_ahead">Saltó hacia adelante</string>
-    <string name="player_captions">Subtítulos</string>
-    <string name="player_captions_none">Desactivados</string>
-    <string name="player_captions_original">Original</string>
+    <string name="player_captions">Activar subtítulos</string>
+    <string name="player_captions_off">Desactivar subtítulos</string>
     <string name="player_quality">Calidad</string>
     <string name="player_live">EN VIVO</string>
     <string name="player_go_live">Ir al directo</string>

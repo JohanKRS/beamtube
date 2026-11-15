@@ -242,6 +242,7 @@ import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
 import ytslim.ui.openChannelOf
 import ytslim.ui.exploreFilterChoices
+import ytslim.ui.captionChoices
 import ytslim.ui.endActionOptions
 import ytslim.ui.externalLinkOptions
 import ytslim.ui.formatDuration
@@ -1319,6 +1320,21 @@ object MobileUi : Screens {
                             title = stringResource(label),
                             modifier = Modifier.selectable(selected = selected, role = Role.RadioButton) { vm.setEndAction(action) },
                         ) { if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(20.dp)) }
+                    }
+                }
+            }
+
+            // O idioma da legenda (pedido do Johan depois da 1.0.9): o botão do player só liga e desliga.
+            item(key = "captions") {
+                val context = LocalContext.current
+                SettingsGroup(stringResource(R.string.settings_captions), hint = stringResource(R.string.settings_captions_hint)) {
+                    captionChoices(context, settings.captionLanguage).forEachIndexed { i, choice ->
+                        if (i > 0) RowDivider()
+                        SettingsRow(
+                            title = choice.title,
+                            subtitle = choice.subtitle,
+                            modifier = Modifier.selectable(selected = choice.selected, role = Role.RadioButton) { vm.setCaptionLanguage(choice.value) },
+                        ) { if (choice.selected) Icon(Icons.Filled.Check, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(20.dp)) }
                     }
                 }
             }

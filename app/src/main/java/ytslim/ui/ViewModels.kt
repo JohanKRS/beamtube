@@ -30,6 +30,7 @@ import ytslim.data.Engine
 import ytslim.data.User
 import ytslim.data.Users
 import ytslim.data.ExploreRepository
+import ytslim.data.CaptionLanguage
 import ytslim.data.EndAction
 import ytslim.data.ExternalLinks
 import ytslim.data.FeedCache
@@ -632,6 +633,10 @@ class SettingsViewModel : ViewModel() {
 
     fun setEndAction(value: EndAction) {
         viewModelScope.launch { SettingsRepository.setEndAction(value) }
+    }
+
+    fun setCaptionLanguage(value: CaptionLanguage) {
+        viewModelScope.launch { SettingsRepository.setCaptionLanguage(value) }
     }
 
     /** As playlists do usuário, para escolher a do botão "Save". Carregadas ao abrir a escolha. */

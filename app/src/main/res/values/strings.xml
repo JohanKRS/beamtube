@@ -110,6 +110,11 @@
     <string name="settings_end_next">Play a suggestion</string>
     <string name="settings_end_stay">Stay on the video</string>
     <string name="settings_end_hint">Suggestions go back by themselves after 15 seconds if you don\'t pick one. A playlist still follows the player\'s \"Then play\", and with sleep mode the video just stops.</string>
+    <string name="settings_captions">Captions</string>
+    <string name="settings_captions_hint">The captions button in the player only turns them on and off. If a video has no captions in this language, YouTube translates them automatically, or the original captions show.</string>
+    <string name="settings_captions_app">App language</string>
+    <string name="settings_captions_original">Original</string>
+    <string name="settings_captions_original_desc">Each video in its own language</string>
     <string name="settings_playlists">Subscribed playlists</string>
     <string name="settings_playlists_hint">Playlists from other channels that are saved to your account. Save one on YouTube, or open a playlist link in BeamTube, to subscribe.</string>
     <string name="settings_playlists_empty">No subscribed playlists yet.</string>
@@ -209,9 +214,8 @@
     <string name="player_saved_to">Saved to %1$s</string>
     <string name="player_removed_from">Removed from %1$s</string>
     <string name="player_jumped_ahead">Jumped ahead</string>
-    <string name="player_captions">Captions</string>
-    <string name="player_captions_none">Off</string>
-    <string name="player_captions_original">Original</string>
+    <string name="player_captions">Turn on captions</string>
+    <string name="player_captions_off">Turn off captions</string>
     <string name="player_quality">Quality</string>
     <string name="player_live">LIVE</string>
     <string name="player_go_live">Go to live</string>

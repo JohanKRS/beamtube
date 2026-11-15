@@ -47,7 +47,7 @@ right interface by itself.
 | **Comments, live chat, notifications** | Yes | No |
 | **Live streams** | Mixed into every feed | Only in search, and in Subscriptions if you turn them on |
 | **Titles and audio** | Often auto-translated titles and dubbed audio | Always the original title and the original audio track |
-| **Phone, tablet and TV** | Separate apps that look and behave differently | One app, one look, the right layout for each screen |
+| **Phone, tablet and TV** | Separate apps that look and behave differently, and frequent redesigns | One app with a consistent look that doesn't keep changing, laid out for each screen |
 | **Duration filters** | Under 4, 4 to 20, or over 20 minutes | Also 30, 45 and 60 minutes or more |
 | **Older videos** | Hard to find | A "Before 2015" (or any year) filter |
 | **Subscribing to a playlist** | Not possible | Yes, new videos show up with your subscriptions |
@@ -69,10 +69,11 @@ Most of what BeamTube adds is about the moment after you press play.
 - **Chapters** show on the timeline, with the current chapter's name and a thumbnail preview while
   you scrub. On the TV, left and right only move the preview: press OK to jump there, or move away
   from the timeline to stay where you were.
-- **Captions you can read, in the language you pick.** The captions button offers the app's
-  language, the video's original language and English, translated by YouTube when the video has no
-  captions in that language. Always centered, white with a thin outline, and automatic captions
-  appear two lines at a time instead of scrolling word by word.
+- **Captions you can read, in the language you pick.** In Settings > Captions, choose the app's
+  language, each video's original language or English; YouTube translates them when the video has
+  no captions in that language. The captions button in the player just turns them on and off.
+  Always centered, white with a thin outline, and automatic captions appear two lines at a time
+  instead of scrolling word by word.
 - **Playlists play in order**, so Watch later works as a real queue. You can reorder it by dragging,
   swipe a video to the top, or swipe it away, with Undo.
 - **The best picture your screen can show.** On TV the player goes for 4K first and only steps down

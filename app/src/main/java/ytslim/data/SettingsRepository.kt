@@ -31,9 +31,9 @@ data class Settings(
     /** Lives e agendados no feed de Inscrições. Desligado por padrão. */
     val showLives: Boolean = false,
     val externalLinks: ExternalLinks = ExternalLinks.NO_HISTORY,
-    /** Última escolha do botão de legenda; vale para os próximos vídeos. */
+    /** Última escolha do botão de legenda (liga e desliga); vale para os próximos vídeos. */
     val captionsOn: Boolean = false,
-    /** Em que idioma a legenda aparece quando ligada (1.0.9): o do app, o original ou inglês. */
+    /** Settings > Captions: em que idioma a legenda aparece quando ligada (o do app, o original ou inglês). */
     val captionLanguage: CaptionLanguage = CaptionLanguage.ORIGINAL,
     /** Tópicos excluídos e preferidos e canais bloqueados (Recomendações, busca e playlists inscritas). */
     val filters: ContentFilters = ContentFilters(),
@@ -142,11 +142,8 @@ object SettingsRepository {
 
     suspend fun setCaptionsOn(value: Boolean) = store.edit { it[CAPTIONS_ON] = value }
 
-    /** A legenda ligada em [language] ([CaptionLanguage]), para este e os próximos vídeos. */
-    suspend fun setCaptions(language: CaptionLanguage) = store.edit {
-        it[CAPTIONS_ON] = true
-        it[CAPTION_LANGUAGE] = language.name
-    }
+    /** Settings > Captions: o idioma da legenda nos próximos vídeos ([CaptionLanguage]). */
+    suspend fun setCaptionLanguage(language: CaptionLanguage) = store.edit { it[CAPTION_LANGUAGE] = language.name }
 
     suspend fun setTurnOffWhenDone(value: Boolean) = store.edit { it[TURN_OFF_WHEN_DONE] = value }
 
