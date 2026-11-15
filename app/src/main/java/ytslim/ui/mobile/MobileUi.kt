@@ -108,6 +108,7 @@ import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -227,6 +228,7 @@ import ytslim.ui.PlaylistViewModel
 import ytslim.ui.Subscription
 import ytslim.ui.PlaylistsViewModel
 import ytslim.ui.PrefetchThumbnails
+import ytslim.ui.SeenRows
 import ytslim.ui.RecommendedViewModel
 import ytslim.ui.Refreshable
 import ytslim.ui.Screens
@@ -912,8 +914,15 @@ object MobileUi : Screens {
     @Composable
     override fun Recommended(vm: RecommendedViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit) {
         val state by vm.state.collectAsStateWithLifecycle()
+        // Com a aba na tela (e não só preparada ao lado, no deslizar), a lista nova entra abaixo do
+        // que já foi visto ([RecommendedViewModel.onScreen]).
+        val tabShown = LocalTabShown.current
+        DisposableEffect(vm, tabShown) {
+            vm.onScreen(tabShown)
+            onDispose { vm.onScreen(false) }
+        }
         Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton() }) { content ->
-            VideoGrid(content, emptyText = stringResource(R.string.recommended_empty), onNearEnd = vm::loadMore, onPlay = onPlay, onOpenChannel = onOpenChannel)
+            VideoGrid(content, emptyText = stringResource(R.string.recommended_empty), onNearEnd = vm::loadMore, onPlay = onPlay, onOpenChannel = onOpenChannel, onSeen = vm::seen)
         }
     }
 
@@ -926,6 +935,10 @@ object MobileUi : Screens {
         val filterBar = LocalExploreFilterBar.current
         LaunchedEffect(filters) { filterBar.filters = filters }
         SideEffect { filterBar.onChange = vm::setFilters }
+        // A aba abriu de verdade (e não só preparada ao lado dos Recomendados, ou por trás): o
+        // próximo sorteio pode ser preparado.
+        val tabShown = LocalTabShown.current
+        LaunchedEffect(tabShown) { if (tabShown) vm.seen() }
         Loadable(state, onRetry = vm::reload, refresh = vm, placeholder = { VideoGridSkeleton() }) { content ->
             VideoGrid(
                 content,
@@ -2003,10 +2016,12 @@ object MobileUi : Screens {
         onPlay: (Video) -> Unit,
         onOpenChannel: ((Channel) -> Unit)?,
         header: (@Composable () -> Unit)? = null,
+        onSeen: ((Int) -> Unit)? = null,
     ) {
         val grid = rememberLazyGridState()
         NearEnd(grid, content.videos.size, onNearEnd)
         PrefetchThumbnails(content.videos, grid)
+        if (onSeen != null) SeenRows(grid, onSeen)
         ListTop(grid, content)
         val cards = rememberCardState()
         val motion = rememberListMotion(content.videos)

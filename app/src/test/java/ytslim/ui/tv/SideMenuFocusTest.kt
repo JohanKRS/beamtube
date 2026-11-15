@@ -106,6 +106,23 @@ class SideMenuFocusTest {
         compose.waitForIdle()
     }
 
+    /** Como nas abas de cima (1.0.11): no menu lateral, a seta repetida anda uma aba só. */
+    @Test
+    fun aRepeatedArrowMovesOneTab() {
+        var tab by mutableStateOf(HomeTab.SUBSCRIPTIONS)
+        home({ tab }, { tab = it })
+        focusFirstCard()
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        compose.runOnUiThread {
+            val down = android.os.SystemClock.uptimeMillis()
+            for (repeat in 0..3) compose.activity.dispatchKeyEvent(KeyEvent(down, down + repeat * 50L, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, repeat))
+            compose.activity.dispatchKeyEvent(KeyEvent(down, down + 150L, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN, 0))
+        }
+        compose.waitForIdle()
+        assertEquals(HomeTab.RECOMMENDED, tab)
+        compose.onNodeWithContentDescription("Recommended").assertIsFocused()
+    }
+
     @Test
     fun leftFromTheGridStopsOnTheOpenTab() {
         var tab by mutableStateOf(HomeTab.SUBSCRIPTIONS)

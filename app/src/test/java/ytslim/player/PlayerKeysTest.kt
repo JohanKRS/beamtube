@@ -7,6 +7,8 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import androidx.media3.common.Player
+import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import androidx.test.core.app.ApplicationProvider
@@ -21,6 +23,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import ytslim.R
+import java.time.Duration
 
 /**
  * Na TV, descer da última linha dos controles ou subir da primeira esconde os controles na hora
@@ -236,6 +239,82 @@ class PlayerKeysTest {
         arrow(KeyEvent.KEYCODE_DPAD_DOWN)
         arrow(KeyEvent.KEYCODE_DPAD_DOWN)
         assertEquals("player_sleep", focusedName())
+    }
+
+    /**
+     * Pedido do Johan na 1.0.11: com os controles escondidos, os lados mexem direto na barra de
+     * tempo, cima abre no canal e baixo no tocar/pausar (antes, tudo abria no tocar/pausar).
+     */
+    @Test
+    fun sidewaysWithTheControlsHiddenMovesTheTimeline() {
+        val timeBar = hideWithAVideo()
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertTrue(controlsShowing())
+        assertEquals("exo_progress", focusedName())
+        assertTrue(timeBar.keyScrubbing)
+        // O ponto anda 10 s a partir de 1:40, e a próxima seta continua andando.
+        assertEquals("01:50", timeBar.contentDescription.toString())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("02:00", timeBar.contentDescription.toString())
+    }
+
+    @Test
+    fun leftWithTheControlsHiddenGoesBack() {
+        val timeBar = hideWithAVideo()
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals("exo_progress", focusedName())
+        assertTrue(timeBar.keyScrubbing)
+        assertEquals("01:30", timeBar.contentDescription.toString())
+    }
+
+    @Test
+    fun upWithTheControlsHiddenGoesToTheChannel() {
+        hideWithAVideo()
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertTrue(controlsShowing())
+        assertEquals("player_channel", focusedName())
+    }
+
+    @Test
+    fun downWithTheControlsHiddenGoesToPlayPause() {
+        val timeBar = hideWithAVideo()
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertTrue(controlsShowing())
+        assertEquals("exo_play_pause", focusedName())
+        assertFalse(timeBar.keyScrubbing)
+    }
+
+    @Test
+    fun withoutAChannelUpOpensOnPlayPause() {
+        playerView.findViewById<View>(R.id.player_channel).visibility = View.GONE
+        hideWithAVideo()
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals("exo_play_pause", focusedName())
+    }
+
+    /**
+     * Um vídeo de 10 min parado em 1:40 (o player do teste não tem vídeo, e sem ele a barra e o
+     * tocar/pausar ficam desligados), o foco num botão e os controles escondidos, já sem animação.
+     */
+    private fun hideWithAVideo(): ChapterTimeBar {
+        playerView.player = OneVideo()
+        settle()
+        focus(R.id.player_sleep)
+        playerView.hideController()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        assertFalse(controlsShowing())
+        return playerView.findViewById(R.id.exo_progress)
+    }
+
+    private fun controlsShowing() = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller).isShown
+
+    private class OneVideo : SimpleBasePlayer(Looper.getMainLooper()) {
+        override fun getState(): State = State.Builder()
+            .setAvailableCommands(Player.Commands.Builder().addAllCommands().remove(Player.COMMAND_SET_VIDEO_SURFACE).build())
+            .setPlaylist(listOf(MediaItemData.Builder("video").setDurationUs(600_000_000).setIsSeekable(true).build()))
+            .setContentPositionMs(100_000)
+            .setPlaybackState(Player.STATE_READY)
+            .build()
     }
 
     /** 1.0.8, pedido do Johan: "voltar" com os controles na tela só esconde os controles. */

@@ -25,6 +25,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -156,13 +157,27 @@ private fun UserScreens(ui: Screens, user: User?, links: MutableStateFlow<Link?>
                 // Cada aba guarda o próprio estado (a posição da lista) quando sai da tela.
                 val tabStates = rememberSaveableStateHolder()
                 // As outras abas carregam logo depois das Inscrições, para já estarem prontas ao trocar.
+                // A Explore também (1.0.11, pedido do Johan): com o sorteio guardado da abertura
+                // anterior, ela só lê um arquivo e prepara o próximo sorteio por trás. Uma aba de cada
+                // vez, e de cada lista só as miniaturas da primeira tela ([TabWarmup]).
+                val appContext = LocalContext.current.applicationContext
                 LaunchedEffect(Unit) {
                     if (!guest) {
                         val vms = ViewModelProvider.create(entry)
                         withTimeoutOrNull(6_000) { vms[FeedViewModel::class].state.first { it !is UiState.Loading } }
-                        vms[RecommendedViewModel::class]
-                        vms[PlaylistsViewModel::class]
-                        vms[HistoryViewModel::class]
+                        // As miniaturas da primeira tela de cada lista, assim que ela abre por trás.
+                        fun warm(state: StateFlow<UiState<VideoListContent>>) = state.also {
+                            launch { TabWarmup.firstScreen(it).collect { urls -> Thumbnails.prefetch(appContext, urls) } }
+                        }
+                        // As Playlists por último: sem lista guardada, são as que esperam a rede.
+                        TabWarmup.oneAtATime(
+                            listOf(
+                                { warm(vms[RecommendedViewModel::class].state) },
+                                { warm(vms[ExploreViewModel::class].state) },
+                                { warm(vms[HistoryViewModel::class].state) },
+                                { vms[PlaylistsViewModel::class].state },
+                            ),
+                        )
                     }
                     // Adianta o que o primeiro vídeo precisa (o token do YouTube, o player dele e a
                     // decifragem), que numa TV fraca leva segundos ([EngineWarmup]).

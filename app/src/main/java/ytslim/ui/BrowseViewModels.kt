@@ -14,8 +14,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -29,6 +31,7 @@ import ytslim.data.ChannelRepository
 import ytslim.data.ContentFilters
 import ytslim.data.FeedRepository
 import ytslim.data.LibraryRepository
+import ytslim.data.ListCache
 import ytslim.data.Playlist
 import ytslim.data.SearchDuration
 import ytslim.data.SearchFilters
@@ -49,11 +52,26 @@ import ytslim.data.VideoPage
  * Recomendações vêm poucas por vez). Cada página passa antes pelo [ChannelFeedback], que manda o
  * "Don't recommend channel" dos canais bloqueados.
  */
+@OptIn(FlowPreview::class)
 class RecommendedViewModel : ViewModel(), Refreshable {
     private sealed interface Raw {
         data object Loading : Raw
         data class Error(val message: String) : Raw
-        data class Loaded(val pages: List<List<Video>>, val lastPage: VideoPage, val loadingMore: Boolean) : Raw
+        /**
+         * [cached]: a lista guardada no aparelho ([ListCache]), na tela até a da conta chegar.
+         * [kept]: a primeira página são as fileiras da lista guardada que a pessoa já tinha visto,
+         * e as outras são a lista da conta ([FreshBelow]); saem quando a aba sai da tela.
+         */
+        data class Loaded(
+            val pages: List<List<Video>>,
+            val lastPage: VideoPage,
+            val loadingMore: Boolean,
+            val cached: Boolean = false,
+            val kept: Boolean = false,
+        ) : Raw {
+            /** As páginas da conta, sem as fileiras antigas. */
+            val fresh: List<List<Video>> get() = if (kept) pages.drop(1) else pages
+        }
     }
 
     private val raw = MutableStateFlow<Raw>(Raw.Loading)
@@ -69,7 +87,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     private fun content(raw: Raw, settings: Settings): UiState<VideoListContent> = when (raw) {
         Raw.Loading -> UiState.Loading
         is Raw.Error -> UiState.Error(raw.message)
-        is Raw.Loaded -> UiState.Ready(VideoListContent(shown(raw.pages, settings), raw.lastPage.hasMore, raw.loadingMore))
+        is Raw.Loaded -> UiState.Ready(VideoListContent(shown(raw.pages, settings), raw.lastPage.hasMore, raw.loadingMore, cached = raw.cached))
     }
 
     private var job: Job? = null
@@ -77,21 +95,92 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
     init {
-        reload()
+        // Abre com a lista guardada da última vez, e a da conta chega por trás, como nas Inscrições
+        // (1.0.11, pedido do Johan: logo depois de ligar a TV, as Recomendações demoravam a aparecer).
+        viewModelScope.launch {
+            ListCache.read(CACHE_KEY)?.let { saved ->
+                raw.value = Raw.Loaded(listOf(saved.videos), VideoPage(emptyList(), null), loadingMore = false, cached = true)
+            }
+            load(quiet = raw.value is Raw.Loaded, byUser = false)
+        }
+        // Guarda as páginas da conta (os filtros valem na hora de mostrar), depois que a tela enche e
+        // a cada vez que a pessoa desce mais: os vídeos que ela ainda não viu vão na frente, para a
+        // lista guardada não abrir igual à da última vez ([FreshBelow.unseenFirst]).
+        viewModelScope.launch {
+            combine(raw, seen) { loaded, count -> (loaded as? Raw.Loaded)?.takeIf { !it.cached && !it.loadingMore }?.let { it to count } }
+                .filterNotNull()
+                .debounce(1_000)
+                .collect { (loaded, count) ->
+                    AppScope.launch {
+                        val seenIds = shown(loaded.pages, settings.value).take(count).mapTo(HashSet()) { it.id }
+                        ListCache.save(CACHE_KEY, null, FreshBelow.unseenFirst(loaded.fresh.flatten(), seenIds))
+                    }
+                }
+        }
     }
 
     fun reload() = load(quiet = false)
 
     override fun refresh() = load(quiet = raw.value is Raw.Loaded)
 
-    private fun load(quiet: Boolean) {
+    private var onScreen = false
+
+    /** Até onde a grade já mostrou a lista da tela ([SeenRows]). */
+    private val seen = MutableStateFlow(0)
+
+    /** Quantos vídeos, do começo, a grade mostra agora (vale para a lista que entrar no lugar). */
+    private var visible = 0
+
+    /** A grade está mostrando os [count] primeiros vídeos. */
+    fun seen(count: Int) {
+        visible = count
+        if (count > seen.value) seen.value = count
+    }
+
+    /** Uma lista nova inteira na tela: dela, a pessoa só viu o que a grade mostra agora (nada, com a aba fora da tela). */
+    private fun newListSeen() {
+        seen.value = if (onScreen) visible else 0
+    }
+
+    /**
+     * A aba apareceu ou saiu da tela. Com ela na tela, a lista da conta que chega depois da
+     * guardada entra logo abaixo das fileiras já vistas ([FreshBelow], ideia do Johan, 1.0.11);
+     * quando a aba sai, as fileiras antigas saem e fica só a lista da conta.
+     */
+    fun onScreen(shown: Boolean) {
+        onScreen = shown
+        val loaded = raw.value as? Raw.Loaded ?: return
+        if (shown || !loaded.kept) return
+        // Uma página a caminho ainda conta com as fileiras antigas: recomeça sem elas.
+        job?.cancel()
+        raw.value = loaded.copy(pages = loaded.fresh, kept = false, loadingMore = false)
+        newListSeen()
+        fill(extra = 0)
+    }
+
+    /**
+     * @param byUser a pessoa pediu (OK na aba, puxar para atualizar): a lista nova entra inteira
+     * na hora. Na carga da abertura, com a guardada na tela, só abaixo do que já foi visto ([onScreen]).
+     */
+    private fun load(quiet: Boolean, byUser: Boolean = true) {
         job?.cancel()
         _refreshing.value = quiet
         if (!quiet) raw.value = Raw.Loading
         job = viewModelScope.launch {
-            raw.value = runCatching { LibraryRepository.recommended() }
+            val fresh = runCatching { LibraryRepository.recommended() }
                 .onSuccess { ChannelFeedback.note(it.videos) }
-                .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false) }, { Raw.Error(it.toMessage()) })
+                // Sem rede, a lista que está na tela (a guardada, ou a de antes do puxar) fica.
+                .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false) }, { if (quiet) raw.value else Raw.Error(it.toMessage()) })
+            val old = raw.value
+            val below = quiet && !byUser && onScreen && fresh is Raw.Loaded && old is Raw.Loaded && fresh !== old
+            val keep = if (below) withContext(Dispatchers.Default) { FreshBelow.keep(shown(old.pages, settings.value), seen.value) } else null
+            // A aba pode ter saído da tela enquanto os filtros rodavam: aí a lista nova entra inteira.
+            if (keep != null && onScreen && fresh is Raw.Loaded) {
+                raw.value = fresh.copy(pages = listOf(keep) + fresh.pages, kept = true)
+            } else {
+                if (fresh !== old) newListSeen()
+                raw.value = fresh
+            }
             _refreshing.value = false
             fill(extra = 0)
         }
@@ -114,7 +203,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
                 // Um recarregar cancelou esta busca: não escreve por cima dele.
                 ensureActive()
                 next?.let { ChannelFeedback.note(it.videos) }
-                current = Raw.Loaded(current.pages + listOf(next?.videos.orEmpty()), next ?: VideoPage(emptyList(), null), loadingMore = true)
+                current = current.copy(pages = current.pages + listOf(next?.videos.orEmpty()), lastPage = next ?: VideoPage(emptyList(), null), loadingMore = true)
                 raw.value = current
                 pages++
             }
@@ -129,6 +218,9 @@ class RecommendedViewModel : ViewModel(), Refreshable {
         const val MIN_ON_SCREEN = 12
         const val MIN_NEW = 6
         const val MAX_PAGES = 5
+
+        /** A lista no [ListCache] (os outros nomes são playlists e o Histórico). */
+        const val CACHE_KEY = "recommended"
     }
 }
 
