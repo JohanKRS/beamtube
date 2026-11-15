@@ -1052,10 +1052,12 @@ class ScreenShots {
         sleep: Boolean = false,
         /** O brilho do modo dormir já escolhido (1.0.4: os controles seguem, sem ficar abaixo de 10%). */
         brightness: Int = 100,
+        /** O vídeo arrastado para baixo esta fração da altura, ainda com o dedo na tela ([ytslim.player.SwipeToClose]). */
+        swipe: Float = 0f,
     ) {
         ytslim.player.SleepBrightness.set(brightness)
         try {
-            playerShotAt(name, tv, jumped, scrub, captions, hidden, live, channelFocused, captionsAtMs, rolling, loading, sleep)
+            playerShotAt(name, tv, jumped, scrub, captions, hidden, live, channelFocused, captionsAtMs, rolling, loading, sleep, swipe)
         } finally {
             ytslim.player.SleepBrightness.set(100)
         }
@@ -1074,6 +1076,7 @@ class ScreenShots {
         rolling: Boolean,
         loading: String?,
         sleep: Boolean,
+        swipe: Float,
     ) {
         val context = org.robolectric.RuntimeEnvironment.getApplication()
         // O qualificador "television" não chega ao UiModeManager do Robolectric: sem isso o player
@@ -1096,7 +1099,7 @@ class ScreenShots {
         }
         when (loading) {
             // A miniatura do card (aqui não há rede para o carregador de imagens buscá-la).
-            "opening" -> (loadingView.getChildAt(0) as android.widget.ImageView).setImageBitmap(thumb)
+            "opening" -> loadingView.showPoster(thumb)
             "buffering" -> {
                 loadingView.stop()
                 loadingView.setBusy(true)
@@ -1198,6 +1201,13 @@ class ScreenShots {
         // A linha do canal como fica com a página do vídeo lida (o canal é o botão ao lado).
         playerView.findViewById<android.widget.TextView>(ytslim.R.id.player_detail)?.text = spacedDotsForViews("· ${v.published}")
         relayout(activity)
+        if (swipe > 0f) {
+            // Como o SwipeToClose deixa a tela do player com o dedo ainda arrastando.
+            val screen = playerView.parent as android.view.View
+            val distance = screen.height * swipe
+            screen.translationY = distance
+            ytslim.player.SwipeRules.scale(distance, screen.height).let { screen.scaleX = it; screen.scaleY = it }
+        }
         val view = activity.window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
         view.draw(android.graphics.Canvas(bitmap))
@@ -1231,6 +1241,14 @@ class ScreenShots {
     @Test
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
     fun playerPhoneBuffering() = playerShot("player-phone-buffering", loading = "buffering", hidden = true)
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun playerPhoneSwiping() = playerShot("player-phone-swiping", hidden = true, swipe = 0.18f)
+
+    @Test
+    @Config(qualifiers = "w411dp-h891dp-port-xxhdpi")
+    fun playerPhonePortraitOpening() = playerShot("player-phone-portrait-opening", loading = "opening")
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
