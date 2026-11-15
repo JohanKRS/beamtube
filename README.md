@@ -219,9 +219,9 @@ your devices. If you already follow the channel, its videos aren't repeated.
   in Settings > Language.
 
 <p align="center">
+  <img src="docs/screenshots/phone-users-menu.jpg" alt="The photo menu, to switch users" width="30%">
   <img src="docs/screenshots/phone-accent-teal.jpg" alt="The Teal highlight color" width="30%">
-  <img src="docs/screenshots/phone-subscriptions-pt.jpg" alt="BeamTube in Portuguese" width="30%">
-  <img src="docs/screenshots/phone-settings-pt.jpg" alt="Settings in Portuguese" width="30%">
+  <img src="docs/screenshots/phone-settings-pt.jpg" alt="Settings in Portuguese, with the users on top" width="30%">
 </p>
 <p align="center">
   <img src="docs/screenshots/tv-topics-es.jpg" alt="The topics screen in Spanish on TV" width="80%">

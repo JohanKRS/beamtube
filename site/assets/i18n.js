@@ -162,7 +162,7 @@ window.BEAMTUBE_I18N = {
     "yours.users": "<strong>Um BeamTube para a casa toda.</strong> Cada pessoa entra com a própria conta do YouTube e tem os seus tópicos, canais bloqueados e histórico. A foto no alto troca de usuário, e o modo convidado mostra só Recomendados e Buscar, sem conta.",
     "yours.langs": "<strong>Inglês, português e espanhol.</strong> O BeamTube segue o idioma do aparelho, ou você escolhe um nos Ajustes.",
     "alt.teal": "A cor de destaque Verde-azulado no celular",
-    "alt.pt": "O BeamTube em português",
+    "alt.users": "O menu da foto, para trocar de usuário",
     "alt.plum": "A cor de destaque Ameixa na TV",
 
     "out.title": "O que não tem no BeamTube",
@@ -369,7 +369,7 @@ window.BEAMTUBE_I18N = {
     "yours.users": "<strong>Un BeamTube para toda la casa.</strong> Cada persona entra con su propia cuenta de YouTube y tiene sus temas, canales bloqueados e historial. La foto de arriba cambia de usuario, y el modo invitado muestra solo Recomendados y Buscar, sin cuenta.",
     "yours.langs": "<strong>Inglés, portugués y español.</strong> BeamTube sigue el idioma de tu dispositivo, o puedes elegir uno en Ajustes.",
     "alt.teal": "El color de realce Verde azulado en el teléfono",
-    "alt.pt": "BeamTube en portugués",
+    "alt.users": "El menú de la foto, para cambiar de usuario",
     "alt.plum": "El color de realce Ciruela en el televisor",
 
     "out.title": "Lo que no está en BeamTube",
