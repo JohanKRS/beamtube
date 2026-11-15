@@ -52,6 +52,18 @@ class ExploreNextTest {
         }
     }
 
+    /** Sugestão do Johan: sem um sorteio novo pronto, os mesmos canais voltam com outra escolha. */
+    @Test
+    fun theDrawOnScreenIsSavedWithAnotherSeed() {
+        runBlocking {
+            ExploreRepository.saveNext(draw.reshuffled(kotlin.random.Random(7)))
+            val saved = ExploreRepository.next()!!
+            assertEquals(draw.channels, saved.channels)
+            assertEquals(draw.ids, saved.ids)
+            assertEquals(kotlin.random.Random(7).nextLong(), saved.seed)
+        }
+    }
+
     @Test
     fun anOldOrEmptyDrawShowsNothing() {
         runBlocking {

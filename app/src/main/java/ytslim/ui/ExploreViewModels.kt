@@ -108,9 +108,13 @@ class ExploreViewModel : ViewModel(), Refreshable {
         if (seen) return
         seen = true
         AppScope.launch {
+            val first = withTimeoutOrNull(NEXT_DRAW_WAIT_MS) { raw.first { it is Raw.Loaded } } as? Raw.Loaded ?: return@launch
+            // Até o próximo sorteio ficar pronto (ou se ele falhar), o guardado é o da tela com outra
+            // escolha de vídeos e outra ordem: a próxima abertura não repete a tela de agora
+            // (sugestão do Johan, 1.0.11).
+            first.draws.firstOrNull()?.let { ExploreRepository.saveNext(it.reshuffled()) }
             delay(NEXT_DRAW_DELAY_MS)
-            val loaded = withTimeoutOrNull(NEXT_DRAW_WAIT_MS) { raw.first { it is Raw.Loaded } } as? Raw.Loaded ?: return@launch
-            runCatching { ExploreRepository.prepareNext(loaded.channels) }
+            runCatching { ExploreRepository.prepareNext((raw.value as? Raw.Loaded)?.channels ?: first.channels) }
         }
     }
 

@@ -37,6 +37,17 @@ class FreshBelowTest {
         assertEquals(listOf("new1", "old3", "new2", "old15", "new3"), screen(pages.drop(1)))
     }
 
+    /** Sugestão do Johan: a lista guardada não abre igual à da última vez. */
+    @Test
+    fun theSavedListStartsWithWhatWasNotSeen() {
+        val seen = setOf("old1", "old2", "old3", "old4", "gone")
+        val next = FreshBelow.unseenFirst(saved, seen).map { it.id }
+        assertEquals((5..20).map { "old$it" } + (1..4).map { "old$it" }, next)
+        // Nada visto (a aba nem abriu), ou tudo visto: a mesma ordem.
+        assertEquals(saved, FreshBelow.unseenFirst(saved, emptySet()))
+        assertEquals(saved, FreshBelow.unseenFirst(saved, saved.mapTo(HashSet()) { it.id }))
+    }
+
     @Test
     fun withoutKnowingWhatWasSeenTheFirstRowsStay() {
         assertEquals((1..FreshBelow.FIRST_ROWS).map { "old$it" }, FreshBelow.keep(saved, seen = 0).map { it.id })

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
@@ -102,12 +103,19 @@ class RecommendedViewModel : ViewModel(), Refreshable {
             }
             load(quiet = raw.value is Raw.Loaded, byUser = false)
         }
-        // Guarda as páginas da conta como vieram (os filtros valem na hora de mostrar), depois que
-        // a tela enche.
+        // Guarda as páginas da conta (os filtros valem na hora de mostrar), depois que a tela enche e
+        // a cada vez que a pessoa desce mais: os vídeos que ela ainda não viu vão na frente, para a
+        // lista guardada não abrir igual à da última vez ([FreshBelow.unseenFirst]).
         viewModelScope.launch {
-            raw.mapNotNull { loaded -> (loaded as? Raw.Loaded)?.takeIf { !it.cached && !it.loadingMore } }
+            combine(raw, seen) { loaded, count -> (loaded as? Raw.Loaded)?.takeIf { !it.cached && !it.loadingMore }?.let { it to count } }
+                .filterNotNull()
                 .debounce(1_000)
-                .collect { loaded -> AppScope.launch { ListCache.save(CACHE_KEY, null, loaded.fresh.flatten()) } }
+                .collect { (loaded, count) ->
+                    AppScope.launch {
+                        val seenIds = shown(loaded.pages, settings.value).take(count).mapTo(HashSet()) { it.id }
+                        ListCache.save(CACHE_KEY, null, FreshBelow.unseenFirst(loaded.fresh.flatten(), seenIds))
+                    }
+                }
         }
     }
 
@@ -117,12 +125,21 @@ class RecommendedViewModel : ViewModel(), Refreshable {
 
     private var onScreen = false
 
-    /** Até onde a grade já mostrou a lista ([SeenRows]). */
-    private var seen = 0
+    /** Até onde a grade já mostrou a lista da tela ([SeenRows]). */
+    private val seen = MutableStateFlow(0)
 
-    /** A grade mostrou os [count] primeiros vídeos. */
+    /** Quantos vídeos, do começo, a grade mostra agora (vale para a lista que entrar no lugar). */
+    private var visible = 0
+
+    /** A grade está mostrando os [count] primeiros vídeos. */
     fun seen(count: Int) {
-        if (count > seen) seen = count
+        visible = count
+        if (count > seen.value) seen.value = count
+    }
+
+    /** Uma lista nova inteira na tela: dela, a pessoa só viu o que a grade mostra agora (nada, com a aba fora da tela). */
+    private fun newListSeen() {
+        seen.value = if (onScreen) visible else 0
     }
 
     /**
@@ -137,6 +154,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
         // Uma página a caminho ainda conta com as fileiras antigas: recomeça sem elas.
         job?.cancel()
         raw.value = loaded.copy(pages = loaded.fresh, kept = false, loadingMore = false)
+        newListSeen()
         fill(extra = 0)
     }
 
@@ -155,9 +173,14 @@ class RecommendedViewModel : ViewModel(), Refreshable {
                 .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false) }, { if (quiet) raw.value else Raw.Error(it.toMessage()) })
             val old = raw.value
             val below = quiet && !byUser && onScreen && fresh is Raw.Loaded && old is Raw.Loaded && fresh !== old
-            val keep = if (below) withContext(Dispatchers.Default) { FreshBelow.keep(shown(old.pages, settings.value), seen) } else null
+            val keep = if (below) withContext(Dispatchers.Default) { FreshBelow.keep(shown(old.pages, settings.value), seen.value) } else null
             // A aba pode ter saído da tela enquanto os filtros rodavam: aí a lista nova entra inteira.
-            raw.value = if (keep != null && onScreen && fresh is Raw.Loaded) fresh.copy(pages = listOf(keep) + fresh.pages, kept = true) else fresh
+            if (keep != null && onScreen && fresh is Raw.Loaded) {
+                raw.value = fresh.copy(pages = listOf(keep) + fresh.pages, kept = true)
+            } else {
+                if (fresh !== old) newListSeen()
+                raw.value = fresh
+            }
             _refreshing.value = false
             fill(extra = 0)
         }

@@ -191,7 +191,10 @@ data class ExploreCache(
  * [ExploreRules.screen], com [seed]), os ids de todos os sorteados e se ainda há canais.
  */
 @Serializable
-class ExploreDraw(val channels: List<ChannelVideos>, val ids: List<String>, val hasMore: Boolean, val seed: Long)
+class ExploreDraw(val channels: List<ChannelVideos>, val ids: List<String>, val hasMore: Boolean, val seed: Long) {
+    /** Os mesmos canais com outra semente: outra escolha de vídeos de cada um, em outra ordem. */
+    fun reshuffled(random: Random = Random.Default) = ExploreDraw(channels, ids, hasMore, random.nextLong())
+}
 
 /** O sorteio guardado para a próxima abertura da Explore ([ExploreRepository.next]). */
 @Serializable

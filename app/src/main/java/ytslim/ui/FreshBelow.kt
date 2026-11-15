@@ -21,6 +21,17 @@ object FreshBelow {
 
     /** Os vídeos da lista da tela ([shown]) que ficam no lugar: os [seen] primeiros, até onde a pessoa viu. */
     fun keep(shown: List<Video>, seen: Int): List<Video> = shown.take(if (seen > 0) seen else FIRST_ROWS)
+
+    /**
+     * A lista como fica guardada para a próxima abertura: na frente os vídeos que a pessoa ainda
+     * não viu (os de mais abaixo), e os já vistos ([seen], pelo id) depois, cada grupo na ordem de
+     * antes. Assim, se a lista guardada aparecer antes da nova, ela não abre igual à da última vez
+     * (sugestão do Johan, 1.0.11).
+     */
+    fun unseenFirst(videos: List<Video>, seen: Set<String>): List<Video> {
+        val (old, new) = videos.partition { it.id in seen }
+        return new + old
+    }
 }
 
 /**
