@@ -1,6 +1,5 @@
 package ytslim.data
 
-import android.content.Context
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -21,13 +20,12 @@ object ListCache {
     @Serializable
     data class Saved(val savedAt: Long, val title: String? = null, val videos: List<Video> = emptyList())
 
-    private lateinit var dir: File
+    /** A pasta, dentro da de cada usuário ([Users]). */
+    const val DIR = "lists"
+
+    private val dir: File get() = Users.file(DIR)
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
-
-    fun init(context: Context) {
-        dir = File(context.filesDir, "lists")
-    }
 
     /** A lista [key] guardada, se houver uma com menos de [MAX_AGE_MS]. */
     suspend fun read(key: String, nowMs: Long = System.currentTimeMillis()): Saved? = mutex.withLock {
@@ -40,14 +38,14 @@ object ListCache {
         val saved = Saved(nowMs, title, videos.take(MAX_VIDEOS))
         runCatching {
             io {
-                dir.mkdirs()
-                file(key).writeText(json.encodeToString(Saved.serializer(), saved))
+                val dir = dir.also { it.mkdirs() }
+                file(key, dir).writeText(json.encodeToString(Saved.serializer(), saved))
             }
         }
     }
 
-    /** Ao sair da conta: as listas eram dela. */
+    /** Apaga as listas guardadas do usuário aberto. */
     suspend fun clear() = mutex.withLock { io { dir.deleteRecursively() } }
 
-    private fun file(key: String) = File(dir, key.replace(Regex("[^A-Za-z0-9_-]"), "_") + ".json")
+    private fun file(key: String, dir: File = this.dir) = File(dir, key.replace(Regex("[^A-Za-z0-9_-]"), "_") + ".json")
 }

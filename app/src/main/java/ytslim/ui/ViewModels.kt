@@ -26,6 +26,9 @@ import ytslim.data.AppScope
 import ytslim.data.AppIcons
 import ytslim.data.AuthRepository
 import ytslim.data.AuthRepository.SignInEvent
+import ytslim.data.Engine
+import ytslim.data.User
+import ytslim.data.Users
 import ytslim.data.ExploreRepository
 import ytslim.data.EndAction
 import ytslim.data.ExternalLinks
@@ -40,7 +43,6 @@ import ytslim.data.PlayQueue
 import ytslim.data.Playlist
 import ytslim.data.PlaylistEditor
 import ytslim.data.PlaylistSubscriptions
-import ytslim.data.WatchPositions
 import ytslim.data.SaveTarget
 import ytslim.data.SavedVideos
 import ytslim.data.Settings
@@ -80,6 +82,9 @@ class SignInViewModel : ViewModel() {
     val state: StateFlow<State> = _state.asStateFlow()
     private var job: Job? = null
 
+    /** As contas de antes do login: a que entrar a mais é o usuário novo ([Users.signedIn]). */
+    private val before = Engine.signIn.accounts.orEmpty().toList()
+
     init {
         requestCode()
     }
@@ -91,9 +96,15 @@ class SignInViewModel : ViewModel() {
             AuthRepository.signIn()
                 .catch { _state.value = State.Error(it.toMessage()) }
                 .collect { event ->
-                    _state.value = when (event) {
-                        is SignInEvent.Code -> State.ShowCode(event.code)
-                        SignInEvent.Done -> State.SignedIn
+                    when (event) {
+                        is SignInEvent.Code -> _state.value = State.ShowCode(event.code)
+                        SignInEvent.Done -> {
+                            // Fora do viewModelScope: abrir o usuário novo refaz as telas (e limpa este ViewModel).
+                            AppScope.launch {
+                                Users.signedIn(before)
+                                _state.value = State.SignedIn
+                            }
+                        }
                     }
                 }
         }
@@ -601,7 +612,15 @@ class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel(
  */
 class SettingsViewModel : ViewModel() {
     val settings: StateFlow<Settings> = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
-    val accountName: String? = AuthRepository.accountName()
+
+    /** O usuário aberto e as contas deste aparelho (o grupo Users, em cima). */
+    val user: StateFlow<User?> = Users.current
+    val accounts: StateFlow<List<User>> = Users.accounts
+
+    /** Abre outro usuário (as telas são refeitas nele). */
+    fun switchTo(user: User) {
+        AppScope.launch { Users.switchTo(user) }
+    }
 
     data class SubscribedPlaylist(val playlist: Playlist, val busy: Boolean = false)
 
@@ -728,13 +747,9 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
-    fun signOut(onDone: () -> Unit) {
-        viewModelScope.launch {
-            AuthRepository.signOut()
-            FeedCache.clear()
-            ListCache.clear()
-            WatchPositions.clear()
-            onDone()
-        }
+    /** Sai da conta do usuário aberto neste aparelho; o app abre na próxima conta, ou na tela de entrar. */
+    fun signOut() {
+        val user = Users.current.value ?: return
+        AppScope.launch { Users.signOut(user) }
     }
 }

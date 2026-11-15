@@ -63,6 +63,17 @@ object SavedVideos {
         }
     }
 
+    /** Outro usuário abriu: a playlist do Save e as mudanças eram do anterior. */
+    fun reset() = synchronized(lock) {
+        base = emptySet()
+        changes.clear()
+        wanted.clear()
+        onFailure.clear()
+        written.clear()
+        _target.value = SaveTarget()
+        publish()
+    }
+
     /** O vídeo está salvo, pelo que o app sabe agora (inclui os toques que ainda vão para a conta)? */
     fun isSaved(videoId: String): Boolean = videoId in _ids.value
 

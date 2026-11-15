@@ -1,6 +1,5 @@
 package ytslim.data
 
-import android.content.Context
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -18,13 +17,12 @@ object FeedCache {
     @Serializable
     data class Saved(val savedAt: Long, val feed: List<Timed> = emptyList(), val extras: List<Timed> = emptyList())
 
-    private lateinit var file: File
+    /** O arquivo, na pasta de cada usuário ([Users]). */
+    const val FILE = "feed.json"
+
+    private val file: File get() = Users.file(FILE)
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
-
-    fun init(context: Context) {
-        file = File(context.filesDir, "feed.json")
-    }
 
     /** O feed guardado, se houver um com menos de [MAX_AGE_MS]. */
     suspend fun read(nowMs: Long = System.currentTimeMillis()): Saved? = mutex.withLock {
@@ -36,7 +34,7 @@ object FeedCache {
 
     suspend fun saveExtras(extras: List<Timed>) = update { it?.copy(extras = extras) }
 
-    /** Ao sair da conta: o feed era dela. */
+    /** Apaga o feed guardado do usuário aberto. */
     suspend fun clear() = mutex.withLock { io { file.delete() } }
 
     private suspend fun update(change: (Saved?) -> Saved?) = mutex.withLock {

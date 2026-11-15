@@ -3,8 +3,9 @@ package ytslim.ui
 import kotlinx.serialization.Serializable
 import ytslim.data.Playlist
 
+/** Entrar com uma conta. [adding]: mais uma conta, pelo menu da foto ou pelos Ajustes (dá para voltar). */
 @Serializable
-data object SignInRoute
+data class SignInRoute(val adding: Boolean)
 
 /** Início: as abas de [HomeTab]. */
 @Serializable

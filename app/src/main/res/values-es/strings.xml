@@ -146,6 +146,13 @@
     <string name="icon_red">Rojo</string>
     <string name="settings_account">Cuenta</string>
     <string name="settings_signed_in_as">Sesión iniciada como %1$s</string>
+    <string name="users_title">Usuarios</string>
+    <string name="users_hint">Cada cuenta tiene sus propios temas, canales bloqueados y ajustes en este dispositivo. BeamTube se abre con el último que se usó.</string>
+    <string name="user_guest">Invitado</string>
+    <string name="user_guest_desc">Solo Recomendados y búsqueda, sin cuenta y sin historial.</string>
+    <string name="user_add">Añadir cuenta</string>
+    <string name="user_menu">Cambiar de usuario</string>
+    <string name="sign_in_guest">Usar sin cuenta</string>
     <string name="playlists">Listas</string>
     <string name="sign_out">Cerrar sesión</string>
     <string name="back">Atrás</string>

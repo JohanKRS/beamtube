@@ -2,15 +2,17 @@ package ytslim.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import androidx.datastore.preferences.preferencesDataStoreFile
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -48,9 +50,10 @@ data class SaveTarget(val playlistId: String = WATCH_LATER, val title: String? =
     }
 }
 
-private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
-
-/** Configurações do app, guardadas no aparelho. */
+/**
+ * Configurações de cada usuário ([Users]), guardadas no aparelho: o usuário aberto tem as dele, e
+ * trocar de usuário troca as configurações. O que é do aparelho (idioma, cores, ícone) fica fora daqui.
+ */
 object SettingsRepository {
     private val SHOW_LIVES = booleanPreferencesKey("show_lives")
     private val EXTERNAL_LINKS = stringPreferencesKey("external_links")
@@ -80,14 +83,32 @@ object SettingsRepository {
     private val topics = ListSerializer(Topic.serializer())
     private val channels = ListSerializer(BlockedChannel.serializer())
 
-    private lateinit var store: DataStore<Preferences>
+    private lateinit var context: Context
+
+    /**
+     * Um DataStore por arquivo ("settings" na vaga de antes da 1.0.7, "settings_1"… nas outras). O
+     * mesmo arquivo nunca tem dois abertos (o DataStore não deixa), nem entre os testes.
+     */
+    private val stores = HashMap<String, DataStore<Preferences>>()
 
     fun init(context: Context) {
-        store = context.applicationContext.settingsStore
+        this.context = context.applicationContext
     }
 
+    private fun storeFor(slot: String): DataStore<Preferences> {
+        val file = context.preferencesDataStoreFile(Users.prefsName("settings", slot))
+        return synchronized(stores) {
+            stores.getOrPut(file.absolutePath) { PreferenceDataStoreFactory.create(produceFile = { file }) }
+        }
+    }
+
+    /** As configurações do usuário aberto. */
+    private val store: DataStore<Preferences> get() = storeFor(Users.slot)
+
+    /** As configurações do usuário aberto, que mudam junto com ele. */
+    @OptIn(ExperimentalCoroutinesApi::class)
     val settings: Flow<Settings>
-        get() = store.data.map { p ->
+        get() = Users.slots.flatMapLatest { storeFor(it).data }.map { p ->
             Settings(
                 showLives = p[SHOW_LIVES] ?: false,
                 externalLinks = p[EXTERNAL_LINKS]?.let { runCatching { ExternalLinks.valueOf(it) }.getOrNull() }
