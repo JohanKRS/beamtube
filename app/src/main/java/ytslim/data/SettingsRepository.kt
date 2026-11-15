@@ -33,6 +33,8 @@ data class Settings(
     val externalLinks: ExternalLinks = ExternalLinks.NO_HISTORY,
     /** Última escolha do botão de legenda; vale para os próximos vídeos. */
     val captionsOn: Boolean = false,
+    /** Em que idioma a legenda aparece quando ligada (1.0.9): o do app, o original ou inglês. */
+    val captionLanguage: CaptionLanguage = CaptionLanguage.ORIGINAL,
     /** Tópicos excluídos e preferidos e canais bloqueados (Recomendações, busca e playlists inscritas). */
     val filters: ContentFilters = ContentFilters(),
     /** Para onde vai o botão "Save" do player. */
@@ -58,6 +60,7 @@ object SettingsRepository {
     private val SHOW_LIVES = booleanPreferencesKey("show_lives")
     private val EXTERNAL_LINKS = stringPreferencesKey("external_links")
     private val CAPTIONS_ON = booleanPreferencesKey("captions_on")
+    private val CAPTION_LANGUAGE = stringPreferencesKey("caption_language")
     private val EXCLUDED_TOPICS = stringPreferencesKey("excluded_topics")
     private val PREFERRED_TOPICS = stringPreferencesKey("preferred_topics")
     private val BLOCKED_CHANNELS = stringPreferencesKey("blocked_channels")
@@ -114,6 +117,8 @@ object SettingsRepository {
                 externalLinks = p[EXTERNAL_LINKS]?.let { runCatching { ExternalLinks.valueOf(it) }.getOrNull() }
                     ?: ExternalLinks.NO_HISTORY,
                 captionsOn = p[CAPTIONS_ON] ?: false,
+                captionLanguage = p[CAPTION_LANGUAGE]?.let { runCatching { CaptionLanguage.valueOf(it) }.getOrNull() }
+                    ?: CaptionLanguage.ORIGINAL,
                 filters = ContentFilters(
                     // Desde a 1.0 não há tópicos prontos: cada um escolhe os seus ([SuggestedTopic]).
                     excluded = p[EXCLUDED_TOPICS]?.let { decode(it, topics) }.orEmpty(),
@@ -136,6 +141,12 @@ object SettingsRepository {
     suspend fun setExternalLinks(value: ExternalLinks) = store.edit { it[EXTERNAL_LINKS] = value.name }
 
     suspend fun setCaptionsOn(value: Boolean) = store.edit { it[CAPTIONS_ON] = value }
+
+    /** A legenda ligada em [language] ([CaptionLanguage]), para este e os próximos vídeos. */
+    suspend fun setCaptions(language: CaptionLanguage) = store.edit {
+        it[CAPTIONS_ON] = true
+        it[CAPTION_LANGUAGE] = language.name
+    }
 
     suspend fun setTurnOffWhenDone(value: Boolean) = store.edit { it[TURN_OFF_WHEN_DONE] = value }
 

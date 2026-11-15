@@ -233,6 +233,7 @@ import ytslim.ui.Screens
 import ytslim.ui.SearchFilterChoice
 import ytslim.ui.SearchViewModel
 import ytslim.ui.SettingsViewModel
+import ytslim.ui.SubscribedPlaylistsViewModel
 import ytslim.ui.TopicListsViewModel
 import ytslim.ui.TopicListsViewModel.TopicList
 import ytslim.ui.topicCounts
@@ -270,11 +271,11 @@ private val RailItemHeight = 56.dp
 private val GridTop = 20.dp
 
 /**
- * O espaço entre a fresta e o primeiro ícone do trilho, calculado para o topo do desenho do
- * primeiro ícone ficar na linha do topo da primeira fileira de miniaturas (1.0.8, pedido do Johan).
- * Os ícones do Material têm 24 e começam 2 abaixo da caixa deles.
+ * O espaço entre a fresta e o primeiro item do trilho, calculado para o topo do item (o bloco que o
+ * toque escolhe) ficar na linha do topo da primeira fileira de miniaturas, como na TV. A 1.0.8
+ * alinhava o desenho do ícone, e o Johan preferiu o bloco, como era até a 1.0.7 (1.0.9).
  */
-private val RailFirstItemGap = TopBarHeight + GridTop - RailTop - RailGlyphHeight - (RailItemHeight - 24.dp) / 2 - 2.dp
+private val RailFirstItemGap = TopBarHeight + GridTop - RailTop - RailGlyphHeight
 
 /** A fileira dos filtros da Explore, embaixo do nome na barra de cima, quando aberta (1.0.8). */
 private val FilterBarHeight = 50.dp
@@ -1176,7 +1177,7 @@ object MobileUi : Screens {
     @Composable
     override fun Settings(
         vm: SettingsViewModel,
-        onOpenPlaylist: (Playlist) -> Unit,
+        onOpenPlaylists: () -> Unit,
         onOpenTopics: () -> Unit,
         onOpenTopicLists: () -> Unit,
         onAddAccount: () -> Unit,
@@ -1184,9 +1185,7 @@ object MobileUi : Screens {
         val settings by vm.settings.collectAsStateWithLifecycle()
         val user by vm.user.collectAsStateWithLifecycle()
         val accounts by vm.accounts.collectAsStateWithLifecycle()
-        val playlists by vm.playlists.collectAsStateWithLifecycle()
         val ownPlaylists by vm.ownPlaylists.collectAsStateWithLifecycle()
-        val error by vm.error.collectAsStateWithLifecycle()
         val appIcon by vm.appIcon.collectAsStateWithLifecycle()
         var choosingTarget by rememberSaveable { mutableStateOf(false) }
 
@@ -1337,41 +1336,13 @@ object MobileUi : Screens {
                 }
             }
 
+            // As playlists inscritas ficam numa tela só delas (1.0.9, pedido do Johan, como os tópicos).
             item(key = "playlists") {
-                SettingsGroup(stringResource(R.string.settings_playlists), hint = stringResource(R.string.settings_playlists_hint)) {
-                    error?.let { message ->
-                        Text(
-                            stringResource(R.string.action_failed, message),
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        )
-                    }
-                    when (val p = playlists) {
-                        UiState.Loading -> Progress()
-                        is UiState.Error -> ErrorRow(p.message, onRetry = vm::reloadPlaylists)
-                        is UiState.Ready -> {
-                            if (p.data.isEmpty()) EmptyRow(stringResource(R.string.settings_playlists_empty))
-                            p.data.forEachIndexed { i, item ->
-                                if (i > 0) RowDivider()
-                                Row(
-                                    Modifier.fillMaxWidth().clickable { onOpenPlaylist(item.playlist) }
-                                        .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Thumbnail(item.playlist.thumbnailUrl, Modifier.width(80.dp), corner = 8.dp)
-                                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                                        Text(item.playlist.title, style = RowTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        item.playlist.info?.let { Text(spacedDots(it), style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                                    }
-                                    if (item.busy) {
-                                        CircularProgressIndicator(Modifier.padding(horizontal = 12.dp).size(22.dp), strokeWidth = 2.dp)
-                                    } else {
-                                        TextButton(onClick = { vm.unsubscribe(item.playlist) }) { Text(stringResource(R.string.settings_unsubscribe)) }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                SettingsGroup(stringResource(R.string.tab_playlists), hint = stringResource(R.string.settings_playlists_hint)) {
+                    SettingsRow(
+                        title = stringResource(R.string.settings_playlists),
+                        modifier = Modifier.clickable(onClick = onOpenPlaylists),
+                    ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Look.Sub) }
                 }
             }
 
@@ -1524,6 +1495,58 @@ object MobileUi : Screens {
                     editing = null
                 },
             )
+        }
+    }
+
+    @Composable
+    override fun SubscribedPlaylists(vm: SubscribedPlaylistsViewModel, onOpen: (Playlist) -> Unit, onBack: () -> Unit) {
+        val playlists by vm.playlists.collectAsStateWithLifecycle()
+        val error by vm.error.collectAsStateWithLifecycle()
+
+        DetailFrame(title = stringResource(R.string.settings_playlists), navigation = { BackButton(onBack) }) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = barsPlus(top = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                item(key = "playlists") {
+                    SettingsGroup(title = null, hint = stringResource(R.string.settings_playlists_hint)) {
+                        error?.let { message ->
+                            Text(
+                                stringResource(R.string.action_failed, message),
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            )
+                        }
+                        when (val p = playlists) {
+                            UiState.Loading -> Progress()
+                            is UiState.Error -> ErrorRow(p.message, onRetry = vm::reload)
+                            is UiState.Ready -> {
+                                if (p.data.isEmpty()) EmptyRow(stringResource(R.string.settings_playlists_empty))
+                                p.data.forEachIndexed { i, item ->
+                                    if (i > 0) RowDivider()
+                                    Row(
+                                        Modifier.fillMaxWidth().clickable { onOpen(item.playlist) }
+                                            .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Thumbnail(item.playlist.thumbnailUrl, Modifier.width(80.dp), corner = 8.dp)
+                                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                                            Text(item.playlist.title, style = RowTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            item.playlist.info?.let { Text(spacedDots(it), style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                        }
+                                        if (item.busy) {
+                                            CircularProgressIndicator(Modifier.padding(horizontal = 12.dp).size(22.dp), strokeWidth = 2.dp)
+                                        } else {
+                                            TextButton(onClick = { vm.unsubscribe(item.playlist) }) { Text(stringResource(R.string.settings_unsubscribe)) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -608,7 +608,7 @@ class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel(
 
 /**
  * Configurações: lives nas Inscrições, links externos, playlist do botão Save, tópicos e canais
- * bloqueados, playlists inscritas, ícone e conta.
+ * bloqueados, ícone e conta. As playlists inscritas têm a tela delas ([SubscribedPlaylistsViewModel]).
  */
 class SettingsViewModel : ViewModel() {
     val settings: StateFlow<Settings> = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
@@ -620,26 +620,6 @@ class SettingsViewModel : ViewModel() {
     /** Abre outro usuário (as telas são refeitas nele). */
     fun switchTo(user: User) {
         AppScope.launch { Users.switchTo(user) }
-    }
-
-    data class SubscribedPlaylist(val playlist: Playlist, val busy: Boolean = false)
-
-    private val _playlists = MutableStateFlow<UiState<List<SubscribedPlaylist>>>(UiState.Loading)
-    val playlists: StateFlow<UiState<List<SubscribedPlaylist>>> = _playlists.asStateFlow()
-
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
-
-    init {
-        reloadPlaylists()
-    }
-
-    fun reloadPlaylists() {
-        _playlists.value = UiState.Loading
-        viewModelScope.launch {
-            _playlists.value = runCatching { PlaylistSubscriptions.subscribed() }
-                .fold({ list -> UiState.Ready(list.map { SubscribedPlaylist(it) }) }, { UiState.Error(it.toMessage()) })
-        }
     }
 
     fun setShowLives(value: Boolean) {
@@ -688,6 +668,38 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) { AppIcons.select(icon) }
     }
 
+    /** Sai da conta do usuário aberto neste aparelho; o app abre na próxima conta, ou na tela de entrar. */
+    fun signOut() {
+        val user = Users.current.value ?: return
+        AppScope.launch { Users.signOut(user) }
+    }
+}
+
+/**
+ * As playlists de outros canais inscritas na conta (1.0.9, pedido do Johan: numa tela só delas,
+ * aberta pelos Ajustes, como os tópicos; até a 1.0.8 a lista ficava no meio dos Ajustes).
+ */
+class SubscribedPlaylistsViewModel : ViewModel() {
+    data class SubscribedPlaylist(val playlist: Playlist, val busy: Boolean = false)
+
+    private val _playlists = MutableStateFlow<UiState<List<SubscribedPlaylist>>>(UiState.Loading)
+    val playlists: StateFlow<UiState<List<SubscribedPlaylist>>> = _playlists.asStateFlow()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
+    init {
+        reload()
+    }
+
+    fun reload() {
+        _playlists.value = UiState.Loading
+        viewModelScope.launch {
+            _playlists.value = runCatching { PlaylistSubscriptions.subscribed() }
+                .fold({ list -> UiState.Ready(list.map { SubscribedPlaylist(it) }) }, { UiState.Error(it.toMessage()) })
+        }
+    }
+
     fun unsubscribe(playlist: Playlist) {
         val id = playlist.playlistId ?: return
         markBusy(id, true)
@@ -713,12 +725,6 @@ class SettingsViewModel : ViewModel() {
                 UiState.Ready(ready.data.map { if (it.playlist.playlistId == id) it.copy(busy = busy) else it })
             } ?: state
         }
-    }
-
-    /** Sai da conta do usuário aberto neste aparelho; o app abre na próxima conta, ou na tela de entrar. */
-    fun signOut() {
-        val user = Users.current.value ?: return
-        AppScope.launch { Users.signOut(user) }
     }
 }
 

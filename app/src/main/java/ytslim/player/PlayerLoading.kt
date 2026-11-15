@@ -11,6 +11,7 @@ import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -63,7 +64,16 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
         colorFilter = ColorMatrixColorFilter(PosterBlur.tone())
         visibility = View.GONE
     }
+    /** O preto do arrastar para fechar (1.0.9), por cima da miniatura e por baixo do círculo. */
+    private val shade = View(context).apply {
+        setBackgroundColor(Color.BLACK)
+        alpha = 0f
+        visibility = View.GONE
+    }
     private val ring = LoadingRing(context).apply { visibility = View.GONE }
+
+    /** Arrastando para fechar: se a miniatura já estava na frente do vídeo quando o arrastar começou. */
+    private var dragFrom: Boolean? = null
     private var request: Disposable? = null
     private var shownUrl: String? = null
     private val showRing = Runnable { ring.visibility = View.VISIBLE }
@@ -82,6 +92,7 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
         isFocusable = false
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         addView(poster, LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        addView(shade, LayoutParams(MATCH_PARENT, MATCH_PARENT))
         val size = (resources.displayMetrics.density * (if (tv) RING_TV_DP else RING_DP)).toInt()
         addView(ring, LayoutParams(size, size, Gravity.CENTER))
     }
@@ -91,6 +102,10 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
         poster.animate().cancel()
         poster.alpha = 1f
         poster.visibility = View.VISIBLE
+        dragFrom = null
+        shade.animate().cancel()
+        shade.alpha = 0f
+        shade.visibility = View.GONE
         if (thumbnailUrl != shownUrl) {
             request?.dispose()
             shownUrl = thumbnailUrl
@@ -119,25 +134,66 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
     /** O primeiro quadro do vídeo apareceu: a miniatura sai. */
     fun firstFrame() {
         if (poster.visibility != View.VISIBLE) return
+        // No meio de um arrastar para fechar, a miniatura segue o dedo e sai ao soltar ([undrag]).
+        if (dragFrom != null) {
+            dragFrom = false
+            return
+        }
         poster.animate().cancel()
         poster.animate().alpha(0f).setDuration(POSTER_FADE_MS).setInterpolator(DecelerateInterpolator())
             .withEndAction { hidePoster() }
     }
 
     /**
-     * O inverso da abertura, ao arrastar o vídeo para baixo e soltar (1.0.8, pedido do Johan: "o
-     * reverso da animação de entrada do vídeo, com aquele fade para blur"): a miniatura desfocada
-     * volta por cima do vídeo em [durationMs], sem o círculo. Depois disso o player fecha.
+     * O dedo arrastando para fechar (1.0.9, pedido do Johan: "dar um blurzinho e daí já fechar. Um
+     * blur, um fade to black"): o vídeo fica parado e, conforme o dedo desce, a miniatura desfocada
+     * aparece por cima dele e a tela escurece. [progress] vai de 0 a 1 no ponto em que soltar fecha.
      */
-    fun blurBack(durationMs: Long) {
+    fun drag(progress: Float) {
+        val from = dragFrom ?: posterShown.also { dragFrom = it }
+        poster.animate().cancel()
+        shade.animate().cancel()
+        if (!from) {
+            poster.visibility = View.VISIBLE
+            // O desfoque vem antes do escuro: na metade do caminho, já cobre quase todo o vídeo.
+            poster.alpha = (progress * DRAG_BLUR_SPEED).coerceAtMost(1f)
+        }
+        shade.visibility = View.VISIBLE
+        shade.alpha = progress * DRAG_SHADE
+    }
+
+    /** Soltou antes de fechar: o vídeo volta, sem a miniatura e sem o escuro. */
+    fun undrag() {
+        val from = dragFrom ?: return
+        dragFrom = null
+        if (!from) {
+            poster.animate().alpha(0f).setDuration(UNDRAG_MS).setInterpolator(DecelerateInterpolator())
+                .withEndAction { hidePoster() }
+        }
+        shade.animate().alpha(0f).setDuration(UNDRAG_MS).setInterpolator(DecelerateInterpolator())
+            .withEndAction { shade.visibility = View.GONE }
+    }
+
+    /**
+     * Soltou para fechar: a miniatura desfocada termina de cobrir o vídeo e tudo escurece até o
+     * preto em [durationMs], sem o círculo. Depois disso o player fecha.
+     */
+    fun fadeOut(durationMs: Long) {
+        dragFrom = null
         setBusy(false)
         poster.animate().cancel()
+        shade.animate().cancel()
         if (poster.visibility != View.VISIBLE) {
             poster.alpha = 0f
             poster.visibility = View.VISIBLE
         }
+        shade.visibility = View.VISIBLE
         poster.animate().alpha(1f).setDuration(durationMs).setInterpolator(DecelerateInterpolator())
+        shade.animate().alpha(1f).setDuration(durationMs).setInterpolator(AccelerateInterpolator())
     }
+
+    /** Quanto a tela escurece arrastando, no ponto em que soltar fecha (fechando, vai ao preto). */
+    val shadeAlpha: Float get() = if (shade.visibility == View.VISIBLE) shade.alpha else 0f
 
     /** O vídeo não vai tocar (o erro aparece na tela): sem miniatura e sem círculo. */
     fun stop() {
@@ -177,6 +233,15 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
         const val RING_TV_DP = 80
         /** O vídeo aparece por baixo das cores da miniatura, sem corte seco. */
         const val POSTER_FADE_MS = 300L
+
+        /** Arrastando, a tela chega a este escuro no ponto em que soltar fecha. */
+        const val DRAG_SHADE = 0.6f
+
+        /** A miniatura desfocada cobre o vídeo inteiro com 60% do caminho (1 / 1,6). */
+        const val DRAG_BLUR_SPEED = 1.6f
+
+        /** Soltou cedo: o vídeo volta nisto. */
+        const val UNDRAG_MS = 180L
     }
 }
 

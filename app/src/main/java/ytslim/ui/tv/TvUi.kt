@@ -208,6 +208,7 @@ import ytslim.ui.Screens
 import ytslim.ui.SearchFilterChoice
 import ytslim.ui.SearchViewModel
 import ytslim.ui.SettingsViewModel
+import ytslim.ui.SubscribedPlaylistsViewModel
 import ytslim.ui.TopicListsViewModel
 import ytslim.ui.TopicListsViewModel.TopicList
 import ytslim.ui.topicCounts
@@ -533,8 +534,10 @@ object TvUi : Screens {
                 Spacer(Modifier.height(ContentGap))
                 CompositionLocalProvider(LocalInitialFocus provides initialFocus) {
                     // Sair da lista para o menu (ou para as abas) e voltar devolve o foco ao mesmo card
-                    // (1.0.8, pedido do Johan): até a 1.0.7 a volta caía no card mais perto do item
-                    // do menu, quase sempre uma fileira acima, e a lista subia.
+                    // (pedido do Johan): até a 1.0.7 a volta caía no card mais perto do item do menu,
+                    // quase sempre uma fileira acima, e a lista subia. Só aqui, na 1.0.8, não bastava:
+                    // o que guarda o card é o focusRestorer na própria grade (VideoGrid e as outras
+                    // listas das abas), que também segura o card composto enquanto o foco está fora.
                     Box(Modifier.fillMaxSize().focusRestorer().focusGroup()) { content(tab) }
                 }
             }
@@ -600,12 +603,12 @@ object TvUi : Screens {
     private val GridTop = 8.dp
 
     /**
-     * O espaço entre a fresta do alto do menu e o primeiro item, calculado para o topo do desenho do
-     * primeiro ícone ficar na linha do topo da primeira fileira de miniaturas (1.0.8, pedido do
-     * Johan: o alinhamento ótico é o do ícone, não o do círculo do foco). Os ícones do Material
-     * começam 2/24 abaixo da caixa deles.
+     * O espaço entre a fresta do alto do menu e o primeiro item, calculado para o topo do círculo do
+     * foco do primeiro item ficar na linha do topo da primeira fileira de miniaturas. A 1.0.8 alinhou
+     * o desenho do ícone, e o círculo focado parecia subir; o Johan preferiu o bloco alinhado, como
+     * era até a 1.0.7 (1.0.9).
      */
-    private val SideFirstItemGap = ContentGap + GridTop - (SideItemHeight - SideIconSize) / 2 - SideIconSize * (2f / 24f)
+    private val SideFirstItemGap = ContentGap + GridTop - (SideItemHeight - SideFocusSize) / 2
 
     /** O espaço de cima do menu lateral e da barra do título, que ficam na mesma linha. */
     private val SideTop = 22.dp
@@ -1122,6 +1125,7 @@ object TvUi : Screens {
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
             verticalArrangement = Arrangement.spacedBy(GridGapY),
             contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
+            modifier = Modifier.focusRestorer(),
         ) {
             if (data.items.isEmpty() && !data.hasMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -1158,6 +1162,7 @@ object TvUi : Screens {
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
             verticalArrangement = Arrangement.spacedBy(GridGapY),
             contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
+            modifier = Modifier.focusRestorer(),
         ) {
             itemsIndexed(playlists, key = { _, p -> p.browseId }) { _, playlist ->
                 MediaCard(
@@ -1174,7 +1179,7 @@ object TvUi : Screens {
     @Composable
     override fun Settings(
         vm: SettingsViewModel,
-        onOpenPlaylist: (Playlist) -> Unit,
+        onOpenPlaylists: () -> Unit,
         onOpenTopics: () -> Unit,
         onOpenTopicLists: () -> Unit,
         onAddAccount: () -> Unit,
@@ -1182,9 +1187,7 @@ object TvUi : Screens {
         val settings by vm.settings.collectAsStateWithLifecycle()
         val user by vm.user.collectAsStateWithLifecycle()
         val accounts by vm.accounts.collectAsStateWithLifecycle()
-        val playlists by vm.playlists.collectAsStateWithLifecycle()
         val ownPlaylists by vm.ownPlaylists.collectAsStateWithLifecycle()
-        val error by vm.error.collectAsStateWithLifecycle()
         val appIcon by vm.appIcon.collectAsStateWithLifecycle()
         var choosingTarget by rememberSaveable { mutableStateOf(false) }
         val context = LocalContext.current
@@ -1203,7 +1206,7 @@ object TvUi : Screens {
         // largura toda, como a grade dos vídeos (1.0, pedido do Johan: com 70% da largura, à
         // esquerda, sobrava um buraco no lado direito).
         LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRestorer(),
             contentPadding = PaddingValues(bottom = 48.dp),
         ) {
             // Os usuários (pedido do Johan, 2026-11-14): o aberto primeiro; OK em outro troca na hora.
@@ -1412,45 +1415,21 @@ object TvUi : Screens {
                 ),
             )
 
-            val playlistRows = buildList<Pair<Any, @Composable () -> Unit>> {
-                error?.let { message ->
-                    add(row("error") { EmptyRow(stringResource(R.string.action_failed, message), MaterialTheme.colorScheme.error) })
-                }
-                when (val p = playlists) {
-                    UiState.Loading -> add(row("loading") { EmptyRow(stringResource(R.string.loading)) })
-                    is UiState.Error -> add(
-                        row("retry") {
-                            SettingsRow(
-                                onClick = vm::reloadPlaylists,
-                                headlineContent = { Text(stringResource(R.string.error_generic, p.message)) },
-                                trailingContent = { Text(stringResource(R.string.retry)) },
-                            )
-                        },
-                    )
-                    is UiState.Ready -> {
-                        if (p.data.isEmpty()) add(row("empty") { EmptyRow(stringResource(R.string.settings_playlists_empty)) })
-                        p.data.forEach { item ->
-                            add(
-                                row(item.playlist.browseId) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        SettingsRow(
-                                            onClick = { onOpenPlaylist(item.playlist) },
-                                            headlineContent = { Text(item.playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                            supportingContent = item.playlist.info?.let { { Text(spacedDots(it), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                        Spacer(Modifier.width(12.dp))
-                                        OutlinedButton(onClick = { vm.unsubscribe(item.playlist) }, enabled = !item.busy) {
-                                            Text(stringResource(R.string.settings_unsubscribe))
-                                        }
-                                    }
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-            group("playlists", R.string.settings_playlists, hint = R.string.settings_playlists_hint, rows = playlistRows)
+            // As playlists inscritas ficam numa tela só delas (1.0.9, pedido do Johan, como os tópicos).
+            group(
+                "playlists",
+                R.string.tab_playlists,
+                hint = R.string.settings_playlists_hint,
+                rows = listOf(
+                    row("subscribed") {
+                        SettingsRow(
+                            onClick = onOpenPlaylists,
+                            headlineContent = { Text(stringResource(R.string.settings_playlists)) },
+                            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                        )
+                    },
+                ),
+            )
 
             // O layout do início (pedido do Johan, 2026-11-14): as abas em cima, como sempre foi, ou o
             // menu lateral do tablet. Muda na hora, sem sair dos Ajustes.
@@ -1601,6 +1580,72 @@ object TvUi : Screens {
                     editing = null
                 },
             )
+        }
+    }
+
+    @Composable
+    override fun SubscribedPlaylists(vm: SubscribedPlaylistsViewModel, onOpen: (Playlist) -> Unit, onBack: () -> Unit) {
+        val playlists by vm.playlists.collectAsStateWithLifecycle()
+        val error by vm.error.collectAsStateWithLifecycle()
+        val list = remember { FocusRequester() }
+
+        val rows = buildList<Pair<Any, @Composable () -> Unit>> {
+            error?.let { message ->
+                add(row("error") { EmptyRow(stringResource(R.string.action_failed, message), MaterialTheme.colorScheme.error) })
+            }
+            when (val p = playlists) {
+                UiState.Loading -> add(row("loading") { EmptyRow(stringResource(R.string.loading)) })
+                is UiState.Error -> add(
+                    row("retry") {
+                        SettingsRow(
+                            onClick = vm::reload,
+                            headlineContent = { Text(stringResource(R.string.error_generic, p.message)) },
+                            trailingContent = { Text(stringResource(R.string.retry)) },
+                        )
+                    },
+                )
+                is UiState.Ready -> {
+                    if (p.data.isEmpty()) add(row("empty") { EmptyRow(stringResource(R.string.settings_playlists_empty)) })
+                    p.data.forEach { item ->
+                        add(
+                            row(item.playlist.browseId) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    SettingsRow(
+                                        onClick = { onOpen(item.playlist) },
+                                        headlineContent = { Text(item.playlist.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        supportingContent = item.playlist.info?.let { { Text(spacedDots(it), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    OutlinedButton(onClick = { vm.unsubscribe(item.playlist) }, enabled = !item.busy) {
+                                        Text(stringResource(R.string.settings_unsubscribe))
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
+            Text(stringResource(R.string.settings_playlists), style = MaterialTheme.typography.headlineMedium, maxLines = 1)
+            Spacer(Modifier.height(8.dp))
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().focusRequester(list),
+                contentPadding = PaddingValues(bottom = 48.dp),
+            ) {
+                group("playlists", title = null, hint = R.string.settings_playlists_hint, rows = rows)
+            }
+        }
+        // O foco entra na lista assim que ela tem uma linha que aceita foco (a lista chega da rede).
+        val ready = playlists !is UiState.Loading
+        LaunchedEffect(ready) {
+            if (!ready) return@LaunchedEffect
+            repeat(FOCUS_TRIES) {
+                withFrameNanos { }
+                if (runCatching { list.requestFocus() }.getOrElse { false } != false) return@LaunchedEffect
+            }
         }
     }
 
@@ -2123,7 +2168,8 @@ object TvUi : Screens {
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
             verticalArrangement = Arrangement.spacedBy(GridGapY),
             contentPadding = PaddingValues(bottom = 48.dp, top = GridTop),
-            modifier = Modifier.onFocusChanged { inGrid = it.hasFocus },
+            // Ir ao menu (ou às abas) e voltar devolve o foco a este card (1.0.9, [Home]).
+            modifier = Modifier.onFocusChanged { inGrid = it.hasFocus }.focusRestorer(),
         ) {
             if (content.videos.isEmpty() && !content.loadingMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {

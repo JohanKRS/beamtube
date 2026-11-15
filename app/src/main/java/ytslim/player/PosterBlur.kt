@@ -16,20 +16,22 @@ import coil3.transform.Transformation
  * Desde a 1.0.8 o desfoque é mais leve (pedido do Johan, 2026-11-15: "o blur não precisa ser tão
  * forte no início e no fim"): as formas grandes da miniatura aparecem, sem dar para ler nada. Na
  * 1.0.7 eram 48 px e raio 7 (o desfoque media uns 16% do lado menor, e sobrava só uma mancha); agora
- * são 64 px e raio 4, uns 7%. A mesma imagem fica no fundo da tela do fim ([EndScreen]) e volta por
- * cima do vídeo ao arrastar para fechar ([PlayerLoading.blurBack]).
+ * eram 64 px e raio 4, uns 7%. Desde a 1.0.9, mais leve ainda (pedido do Johan: "quero que fique
+ * levemente reconhecível o thumbnail quando está carregando"): 96 px e raio 2, uns 2,5%; dá para
+ * reconhecer a miniatura, sem os detalhes. A mesma imagem fica no fundo da tela do fim ([EndScreen])
+ * e cobre o vídeo ao arrastar para fechar ([PlayerLoading.drag]).
  *
  * Feito à mão, num bitmap pequeno, para sair igual em todo aparelho: o desfoque do Android
  * (RenderEffect) só existe do 12 em diante, e as TVs do Johan são Android 11, 32 bits e fracas. Com
- * [SHORT_SIDE] px no lado menor, são uns 7 mil pontos: o desfoque inteiro custa menos de um
- * milissegundo, numa thread do carregador de imagens.
+ * [SHORT_SIDE] px no lado menor, são uns 16 mil pontos: o desfoque inteiro custa uns poucos
+ * milissegundos, numa thread do carregador de imagens.
  */
 internal object PosterBlur {
     /** O lado menor do bitmap desfocado, em px. A tela amplia; desfocado, não aparece serrilhado. */
-    const val SHORT_SIDE = 64
+    const val SHORT_SIDE = 96
 
-    /** O raio de cada passada da média ([PASSES] passadas), em px do bitmap pequeno: o desfoque fica em uns 7% do lado menor. */
-    const val RADIUS = 4
+    /** O raio de cada passada da média ([PASSES] passadas), em px do bitmap pequeno: o desfoque fica em uns 2,5% do lado menor. */
+    const val RADIUS = 2
 
     /** Três médias seguidas dão um desfoque quase igual ao gaussiano, sem bordas duras. */
     private const val PASSES = 3
@@ -148,7 +150,7 @@ internal object PosterBlur {
 
     /** O [blurred] no carregador de imagens: roda fora da thread da tela, e o resultado fica no cache dele. */
     object Coil : Transformation() {
-        override val cacheKey = "beamtube.poster-blur.v2"
+        override val cacheKey = "beamtube.poster-blur.v3"
 
         override suspend fun transform(input: Bitmap, size: Size): Bitmap = blurred(input)
     }

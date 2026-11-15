@@ -69,7 +69,9 @@ Most of what BeamTube adds is about the moment after you press play.
 - **Chapters** show on the timeline, with the current chapter's name and a thumbnail preview while
   you scrub. On the TV, left and right only move the preview: press OK to jump there, or move away
   from the timeline to stay where you were.
-- **Captions you can read.** Always centered, white with a thin outline, and automatic captions
+- **Captions you can read, in the language you pick.** The captions button offers the app's
+  language, the video's original language and English, translated by YouTube when the video has no
+  captions in that language. Always centered, white with a thin outline, and automatic captions
   appear two lines at a time instead of scrolling word by word.
 - **Playlists play in order**, so Watch later works as a real queue. You can reorder it by dragging,
   swipe a video to the top, or swipe it away, with Undo.
@@ -77,15 +79,17 @@ Most of what BeamTube adds is about the moment after you press play.
   when the TV really can't keep up; phones and tablets start at 1080p. If you pick a resolution by
   hand, it stays.
 - **Loading takes the video's colors.** While a video loads, its thumbnail fills the screen,
-  blurred, and the video fades in from those colors, with no black screen or black bars.
+  lightly blurred, and the video fades in from it, with no black screen or black bars.
 - **The player opens and closes with a quick animation,** growing in over your list and shrinking
-  away when you go back, in a fifth of a second. On phones and tablets you can also drag the video
-  down to close it: it fades back into the blurred thumbnail and shrinks away.
+  away when you go back, in a fifth of a second. On phones and tablets you can also drag down on
+  the video to close it: the video stays put, blurring and darkening as you pull, and closes when
+  you let go.
 - **When a video ends,** BeamTube shows a few suggestions over the blurred thumbnail (the next video
   from the list you came from, one from the same channel, and related videos that respect your
   topics), with Back already focused on the TV. If you don't pick anything, it takes you back to your list after 15 seconds
   instead of autoplaying the next thing. In Settings you can make it go straight back, play the
-  first suggestion, or just stay on the video. Playlists and the sleep mode are left alone.
+  first suggestion, or just stay on the video. Playlists keep following Then play, and with a limit
+  there or Turn off set, the video just stops, as before.
 
 <p align="center">
   <img src="docs/screenshots/player-tv.jpg" alt="The player on TV, with chapters on the timeline" width="49%">
@@ -167,7 +171,8 @@ channel and tap Subscribe. From then on, new videos added to it show up in your 
 next to the videos from your channels.
 
 The subscription is stored as a saved playlist in your YouTube account, so it's the same on all
-your devices. If you already follow the channel, its videos aren't repeated.
+your devices. If you already follow the channel, its videos aren't repeated. Settings > Playlists >
+Subscribed playlists lists them, and you can unsubscribe from there.
 
 ## On the TV
 

@@ -196,6 +196,40 @@ class SideMenuFocusTest {
         compose.onNodeWithContentDescription("Subscriptions").assertIsFocused()
     }
 
+    private fun focusedId(): Int = compose.onAllNodes(isFocused()).fetchSemanticsNodes().single().id
+
+    /**
+     * Ir ao menu e voltar devolve o foco ao mesmo card (pedido do Johan; a 1.0.8 não bastou na TV:
+     * a volta caía no card de cima).
+     */
+    @Test
+    fun leftToTheMenuAndBackReturnsToTheSameCard() {
+        var tab by mutableStateOf(HomeTab.SUBSCRIPTIONS)
+        home({ tab }, { tab = it })
+        focusFirstCard()
+        press(KeyEvent.KEYCODE_DPAD_DOWN, times = 2)
+        val card = focusedId()
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        compose.onNodeWithContentDescription("Subscriptions").assertIsFocused()
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals(card, focusedId())
+        assertEquals(HomeTab.SUBSCRIPTIONS, tab)
+    }
+
+    @Test
+    fun backToTheMenuAndRightReturnsToTheSameCard() {
+        var tab by mutableStateOf(HomeTab.SUBSCRIPTIONS)
+        home({ tab }, { tab = it })
+        focusFirstCard()
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_RIGHT, times = 2)
+        val card = focusedId()
+        press(KeyEvent.KEYCODE_BACK)
+        compose.onNodeWithContentDescription("Subscriptions").assertIsFocused()
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals(card, focusedId())
+    }
+
     /** Trocar o layout nos Ajustes muda a moldura na hora, e o foco fica na linha que foi escolhida. */
     @Test
     fun switchingTheLayoutKeepsTheFocusedRow() {

@@ -147,6 +147,9 @@ private fun UserScreens(ui: Screens, user: User?, links: MutableStateFlow<Link?>
             composable<TopicListsRoute> {
                 ui.TopicLists(viewModel<TopicListsViewModel>(), onBack = { nav.popBackStack() })
             }
+            composable<SubscribedPlaylistsRoute> {
+                ui.SubscribedPlaylists(viewModel<SubscribedPlaylistsViewModel>(), onOpen = openPlaylist, onBack = { nav.popBackStack() })
+            }
             composable<HomeRoute> { entry ->
                 // O convidado só tem a busca (1.0.8: sem conta, o Início do YouTube vem vazio).
                 var tab by rememberSaveable { mutableStateOf(if (guest) HomeTab.SEARCH else HomeTab.SUBSCRIPTIONS) }
@@ -199,7 +202,7 @@ private fun UserScreens(ui: Screens, user: User?, links: MutableStateFlow<Link?>
                                 HomeTab.HISTORY -> ui.History(viewModel<HistoryViewModel>(), onPlay = play, onOpenChannel = openChannel)
                                 HomeTab.SETTINGS -> ui.Settings(
                                     vm = viewModel<SettingsViewModel>(),
-                                    onOpenPlaylist = openPlaylist,
+                                    onOpenPlaylists = { nav.navigate(SubscribedPlaylistsRoute) { launchSingleTop = true } },
                                     onOpenTopics = { nav.navigate(TopicsRoute(firstRun = false)) },
                                     onOpenTopicLists = { nav.navigate(TopicListsRoute) { launchSingleTop = true } },
                                     onAddAccount = addAccount,
@@ -293,13 +296,14 @@ interface Screens {
     fun History(vm: HistoryViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit)
 
     /**
-     * [onOpenTopics] abre a tela de tópicos sugeridos ([Topics]); [onOpenTopicLists], a dos tópicos
-     * um por um ([TopicLists]); [onAddAccount], a de entrar com outra conta.
+     * [onOpenPlaylists] abre a tela das playlists inscritas ([SubscribedPlaylists]); [onOpenTopics],
+     * a de tópicos sugeridos ([Topics]); [onOpenTopicLists], a dos tópicos um por um ([TopicLists]);
+     * [onAddAccount], a de entrar com outra conta.
      */
     @Composable
     fun Settings(
         vm: SettingsViewModel,
-        onOpenPlaylist: (Playlist) -> Unit,
+        onOpenPlaylists: () -> Unit,
         onOpenTopics: () -> Unit,
         onOpenTopicLists: () -> Unit,
         onAddAccount: () -> Unit,
@@ -308,6 +312,10 @@ interface Screens {
     /** Os tópicos de ver mais e ver menos, para ajustar as palavras de cada um, tirar ou criar outros. */
     @Composable
     fun TopicLists(vm: TopicListsViewModel, onBack: () -> Unit)
+
+    /** As playlists inscritas: abrir cada uma ou cancelar a inscrição. */
+    @Composable
+    fun SubscribedPlaylists(vm: SubscribedPlaylistsViewModel, onOpen: (Playlist) -> Unit, onBack: () -> Unit)
 
     /**
      * Os tópicos sugeridos, em dois passos (ver mais, ver menos). [firstRun]: a tela do primeiro
