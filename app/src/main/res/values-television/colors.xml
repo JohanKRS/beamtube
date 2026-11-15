@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- O fundo da janela na TV, igual ao Tones.TV (ui/Look.kt), para a abertura não piscar no cinza do celular. -->
+<resources>
+    <color name="window_background">#FF0A0A0C</color>
+</resources>
