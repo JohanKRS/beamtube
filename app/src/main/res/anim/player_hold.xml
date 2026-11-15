@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A lista fica parada por baixo enquanto o player abre ou fecha por cima dela. -->
+<translate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="200"
+    android:fromYDelta="0"
+    android:toYDelta="0"
+    android:zAdjustment="normal" />

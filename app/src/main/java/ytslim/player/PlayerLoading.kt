@@ -1,14 +1,18 @@
 package ytslim.player
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.RectF
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.core.content.ContextCompat
@@ -17,6 +21,8 @@ import coil3.SingletonImageLoader
 import coil3.asDrawable
 import coil3.request.Disposable
 import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.request.transformations
 import ytslim.R
 
 /** Quando o círculo de carregando aparece ([PlayerLoading]). */
@@ -37,20 +43,25 @@ internal object LoadingRules {
 
 /**
  * O que fica por cima do vídeo enquanto ele não começa (pedido do Johan, 2026-11-13: "às vezes a
- * tela fica só preta, sem nenhuma indicação"): a miniatura do vídeo, escurecida, e um círculo
- * girando na cor de destaque, desde o instante em que o player abre. Antes, o círculo só aparecia
- * quando o player começava a baixar o vídeo; a espera pela resposta do YouTube ficava sem sinal.
+ * tela fica só preta, sem nenhuma indicação"): a miniatura do vídeo e um círculo girando na cor de
+ * destaque, desde o instante em que o player abre. Antes, o círculo só aparecia quando o player
+ * começava a baixar o vídeo; a espera pela resposta do YouTube ficava sem sinal.
  *
- * A miniatura some no primeiro quadro; o círculo volta quando o vídeo para para carregar.
- * Fica por baixo do escurecer do modo dormir e dos controles.
+ * Desde a 1.0.7 (pedido do Johan, 2026-11-14), a miniatura ocupa a tela toda, sem as faixas pretas
+ * que algumas trazem, e bem desfocada: ficam só as cores dela ([PosterBlur]).
+ *
+ * A miniatura some no primeiro quadro, num esmaecer curto; o círculo volta quando o vídeo para para
+ * carregar. Fica por baixo do escurecer do modo dormir e dos controles.
  */
 internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(context) {
     private val poster = ImageView(context).apply {
-        // A miniatura inteira, onde um vídeo 16:9 vai aparecer; em volta, preto.
-        scaleType = ImageView.ScaleType.FIT_CENTER
+        // A tela toda, de borda a borda: a miniatura já vem sem as faixas pretas e desfocada.
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        // Até a miniatura chegar (do cache, em geral num instante), preto.
         setBackgroundColor(Color.BLACK)
-        // Escurecida: o círculo aparece bem, e a miniatura (menor que a tela) não parece o vídeo borrado.
-        setColorFilter(POSTER_SHADE)
+        // Um pouco escurecida, para o círculo e os controles aparecerem bem por cima, e com as cores
+        // reforçadas: o desfoque mistura tudo e deixa a imagem acinzentada.
+        colorFilter = posterTone()
         visibility = View.GONE
     }
     private val ring = LoadingRing(context).apply { visibility = View.GONE }
@@ -86,6 +97,10 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
                 request = SingletonImageLoader.get(context).enqueue(
                     ImageRequest.Builder(context)
                         .data(thumbnailUrl)
+                        // Pequena: só as cores importam, e o desfoque roda numa imagem de poucos pontos.
+                        .size(DECODE_PX, DECODE_PX)
+                        .allowHardware(false)
+                        .transformations(PosterBlur.Coil)
                         .target(onSuccess = { image -> if (shownUrl == thumbnailUrl) poster.setImageDrawable(image.asDrawable(resources)) })
                         .build(),
                 )
@@ -94,11 +109,17 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
         setBusy(true)
     }
 
+    /** A miniatura de [start] já baixada: desfoca aqui mesmo (para as fotos de tela, sem rede). */
+    fun showPoster(thumbnail: Bitmap) {
+        poster.setImageBitmap(PosterBlur.blurred(thumbnail))
+    }
+
     /** O primeiro quadro do vídeo apareceu: a miniatura sai. */
     fun firstFrame() {
         if (poster.visibility != View.VISIBLE) return
         poster.animate().cancel()
-        poster.animate().alpha(0f).setDuration(POSTER_FADE_MS).withEndAction { hidePoster() }
+        poster.animate().alpha(0f).setDuration(POSTER_FADE_MS).setInterpolator(DecelerateInterpolator())
+            .withEndAction { hidePoster() }
     }
 
     /** O vídeo não vai tocar (o erro aparece na tela): sem miniatura e sem círculo. */
@@ -137,10 +158,24 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
         /** O disco inteiro; o anel fica para dentro ([LoadingRing]). */
         const val RING_DP = 64
         const val RING_TV_DP = 80
-        const val POSTER_FADE_MS = 180L
+        /** O vídeo aparece por baixo das cores da miniatura, sem corte seco. */
+        const val POSTER_FADE_MS = 300L
 
-        /** 55% de preto por cima da miniatura. */
-        const val POSTER_SHADE = 0x8C000000.toInt()
+        /** A miniatura é decodificada em no máximo isto de cada lado, antes de reduzir e desfocar. */
+        const val DECODE_PX = 320
+
+        /** O brilho da miniatura desfocada: 35% mais escura (eram 55% com ela nítida). */
+        const val POSTER_BRIGHTNESS = 0.65f
+
+        /** As cores 40% mais fortes que as da miniatura, para não ficarem lavadas depois do desfoque. */
+        const val POSTER_SATURATION = 1.4f
+
+        fun posterTone() = ColorMatrixColorFilter(
+            ColorMatrix().apply {
+                setSaturation(POSTER_SATURATION)
+                postConcat(ColorMatrix().apply { setScale(POSTER_BRIGHTNESS, POSTER_BRIGHTNESS, POSTER_BRIGHTNESS, 1f) })
+            },
+        )
     }
 }
 
