@@ -76,6 +76,11 @@ Most of what BeamTube adds is about the moment after you press play.
 - **The best picture your screen can show.** On TV the player goes for 4K first and only steps down
   when the TV really can't keep up; phones and tablets start at 1080p. If you pick a resolution by
   hand, it stays.
+- **Loading takes the video's colors.** While a video loads, its thumbnail fills the screen,
+  heavily blurred, and the video fades in from those colors, with no black screen or black bars.
+- **The player opens and closes with a quick animation,** growing in over your list and shrinking
+  away when you go back, in a fifth of a second. On phones and tablets you can also drag the video
+  down to close it.
 - **When a video ends,** BeamTube shows a few suggestions (the next video from the list you came
   from, one from the same channel, and related videos that respect your topics), with Back already
   focused on the TV. If you don't pick anything, it takes you back to your list after 15 seconds
@@ -175,6 +180,13 @@ your devices. If you already follow the channel, its videos aren't repeated.
 - Come back after a while and Subscriptions are already refreshed, with the new videos on top.
 - Rest the focus on a video for a couple of seconds and BeamTube starts getting it ready, so it
   opens faster when you press OK.
+- **Tabs on top or a side menu.** Settings > Layout switches the TV to the tablet layout: the tab
+  icons in a menu on the left, with Settings at the bottom, and the name of the open tab on top.
+- A near-black background, because TV screens show dark grays much lighter than phones do.
+
+<p align="center">
+  <img src="docs/screenshots/tv-side-menu.jpg" alt="BeamTube on a TV with the side menu" width="80%">
+</p>
 
 ## On phones and tablets
 
@@ -195,6 +207,12 @@ your devices. If you already follow the channel, its videos aren't repeated.
 
 ## Make it yours
 
+- **One BeamTube for the whole house.** Everyone can sign in with their own YouTube account and
+  keep their own topics, blocked channels, settings, saved lists and where each video stopped. Your
+  photo at the top switches users, or adds an account. BeamTube opens on the last user, with no
+  picker when it starts.
+- **Guest.** Use BeamTube without an account, with only Recommended and Search. Nothing goes to any
+  account, and the device doesn't remember where you stopped.
 - **Seven icon colors** and **seven highlight colors** in Settings. The highlight color is used for
   the open tab, progress bars, focus on TV and the player.
 - **English, Portuguese and Spanish.** BeamTube follows your device's language, or you can pick one
@@ -244,8 +262,11 @@ installed outside the Play Store may need "Allow restricted settings" first (App
   nothing to its developer.
 - The app talks to YouTube and Google to sign you in, load your lists and play videos, like any
   YouTube client.
-- Your topics, blocked channels, watch positions and settings stay on your device. Signing out
-  deletes the lists cached on it.
+- Your topics, blocked channels, watch positions and settings stay on your device, kept apart for
+  each user; the guest keeps nothing. Signing out deletes the account and the lists cached for it,
+  but keeps its settings, in case it signs in again.
+- To recognize an account when it signs in again, BeamTube keeps its name, email, handle, photo
+  address and a short hash of its sign-in token on the device, never the token itself.
 - Videos opened from links in other apps aren't added to your watch history, unless you choose
   otherwise.
 

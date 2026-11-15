@@ -335,13 +335,48 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Bea
    - *Versão 1.0.4 (2026-11-14), pedidos do Johan na TV, aguardando o teste no aparelho* (ver "Como testar a 1.0.4"): os Ajustes da TV explicam o botão YouTube do controle, mostram se a Acessibilidade do BeamTube está ligada e abrem a tela dela direto; o logotipo do banner da TV ficou maior; o brilho do modo dormir vale também para os controles e as telas (nunca abaixo de 10%); e a barra de tempo da TV só pula com OK.
    - *Versão 1.0.5 (2026-11-14), pedido do Johan, aguardando o teste no aparelho* (ver "Como testar a 1.0.5"): na tela de tópicos, marcar uma sugestão não empurra mais as outras para a linha de baixo, e as linhas vão até a borda direita (TV e celular).
    - *Versão 1.0.6 (2026-11-14), pedidos do Johan na TV* (ver "Como testar a 1.0.6"): OK na aba aberta recarrega a lista, o serviço do botão YouTube volta depois de cada atualização do app, e o foco nos Ajustes da TV é igual em todas as linhas.
-   - *Para a 1.0.7 (2026-11-15), pedido do Johan*: o fundo da TV quase preto (#0A0A0C) no lugar do grafite do celular, com cartões, menus e avisos no mesmo passo. Para testar: na TV, o fundo das abas e dos Ajustes fica bem mais escuro que na 1.0.6, e os cartões dos Ajustes continuam visíveis; no celular e no tablet nada muda.
+   - *Versão 1.0.7 (2026-11-15), pedidos do Johan, publicada junto com o site* (ver "Como testar a 1.0.7"): vários usuários com troca rápida pela foto e um convidado só com Recomendados e busca (PR #39); o menu lateral do tablet como opção na TV, em Settings > Layout (#36); o fundo da TV quase preto (#0A0A0C), com cartões, menus e avisos no mesmo passo (#38); no player, a miniatura desfocada na tela toda enquanto carrega, uma animação curta ao abrir e fechar e, no celular, arrastar o vídeo para baixo para fechar (#37); e o link do site (beamtube.johankrs.com) no README (#35). O Johan pediu uma release só para tudo (2026-11-14): os PRs entraram sem mudar a versão, e o #35 trouxe a 1.0.7 com as notas juntas.
 
 Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", porque o motor acessa o real. Fica como ideia opcional para limpar o site.
 
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 1.0.7
+
+**Vários usuários e convidado**
+
+1. Instalar por cima da 1.0.6: abre na mesma conta, com os mesmos tópicos, bloqueios, listas e pontos dos vídeos.
+2. Tocar na foto no alto (na TV, andar pelas abas para a direita até passar de Settings e apertar OK na foto) e escolher "Add account". Entrar com outra conta pelo código: ela abre na tela de tópicos e depois no início dela.
+3. Trocar de volta pela foto: as Inscrições, os tópicos, os bloqueios e os Ajustes de cada um voltam. A troca é na hora, sem fechar o app.
+4. Escolher "Guest" no menu da foto: só Recommended e Search (no celular, sem a barra de baixo; na TV, só essas duas abas). No player, sem like, Save ou inscrever. Fechar e abrir o app: abre de novo no convidado. Voltar para uma conta pela foto.
+5. Nos Ajustes, o grupo Users em cima faz o mesmo. Dar Sign out numa conta e entrar de novo com ela: os tópicos e os bloqueios voltam.
+6. Na TV, com as abas em cima: subir de qualquer card, mesmo do que fica debaixo da foto, para na aba aberta, como antes; o foco na foto não troca a página, e a seta para a esquerda volta para a aba aberta.
+
+**Menu lateral na TV**
+
+7. TV: Settings > Layout > "Side menu". A tela troca na hora, e o foco continua na linha "Side menu". A foto do usuário fica no canto direito do título.
+8. Andar pelo menu com o controle: cada ícone abre a aba dele e o nome em cima muda junto. Os Ajustes ficam no pé do menu. Com o convidado, o menu só tem Recommended e Search.
+9. Numa lista, ir para a esquerda até o menu: o foco cai na aba aberta, sem trocar a página. Subir da primeira fileira de vídeos chega na foto, e não no menu.
+10. OK no ícone da aba aberta recarrega a lista. Voltar dentro da lista leva ao menu; de novo, sai do app. Uma playlist ou um canal abrem sem menu, como no tablet.
+11. Fechar e abrir o app: o menu lateral continua. Settings > Layout > "Tabs on top": tudo volta como antes. No celular e no tablet o grupo Layout não aparece.
+
+**Fundo da TV**
+
+12. Na TV, o fundo das abas e dos Ajustes fica bem mais escuro que na 1.0.6, e os cartões dos Ajustes continuam visíveis. No celular e no tablet nada muda.
+
+**Player**
+
+13. TV e celular: abrir um vídeo. O player aparece crescendo rápido por cima da lista. Enquanto carrega, a tela toda fica com as cores da miniatura, bem desfocada, sem faixa preta em cima, embaixo ou dos lados. Testar também um vídeo de playlist ou do histórico e um vídeo em pé.
+14. Quando o vídeo começa, ele aparece por baixo das cores, sem corte seco. Voltar: o player some encolhendo e a lista aparece por baixo.
+15. Celular: com o vídeo aberto, pôr o dedo no meio e arrastar para baixo. O vídeo desce junto com o dedo e encolhe um pouco; soltar mais ou menos a um quinto da tela (ou num movimento rápido) fecha. Soltar antes disso, o vídeo volta ao lugar e continua tocando.
+16. Celular: um toque ainda mostra e esconde os controles, dois toques nos lados ainda pulam 10 s, e arrastar na barra de tempo ainda anda no vídeo. Arrastar para cima ou para o lado não faz nada.
+17. TV Hisense (Android 11): a miniatura desfocada aparece igual, sem demora a mais para o vídeo começar.
+
+**Site**
+
+18. https://beamtube.johankrs.com/ mostra as novidades nos três idiomas, e o link do site no WhatsApp ou no Telegram mostra a prévia com o logo.
 
 ## Como testar a 1.0.6
 
