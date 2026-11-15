@@ -1,7 +1,10 @@
 package ytslim.player
 
+import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
+import android.graphics.ColorFilter
+import android.graphics.PixelFormat
+import android.graphics.drawable.Drawable
 import android.view.Window
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +49,24 @@ object SleepBrightness {
     /** Põe a camada preta da janela, por cima de tudo o que ela desenha (sem pegar toques nem teclas). */
     fun applyTo(window: Window, level: Int = this.level.value) {
         val alpha = windowDim(level)
-        window.decorView.foreground = if (alpha > 0f) ColorDrawable(Color.argb((alpha * 255).roundToInt(), 0, 0, 0)) else null
+        window.decorView.foreground = if (alpha > 0f) Dim(Color.argb((alpha * 255).roundToInt(), 0, 0, 0)) else null
+    }
+
+    /**
+     * A camada preta: pinta tudo o que a janela desenha, sem depender dos limites dela (1.0.8, achado
+     * do Johan na TV: com o brilho baixo, do segundo vídeo em diante ficava uma faixa clara no pé do
+     * vídeo). O player abre já com o brilho escolhido, e o Android media os limites da camada antes de
+     * a janela chegar ao tamanho final; um ColorDrawable ficava com a altura de antes e deixava o pé
+     * da tela de fora.
+     */
+    internal class Dim(val color: Int) : Drawable() {
+        override fun draw(canvas: Canvas) = canvas.drawColor(color)
+
+        override fun setAlpha(alpha: Int) = Unit
+
+        override fun setColorFilter(colorFilter: ColorFilter?) = Unit
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
     }
 }

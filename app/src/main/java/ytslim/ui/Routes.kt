@@ -18,6 +18,10 @@ data object HomeRoute
 @Serializable
 data class TopicsRoute(val firstRun: Boolean)
 
+/** Os tópicos de ver mais e ver menos, um por um, aberta pelos Ajustes (1.0.8). */
+@Serializable
+data object TopicListsRoute
+
 @Serializable
 data class PlaylistRoute(
     val browseId: String,

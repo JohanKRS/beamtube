@@ -77,13 +77,13 @@ Most of what BeamTube adds is about the moment after you press play.
   when the TV really can't keep up; phones and tablets start at 1080p. If you pick a resolution by
   hand, it stays.
 - **Loading takes the video's colors.** While a video loads, its thumbnail fills the screen,
-  heavily blurred, and the video fades in from those colors, with no black screen or black bars.
+  blurred, and the video fades in from those colors, with no black screen or black bars.
 - **The player opens and closes with a quick animation,** growing in over your list and shrinking
   away when you go back, in a fifth of a second. On phones and tablets you can also drag the video
-  down to close it.
-- **When a video ends,** BeamTube shows a few suggestions (the next video from the list you came
-  from, one from the same channel, and related videos that respect your topics), with Back already
-  focused on the TV. If you don't pick anything, it takes you back to your list after 15 seconds
+  down to close it: it fades back into the blurred thumbnail and shrinks away.
+- **When a video ends,** BeamTube shows a few suggestions over the blurred thumbnail (the next video
+  from the list you came from, one from the same channel, and related videos that respect your
+  topics), with Back already focused on the TV. If you don't pick anything, it takes you back to your list after 15 seconds
   instead of autoplaying the next thing. In Settings you can make it go straight back, play the
   first suggestion, or just stay on the video. Playlists and the sleep mode are left alone.
 
@@ -149,7 +149,7 @@ side. You can skip it and come back any time in Settings.
 - **Your subscriptions are never filtered by topic.** You chose those channels.
 
 A topic is just a name and a list of keywords, matched as whole words in the title and the channel
-name. In Settings you can change the keywords of any topic or add your own. You can also block a
+name. In Settings > Topics > Your topics you can change the keywords of any topic or add your own. You can also block a
 channel, and it disappears from everywhere.
 
 <p align="center">
@@ -182,7 +182,11 @@ your devices. If you already follow the channel, its videos aren't repeated.
   opens faster when you press OK.
 - **Tabs on top or a side menu.** Settings > Layout switches the TV to the tablet layout: the tab
   icons in a menu on the left, with Settings at the bottom, and the name of the open tab on top.
-- A near-black background, because TV screens show dark grays much lighter than phones do.
+- A near-black background by default, because TV screens show dark grays much lighter than phones
+  do.
+- In the player, Back hides the controls first, and the row of buttons wraps around from Play to
+  the sleep button. OK on the sleep button opens and closes its box and keeps the focus there; Up
+  goes into the box and Down comes back.
 
 <p align="center">
   <img src="docs/screenshots/tv-side-menu.jpg" alt="BeamTube on a TV with the side menu" width="80%">
@@ -211,10 +215,13 @@ your devices. If you already follow the channel, its videos aren't repeated.
   keep their own topics, blocked channels, settings, saved lists and where each video stopped. Your
   photo at the top switches users, or adds an account. BeamTube opens on the last user, with no
   picker when it starts.
-- **Guest.** Use BeamTube without an account, with only Recommended and Search. Nothing goes to any
-  account, and the device doesn't remember where you stopped.
+- **Guest.** Use BeamTube without an account, with Search only (YouTube doesn't recommend anything
+  without an account). Nothing goes to any account, and the device doesn't remember where you
+  stopped.
 - **Seven icon colors** and **seven highlight colors** in Settings. The highlight color is used for
   the open tab, progress bars, focus on TV and the player.
+- **Three backgrounds:** graphite (the phone default), near black (the TV default) and pure black
+  for OLED screens.
 - **English, Portuguese and Spanish.** BeamTube follows your device's language, or you can pick one
   in Settings > Language.
 

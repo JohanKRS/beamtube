@@ -23,8 +23,7 @@ import ytslim.player.ScreenOffService
 import ytslim.ui.Accents
 import ytslim.ui.AppLanguage
 import ytslim.ui.ImageHttp
-import ytslim.ui.Look
-import ytslim.ui.Tones
+import ytslim.ui.Backgrounds
 import ytslim.ui.tv.TvLayouts
 
 class App : Application(), SingletonImageLoader.Factory {
@@ -45,7 +44,7 @@ class App : Application(), SingletonImageLoader.Factory {
         // ter vencido, e o primeiro vídeo esperaria por eles. O que ainda vale não é refeito.
         AppScope.launch { AppVisibility.returns.collect { if (Users.current.value != null) EngineWarmup.start() } }
         val tv = isTv()
-        Look.tones = if (tv) Tones.TV else Tones.PHONE
+        Backgrounds.init(this, tv)
         if (tv) keepScreenOffServiceBound() else removeScreenOffService()
         logCompilation()
     }

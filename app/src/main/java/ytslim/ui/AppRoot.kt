@@ -144,9 +144,12 @@ private fun UserScreens(ui: Screens, user: User?, links: MutableStateFlow<Link?>
                     }
                 }
             }
+            composable<TopicListsRoute> {
+                ui.TopicLists(viewModel<TopicListsViewModel>(), onBack = { nav.popBackStack() })
+            }
             composable<HomeRoute> { entry ->
-                // O convidado abre nos Recomendados (só tem eles e a busca).
-                var tab by rememberSaveable { mutableStateOf(if (guest) HomeTab.RECOMMENDED else HomeTab.SUBSCRIPTIONS) }
+                // O convidado só tem a busca (1.0.8: sem conta, o Início do YouTube vem vazio).
+                var tab by rememberSaveable { mutableStateOf(if (guest) HomeTab.SEARCH else HomeTab.SUBSCRIPTIONS) }
                 // Cada aba guarda o próprio estado (a posição da lista) quando sai da tela.
                 val tabStates = rememberSaveableStateHolder()
                 // As outras abas carregam logo depois das Inscrições, para já estarem prontas ao trocar.
@@ -177,26 +180,31 @@ private fun UserScreens(ui: Screens, user: User?, links: MutableStateFlow<Link?>
                         HomeTab.SEARCH, HomeTab.SETTINGS -> Unit
                     }
                 }
-                ui.Home(tab = tab, onTab = { tab = it }, onReload = reload) { current ->
-                    tabStates.SaveableStateProvider(current.name) {
-                        when (current) {
-                            HomeTab.SUBSCRIPTIONS -> ui.Feed(viewModel<FeedViewModel>(), onPlay = play, onOpenChannel = openChannel)
-                            HomeTab.RECOMMENDED -> ui.Recommended(viewModel<RecommendedViewModel>(), onPlay = play, onOpenChannel = openChannel)
-                            HomeTab.EXPLORE -> ui.Explore(viewModel<ExploreViewModel>(), onPlay = play, onOpenChannel = openChannel)
-                            HomeTab.SEARCH -> ui.Search(
-                                vm = viewModel<SearchViewModel>(),
-                                onPlay = play,
-                                onOpenChannel = openChannel,
-                                onOpenPlaylist = openPlaylist,
-                            )
-                            HomeTab.PLAYLISTS -> ui.Playlists(viewModel<PlaylistsViewModel>(), onOpen = openPlaylist)
-                            HomeTab.HISTORY -> ui.History(viewModel<HistoryViewModel>(), onPlay = play, onOpenChannel = openChannel)
-                            HomeTab.SETTINGS -> ui.Settings(
-                                vm = viewModel<SettingsViewModel>(),
-                                onOpenPlaylist = openPlaylist,
-                                onOpenTopics = { nav.navigate(TopicsRoute(firstRun = false)) },
-                                onAddAccount = addAccount,
-                            )
+                // O botão dos filtros da Explore, na moldura, e a fileira deles, na Explore (1.0.8).
+                val exploreFilters = remember { ExploreFilterBar() }
+                CompositionLocalProvider(LocalExploreFilterBar provides exploreFilters) {
+                    ui.Home(tab = tab, onTab = { tab = it }, onReload = reload) { current ->
+                        tabStates.SaveableStateProvider(current.name) {
+                            when (current) {
+                                HomeTab.SUBSCRIPTIONS -> ui.Feed(viewModel<FeedViewModel>(), onPlay = play, onOpenChannel = openChannel)
+                                HomeTab.RECOMMENDED -> ui.Recommended(viewModel<RecommendedViewModel>(), onPlay = play, onOpenChannel = openChannel)
+                                HomeTab.EXPLORE -> ui.Explore(viewModel<ExploreViewModel>(), onPlay = play, onOpenChannel = openChannel)
+                                HomeTab.SEARCH -> ui.Search(
+                                    vm = viewModel<SearchViewModel>(),
+                                    onPlay = play,
+                                    onOpenChannel = openChannel,
+                                    onOpenPlaylist = openPlaylist,
+                                )
+                                HomeTab.PLAYLISTS -> ui.Playlists(viewModel<PlaylistsViewModel>(), onOpen = openPlaylist)
+                                HomeTab.HISTORY -> ui.History(viewModel<HistoryViewModel>(), onPlay = play, onOpenChannel = openChannel)
+                                HomeTab.SETTINGS -> ui.Settings(
+                                    vm = viewModel<SettingsViewModel>(),
+                                    onOpenPlaylist = openPlaylist,
+                                    onOpenTopics = { nav.navigate(TopicsRoute(firstRun = false)) },
+                                    onOpenTopicLists = { nav.navigate(TopicListsRoute) { launchSingleTop = true } },
+                                    onAddAccount = addAccount,
+                                )
+                            }
                         }
                     }
                 }
@@ -284,9 +292,22 @@ interface Screens {
     @Composable
     fun History(vm: HistoryViewModel, onPlay: (Video) -> Unit, onOpenChannel: (Channel) -> Unit)
 
-    /** [onOpenTopics] abre a tela de tópicos sugeridos ([Topics]); [onAddAccount], a de entrar com outra conta. */
+    /**
+     * [onOpenTopics] abre a tela de tópicos sugeridos ([Topics]); [onOpenTopicLists], a dos tópicos
+     * um por um ([TopicLists]); [onAddAccount], a de entrar com outra conta.
+     */
     @Composable
-    fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onOpenTopics: () -> Unit, onAddAccount: () -> Unit)
+    fun Settings(
+        vm: SettingsViewModel,
+        onOpenPlaylist: (Playlist) -> Unit,
+        onOpenTopics: () -> Unit,
+        onOpenTopicLists: () -> Unit,
+        onAddAccount: () -> Unit,
+    )
+
+    /** Os tópicos de ver mais e ver menos, para ajustar as palavras de cada um, tirar ou criar outros. */
+    @Composable
+    fun TopicLists(vm: TopicListsViewModel, onBack: () -> Unit)
 
     /**
      * Os tópicos sugeridos, em dois passos (ver mais, ver menos). [firstRun]: a tela do primeiro

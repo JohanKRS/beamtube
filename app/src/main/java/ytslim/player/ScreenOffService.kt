@@ -7,6 +7,9 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
@@ -147,10 +150,17 @@ class ScreenOffService : AccessibilityService() {
         /**
          * Abre os ajustes de Acessibilidade do Android, onde a pessoa liga o serviço. Se a TV não
          * tiver essa tela, abre os ajustes gerais. false se nenhuma das duas abriu.
+         *
+         * Cada tela é aberta pelo nome ([screensFor]), e não pelo pedido genérico do Android (1.0.8):
+         * numa TV do Johan o pedido genérico caía na janela "nenhum app pode executar esta ação" do
+         * sistema, sem erro para o app, e a tela não abria.
          */
         fun openSettings(context: Context): Boolean {
-            for (action in listOf(Settings.ACTION_ACCESSIBILITY_SETTINGS, Settings.ACTION_SETTINGS)) {
-                val intent = Intent(action)
+            val actions = listOf(Settings.ACTION_ACCESSIBILITY_SETTINGS, Settings.ACTION_SETTINGS)
+            val screens = actions.flatMap { screensFor(context, it) }
+            // Sem nenhuma tela à vista (não devia acontecer com o <queries> do manifesto), o pedido genérico.
+            val intents = screens.ifEmpty { actions.map(::Intent) }
+            for (intent in intents) {
                 if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 try {
                     context.startActivity(intent)
@@ -161,6 +171,33 @@ class ScreenOffService : AccessibilityService() {
             }
             return false
         }
+
+        /**
+         * As telas do sistema que atendem [action] e que o app pode abrir (exportadas, ligadas e sem
+         * permissão que ele não tenha), cada uma pelo nome: primeiro as dos apps do sistema, os
+         * ajustes da TV antes dos do celular.
+         */
+        private fun screensFor(context: Context, action: String): List<Intent> {
+            val manager = context.packageManager
+            val found = runCatching {
+                manager.queryIntentActivities(Intent(action), PackageManager.MATCH_DEFAULT_ONLY)
+            }.getOrDefault(emptyList())
+            return found.map { it.activityInfo }
+                .filter { info ->
+                    info.exported && info.enabled && info.applicationInfo.enabled &&
+                        (info.permission == null || context.checkSelfPermission(info.permission) == PackageManager.PERMISSION_GRANTED)
+                }
+                .sortedWith(
+                    compareBy<ActivityInfo>(
+                        { if (it.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) 0 else 1 },
+                        { SETTINGS_APPS.indexOf(it.packageName).let { index -> if (index < 0) SETTINGS_APPS.size else index } },
+                    ),
+                )
+                .map { Intent(action).setClassName(it.packageName, it.name) }
+        }
+
+        /** Os apps de ajustes conhecidos, na ordem de preferência: o da TV e o do celular. */
+        private val SETTINGS_APPS = listOf("com.android.tv.settings", "com.android.settings")
 
         /** Põe o aparelho para dormir. false se o serviço não está ligado. */
         fun turnOff(): Boolean {

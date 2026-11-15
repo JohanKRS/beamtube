@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,6 +15,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -24,6 +27,7 @@ import ytslim.player.SleepBrightness
 import ytslim.ui.AppLanguage
 import ytslim.ui.AppRoot
 import ytslim.ui.Link
+import ytslim.ui.Look
 
 class MainActivity : ComponentActivity() {
     /** O idioma escolhido em Settings ([AppLanguage]). */
@@ -41,6 +45,11 @@ class MainActivity : ComponentActivity() {
         if (!tv) drawEdgeToEdge()
         if (savedInstanceState == null) links.value = linkOf(intent)
         setContent { AppRoot(isTv = tv, links = links) }
+        // O fundo da janela no tom escolhido em Settings (1.0.8): a abertura e as trocas de tela
+        // não piscam na cor padrão do aparelho.
+        lifecycleScope.launch {
+            snapshotFlow { Look.Ground.toArgb() }.collect { window.setBackgroundDrawable(ColorDrawable(it)) }
+        }
         // O brilho do modo dormir também nas telas (1.0.4, pedido do Johan), nunca abaixo de 10%.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

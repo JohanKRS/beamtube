@@ -83,6 +83,15 @@ class SwipeToCloseTest {
         if (release) send(MotionEvent.ACTION_UP, y + down, start + steps * stepMs)
     }
 
+    private fun loadingOf(player: PlayerActivity): PlayerLoading {
+        fun find(view: android.view.View): PlayerLoading? = when (view) {
+            is PlayerLoading -> view
+            is android.view.ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { find(view.getChildAt(it)) }
+            else -> null
+        }
+        return find(player.window.decorView)!!
+    }
+
     private fun screenOf(player: PlayerActivity) = player.findViewById<android.view.View>(R.id.player_view).parent as android.view.View
 
     @Test
@@ -90,6 +99,9 @@ class SwipeToCloseTest {
     fun draggingTheVideoDownClosesThePlayer() {
         val player = openPlayer()
         drag(player, down = player.window.decorView.height * 0.4f)
+        // 1.0.8: antes de fechar, a miniatura desfocada volta por cima do vídeo (o contrário da abertura).
+        shadowOf(Looper.getMainLooper()).idleFor(400, TimeUnit.MILLISECONDS)
+        assertTrue(loadingOf(player).posterShown)
         assertTrue(player.isFinishing)
     }
 

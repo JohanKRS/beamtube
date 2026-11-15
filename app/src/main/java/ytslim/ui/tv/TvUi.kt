@@ -85,6 +85,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -172,6 +173,9 @@ import ytslim.ui.ChannelViewModel
 import ytslim.ui.ExploreViewModel
 import ytslim.ui.Accent
 import ytslim.ui.Accents
+import ytslim.ui.Background
+import ytslim.ui.BackgroundSwatch
+import ytslim.ui.Backgrounds
 import ytslim.ui.FeedViewModel
 import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
@@ -204,7 +208,9 @@ import ytslim.ui.Screens
 import ytslim.ui.SearchFilterChoice
 import ytslim.ui.SearchViewModel
 import ytslim.ui.SettingsViewModel
-import ytslim.ui.SettingsViewModel.TopicList
+import ytslim.ui.TopicListsViewModel
+import ytslim.ui.TopicListsViewModel.TopicList
+import ytslim.ui.topicCounts
 import ytslim.ui.SignInViewModel
 import ytslim.ui.UiState
 import ytslim.ui.VideoListContent
@@ -339,7 +345,7 @@ object TvUi : Screens {
 
     @Composable
     override fun Theme(content: @Composable () -> Unit) {
-        MaterialTheme(colorScheme = remember(Look.accent) { colors() }, typography = Type) {
+        MaterialTheme(colorScheme = remember(Look.accent, Look.tones) { colors() }, typography = Type) {
             Surface(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(0.dp)) { content() }
         }
     }
@@ -463,7 +469,7 @@ object TvUi : Screens {
         val selectedTab = remember { FocusRequester() }
         // Voltar, de dentro do conteúdo, vai para as abas (ou o menu lateral); nelas, sai do app.
         BackHandler(enabled = !tabsFocused) { runCatching { selectedTab.requestFocus() } }
-        // O convidado só tem os Recomendados e a busca ([homeTabs]), nos dois layouts.
+        // O convidado só tem a busca ([homeTabs]), nos dois layouts.
         val allowed = remember { homeTabs() }
         val tabs = remember(allowed) { allTabs.filter { it.first in allowed } }
         val labels = tabs.map { stringResource(it.second) }
@@ -524,9 +530,12 @@ object TvUi : Screens {
                     }
                   }
                 }
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(ContentGap))
                 CompositionLocalProvider(LocalInitialFocus provides initialFocus) {
-                    Box(Modifier.fillMaxSize()) { content(tab) }
+                    // Sair da lista para o menu (ou para as abas) e voltar devolve o foco ao mesmo card
+                    // (1.0.8, pedido do Johan): até a 1.0.7 a volta caía no card mais perto do item
+                    // do menu, quase sempre uma fileira acima, e a lista subia.
+                    Box(Modifier.fillMaxSize().focusRestorer().focusGroup()) { content(tab) }
                 }
             }
         }
@@ -568,8 +577,35 @@ object TvUi : Screens {
             false
         }
 
-    /** A largura do menu lateral, da borda da tela até o fio que o separa do conteúdo. */
-    private val SideMenuWidth = 88.dp
+    /**
+     * A largura do menu lateral, da borda da tela até o fio que o separa do conteúdo. Um pouco mais
+     * estreito na 1.0.8 (pedido do Johan: os ícones estavam grandes), junto com [SideIconSize],
+     * [SideFocusSize] e [SideItemHeight]; até a 1.0.7, 88, 24, 46 e 52.
+     */
+    private val SideMenuWidth = 80.dp
+
+    /** O ícone de cada aba no menu lateral. */
+    private val SideIconSize = 21.dp
+
+    /** O círculo do foco em volta do ícone. */
+    private val SideFocusSize = 40.dp
+
+    /** A altura de cada item do menu lateral. */
+    private val SideItemHeight = 46.dp
+
+    /** O espaço entre as abas (ou a barra do título) e o conteúdo. */
+    private val ContentGap = 24.dp
+
+    /** O respiro em cima da grade de vídeos (para o contorno do card focado não ser cortado). */
+    private val GridTop = 8.dp
+
+    /**
+     * O espaço entre a fresta do alto do menu e o primeiro item, calculado para o topo do desenho do
+     * primeiro ícone ficar na linha do topo da primeira fileira de miniaturas (1.0.8, pedido do
+     * Johan: o alinhamento ótico é o do ícone, não o do círculo do foco). Os ícones do Material
+     * começam 2/24 abaixo da caixa deles.
+     */
+    private val SideFirstItemGap = ContentGap + GridTop - (SideItemHeight - SideIconSize) / 2 - SideIconSize * (2f / 24f)
 
     /** O espaço de cima do menu lateral e da barra do título, que ficam na mesma linha. */
     private val SideTop = 22.dp
@@ -602,7 +638,7 @@ object TvUi : Screens {
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 BeamGlyph(Modifier.size(width = 40.dp, height = SideTitleHeight))
-                Spacer(Modifier.height(28.dp))
+                Spacer(Modifier.height(SideFirstItemGap))
                 sideTabs.filter { it.first in tabs }.forEach { (item, icon) ->
                     SideItem(item, icon, labels[tabs.indexOf(item)], item == tab, onTab, itemModifier(item))
                 }
@@ -617,11 +653,11 @@ object TvUi : Screens {
 
     @Composable
     private fun SideItem(item: HomeTab, icon: ImageVector, label: String, selected: Boolean, onTab: (HomeTab) -> Unit, modifier: Modifier) {
-        Box(Modifier.fillMaxWidth().height(52.dp), contentAlignment = Alignment.Center) {
-            if (selected) LightSlit(Modifier.align(Alignment.CenterStart).padding(start = 10.dp).size(3.dp, 22.dp))
+        Box(Modifier.fillMaxWidth().height(SideItemHeight), contentAlignment = Alignment.Center) {
+            if (selected) LightSlit(Modifier.align(Alignment.CenterStart).padding(start = 9.dp).size(3.dp, 20.dp))
             Surface(
                 onClick = { onTab(item) },
-                modifier = modifier.size(46.dp).onFocusChanged { if (it.isFocused) onTab(item) },
+                modifier = modifier.size(SideFocusSize).onFocusChanged { if (it.isFocused) onTab(item) },
                 shape = ClickableSurfaceDefaults.shape(CircleShape),
                 colors = ClickableSurfaceDefaults.colors(
                     containerColor = Color.Transparent,
@@ -632,7 +668,7 @@ object TvUi : Screens {
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(icon, contentDescription = label, modifier = Modifier.size(24.dp))
+                    Icon(icon, contentDescription = label, modifier = Modifier.size(SideIconSize))
                 }
             }
         }
@@ -968,7 +1004,8 @@ object TvUi : Screens {
                 placeholder = stringResource(R.string.search_hint),
                 imeAction = ImeAction.Search,
                 onAction = { submit(text) },
-                modifier = Modifier.fillMaxWidth(0.6f),
+                // A largura toda do conteúdo (1.0.8, pedido do Johan; até a 1.0.7, 60%).
+                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(12.dp))
             FilterButtons(searchFilterChoices(filters), onChange = vm::setFilters)
@@ -1135,7 +1172,13 @@ object TvUi : Screens {
     }
 
     @Composable
-    override fun Settings(vm: SettingsViewModel, onOpenPlaylist: (Playlist) -> Unit, onOpenTopics: () -> Unit, onAddAccount: () -> Unit) {
+    override fun Settings(
+        vm: SettingsViewModel,
+        onOpenPlaylist: (Playlist) -> Unit,
+        onOpenTopics: () -> Unit,
+        onOpenTopicLists: () -> Unit,
+        onAddAccount: () -> Unit,
+    ) {
         val settings by vm.settings.collectAsStateWithLifecycle()
         val user by vm.user.collectAsStateWithLifecycle()
         val accounts by vm.accounts.collectAsStateWithLifecycle()
@@ -1144,7 +1187,6 @@ object TvUi : Screens {
         val error by vm.error.collectAsStateWithLifecycle()
         val appIcon by vm.appIcon.collectAsStateWithLifecycle()
         var choosingTarget by rememberSaveable { mutableStateOf(false) }
-        var editing by remember { mutableStateOf<Pair<TopicList, Int?>?>(null) }
         val context = LocalContext.current
         val activity = context.findActivity()
         val currentLanguage = remember { activity?.let(AppLanguage::current) ?: Language.SYSTEM }
@@ -1282,6 +1324,8 @@ object TvUi : Screens {
                 },
             )
 
+            // Os tópicos um por um ficam numa tela só deles (1.0.8, pedido do Johan: as duas listas
+            // no meio dos Ajustes faziam a página crescer a cada tópico).
             group(
                 "topics",
                 R.string.settings_topics,
@@ -1294,24 +1338,15 @@ object TvUi : Screens {
                             trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
                         )
                     },
+                    row("yours") {
+                        SettingsRow(
+                            onClick = onOpenTopicLists,
+                            headlineContent = { Text(stringResource(R.string.settings_topics_yours)) },
+                            supportingContent = { Text(spacedDots(topicCounts(settings.filters.preferred.size, settings.filters.excluded.size))) },
+                            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                        )
+                    },
                 ),
-            )
-
-            topicGroup(
-                key = "preferred",
-                title = R.string.settings_preferred,
-                hint = R.string.settings_preferred_hint,
-                topics = settings.filters.preferred,
-                onEdit = { editing = TopicList.PREFERRED to it },
-                onRemove = { vm.removeTopic(TopicList.PREFERRED, it) },
-            )
-            topicGroup(
-                key = "excluded",
-                title = R.string.settings_excluded,
-                hint = R.string.settings_excluded_hint,
-                topics = settings.filters.excluded,
-                onEdit = { editing = TopicList.EXCLUDED to it },
-                onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
             )
 
             group(
@@ -1482,6 +1517,24 @@ object TvUi : Screens {
                 },
             )
 
+            // O fundo do app (1.0.8, pedido do Johan): o grafite do celular, o quase preto da TV
+            // (o padrão aqui) ou o preto puro das telas OLED. Vale para o aparelho.
+            group(
+                "background",
+                R.string.settings_background,
+                hint = R.string.settings_background_hint,
+                rows = Background.entries.map { option ->
+                    row(option.name) {
+                        SettingsRow(
+                            onClick = { Backgrounds.select(option) },
+                            headlineContent = { Text(stringResource(option.label)) },
+                            leadingContent = { BackgroundSwatch(option, 24.dp) },
+                            trailingContent = { RadioButton(selected = Backgrounds.current == option, onClick = null) },
+                        )
+                    }
+                },
+            )
+
             group(
                 "account",
                 R.string.settings_account,
@@ -1495,6 +1548,47 @@ object TvUi : Screens {
                     },
                 ),
             )
+        }
+
+    }
+
+    @Composable
+    override fun TopicLists(vm: TopicListsViewModel, onBack: () -> Unit) {
+        val settings by vm.settings.collectAsStateWithLifecycle()
+        var editing by remember { mutableStateOf<Pair<TopicList, Int?>?>(null) }
+        val first = remember { FocusRequester() }
+
+        Column(Modifier.fillMaxSize().padding(listScreenPadding)) {
+            Text(stringResource(R.string.settings_topics_yours), style = MaterialTheme.typography.headlineMedium, maxLines = 1)
+            Spacer(Modifier.height(8.dp))
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().focusRequester(first),
+                contentPadding = PaddingValues(bottom = 48.dp),
+            ) {
+                topicGroup(
+                    key = "preferred",
+                    title = R.string.settings_preferred,
+                    hint = R.string.settings_preferred_hint,
+                    topics = settings.filters.preferred,
+                    onEdit = { editing = TopicList.PREFERRED to it },
+                    onRemove = { vm.removeTopic(TopicList.PREFERRED, it) },
+                )
+                topicGroup(
+                    key = "excluded",
+                    title = R.string.settings_excluded,
+                    hint = R.string.settings_excluded_hint,
+                    topics = settings.filters.excluded,
+                    onEdit = { editing = TopicList.EXCLUDED to it },
+                    onRemove = { vm.removeTopic(TopicList.EXCLUDED, it) },
+                )
+            }
+        }
+        // O foco entra na lista (na primeira linha que aceita foco) assim que a tela abre.
+        LaunchedEffect(Unit) {
+            repeat(FOCUS_TRIES) {
+                withFrameNanos { }
+                if (runCatching { first.requestFocus() }.getOrElse { false } != false) return@LaunchedEffect
+            }
         }
 
         editing?.let { (list, index) ->
@@ -2028,7 +2122,7 @@ object TvUi : Screens {
             columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
             verticalArrangement = Arrangement.spacedBy(GridGapY),
-            contentPadding = PaddingValues(bottom = 48.dp, top = 8.dp),
+            contentPadding = PaddingValues(bottom = 48.dp, top = GridTop),
             modifier = Modifier.onFocusChanged { inGrid = it.hasFocus },
         ) {
             if (content.videos.isEmpty() && !content.loadingMore) {

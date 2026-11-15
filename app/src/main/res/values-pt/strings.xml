@@ -130,6 +130,11 @@
     <string name="settings_app_icon_hint">O ícone novo pode levar alguns segundos para aparecer. Alguns launchers tiram o atalho da tela inicial quando ele muda; é só pôr o BeamTube de novo pela lista de apps.</string>
     <string name="settings_accent">Cor de destaque</string>
     <string name="settings_accent_hint">As cores do ícone, um pouco mais claras onde o ícone é escuro demais para aparecer. Vale para a aba ativa, o progresso, o foco e os botões ligados, no app e no player.</string>
+    <string name="settings_background">Fundo</string>
+    <string name="settings_background_hint">A cor por trás das listas e dos ajustes, neste aparelho. No preto puro, as telas OLED apagam os pixels do fundo.</string>
+    <string name="background_graphite">Grafite</string>
+    <string name="background_near_black">Quase preto</string>
+    <string name="background_black">Preto puro (OLED)</string>
     <string name="accent_amber">Âmbar</string>
     <string name="accent_silver">Prata</string>
     <string name="accent_teal">Verde-azulado</string>
@@ -149,7 +154,7 @@
     <string name="users_title">Usuários</string>
     <string name="users_hint">Cada conta tem os próprios tópicos, canais bloqueados e ajustes neste aparelho. O BeamTube abre no último usado.</string>
     <string name="user_guest">Convidado</string>
-    <string name="user_guest_desc">Só Recomendados e busca, sem conta e sem histórico.</string>
+    <string name="user_guest_desc">Só a busca, sem conta e sem histórico.</string>
     <string name="user_add">Adicionar conta</string>
     <string name="user_menu">Trocar de usuário</string>
     <string name="sign_in_guest">Usar sem conta</string>
@@ -236,6 +241,8 @@
     <string name="explore_intro_tv">Vídeos dos canais que os seus canais destacam, novos e antigos. Segure OK na aba para ver outra mistura.</string>
     <string name="explore_empty">Nada para mostrar ainda. A Explorar usa os canais que os seus canais destacam nas páginas deles.</string>
     <string name="explore_filtered_empty">Nenhum destes canais tem vídeos que combinam com os filtros.</string>
+    <string name="explore_filters_show">Mostrar filtros</string>
+    <string name="explore_filters_hide">Esconder filtros</string>
     <string name="topics_step">%1$d de %2$d</string>
     <string name="topics_title_more">Do que você quer ver mais?</string>
     <string name="topics_body_more">Escolha quantos quiser. Vídeos sobre estes tópicos vêm primeiro nos Recomendados.</string>
@@ -248,7 +255,8 @@
     <string name="topics_done">Pronto</string>
     <string name="settings_topics">Tópicos</string>
     <string name="settings_topics_choose">Escolher entre as sugestões</string>
-    <string name="settings_topics_hint">Marque o que você quer ver mais e ver menos. Logo abaixo dá para ajustar cada tópico ou criar os seus.</string>
+    <string name="settings_topics_yours">Seus tópicos</string>
+    <string name="settings_topics_hint">Marque o que você quer ver mais e ver menos. Em Seus tópicos dá para ajustar cada um ou criar os seus.</string>
     <string name="topic_documentaries">Documentários</string>
     <string name="topic_video_essays">Vídeo-ensaios</string>
     <string name="topic_history">História</string>

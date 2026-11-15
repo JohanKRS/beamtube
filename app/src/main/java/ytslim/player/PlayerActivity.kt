@@ -237,7 +237,7 @@ class PlayerActivity : ComponentActivity() {
     /** O player abriu com as animações dele ([useTransitions]); fechar usa as de fechar. */
     private var transitions = false
 
-    /** Fechando por ter sido arrastado para baixo ([SwipeToClose]): a janela continua descendo. */
+    /** Fechando por ter sido arrastado para baixo ([SwipeToClose]): a miniatura desfocada voltando por cima. */
     private var closingBySwipe = false
 
     /** Pulos seguidos com dois toques: o lado, até quando um toque só ainda soma, e o total. */
@@ -248,6 +248,15 @@ class PlayerActivity : ComponentActivity() {
 
     private val closePanelOnBack = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() = closePanel()
+    }
+
+    /**
+     * Na TV, "voltar" com os controles na tela só esconde os controles (1.0.8, pedido do Johan); com
+     * eles escondidos, sai do vídeo. Um painel aberto fecha antes ([closePanelOnBack], que vem depois
+     * e por isso é atendido primeiro).
+     */
+    private val hideControlsOnBack = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() = playerView.hideController()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -307,6 +316,7 @@ class PlayerActivity : ComponentActivity() {
         buildSleepPanel()
         // O brilho escolhido num vídeo vale para os próximos, até fechar o app (pedido do Johan, 2026-11-03).
         if (SleepBrightness.level.value < 100) setBrightness(SleepBrightness.level.value)
+        onBackPressedDispatcher.addCallback(this, hideControlsOnBack)
         onBackPressedDispatcher.addCallback(this, closePanelOnBack)
 
         val startMs = savedInstanceState?.getLong(KEY_POSITION) ?: target.startMs
@@ -510,9 +520,11 @@ class PlayerActivity : ComponentActivity() {
             PlayerView.ControllerVisibilityListener { visibility ->
                 if (visibility != View.VISIBLE) closePanel(focusButton = false)
                 captionLift.setOpen(visibility == View.VISIBLE)
+                hideControlsOnBack.isEnabled = !touch && visibility == View.VISIBLE
             },
         )
         captionLift.setOpen(playerView.isControllerFullyVisible)
+        hideControlsOnBack.isEnabled = !touch && playerView.isControllerFullyVisible
     }
 
     /**
@@ -643,8 +655,10 @@ class PlayerActivity : ComponentActivity() {
         // Com o painel aberto, os controles não somem sozinhos (no celular os toques não contam).
         playerView.controllerShowTimeoutMs = 0
         playerView.showController()
+        // Na TV, o foco fica na lua: ela só abre e fecha a caixa (1.0.8, pedido do Johan; ir direto
+        // para o brilho confundia, e o "cima" de costume levava ao canal, no alto). [sleepPanelKey].
         val focus = if (panel == sleepPanel) {
-            brightnessRow.findViewWithTag<View>(brightness)
+            if (touch) brightnessRow.findViewWithTag<View>(brightness) else sleepButton
         } else {
             qualityRow.findViewWithTag<View>(controller.quality.value.manual ?: AUTO_QUALITY)
         }
@@ -753,7 +767,7 @@ class PlayerActivity : ComponentActivity() {
                     closePanel(focusButton = false)
                     playerView.hideController()
                     playerView.useController = false
-                    endScreen.show(suggestions, playNext = settings.endAction == EndAction.NEXT)
+                    endScreen.show(suggestions, playNext = settings.endAction == EndAction.NEXT, poster = loading.posterUrl)
                 }
             }
         }
@@ -813,10 +827,27 @@ class PlayerActivity : ComponentActivity() {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             keyStartedOpen = ::playerView.isInitialized && playerView.isControllerFullyVisible
         }
+        if (event.action == KeyEvent.ACTION_DOWN && !touch && openPanel == sleepPanel && sleepPanelKey(event.keyCode)) return true
         if (event.action == KeyEvent.ACTION_DOWN && (event.repeatCount == 0 || keyStartedOpen) && hidesControls(event.keyCode)) {
             playerView.hideController()
             hidingKey = event.keyCode
             return true
+        }
+        // Na TV, a linha dos botões dá a volta nas pontas ([PlayerIsland.wrapFocus]).
+        if (event.action == KeyEvent.ACTION_DOWN && !touch && openPanel == null && ::island.isInitialized &&
+            playerView.isControllerFullyVisible
+        ) {
+            val direction = when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> View.FOCUS_LEFT
+                KeyEvent.KEYCODE_DPAD_RIGHT -> View.FOCUS_RIGHT
+                else -> null
+            }
+            val focused = playerView.findFocus()
+            if (direction != null && focused != null && island.wrapFocus(focused, direction)) {
+                // Como qualquer seta com os controles abertos: o tempo para eles sumirem recomeça.
+                playerView.showController()
+                return true
+            }
         }
         // A tecla de avançar do controle remoto também pula o trecho (sem ele, o PlayerView avança 15 s).
         if (event.keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
@@ -827,6 +858,24 @@ class PlayerActivity : ComponentActivity() {
             if (jumpAhead(from, from + player.seekForwardIncrement)) return true
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * Na TV, com a caixa da lua aberta, cima na lua entra na linha mais perto dela (a de baixo da
+     * caixa, na opção marcada), e baixo nessa linha volta para a lua, em vez de cair nas legendas
+     * (1.0.8, pedido do Johan). Entre as linhas da caixa, as setas andam como sempre.
+     */
+    private fun sleepPanelKey(keyCode: Int): Boolean {
+        val bottom = listOf(endRow, queueRow, brightnessRow).firstOrNull { (it.parent as View).visibility == View.VISIBLE }
+            ?: return false
+        return when {
+            keyCode == KeyEvent.KEYCODE_DPAD_UP && sleepButton.isFocused -> {
+                val chosen = (0 until bottom.childCount).map(bottom::getChildAt).firstOrNull { it.isActivated } ?: bottom.getChildAt(0)
+                chosen?.requestFocus() == true
+            }
+            keyCode == KeyEvent.KEYCODE_DPAD_DOWN && bottom.findFocus() != null -> sleepButton.requestFocus()
+            else -> false
+        }
     }
 
     /**
@@ -959,7 +1008,7 @@ class PlayerActivity : ComponentActivity() {
         // Até o Android 13, a animação de fechar vale só se pedida logo depois do finish.
         if (transitions && Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             @Suppress("DEPRECATION")
-            overridePendingTransition(R.anim.player_hold, if (closingBySwipe) R.anim.player_swipe_exit else R.anim.player_close_exit)
+            overridePendingTransition(R.anim.player_hold, R.anim.player_close_exit)
         }
         // Fechando o player (voltar, ou o canal do vídeo), sair não abre a janelinha.
         updateMiniPlayer()
@@ -982,14 +1031,21 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    /** Arrastado para baixo e solto ([SwipeToClose]): fecha como o voltar, descendo em vez de encolher. */
+    /**
+     * Arrastado para baixo e solto ([SwipeToClose]): o inverso da abertura (1.0.8, pedido do Johan:
+     * "o reverso da animação de entrada do vídeo, com aquele fade para blur"). O vídeo some por baixo
+     * da miniatura desfocada, como ela tinha saído por cima dele ao começar ([PlayerLoading.blurBack]),
+     * e então o player fecha encolhendo, como no voltar. Até a 1.0.7 ele continuava descendo e sumia.
+     * Com as animações desligadas no Android, fecha na hora.
+     */
     private fun closeBySwipe() {
-        if (isFinishing) return
+        if (isFinishing || closingBySwipe) return
         closingBySwipe = true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, R.anim.player_hold, R.anim.player_swipe_exit)
-        }
-        close()
+        playerView.hideController()
+        val animations = android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+        if (!transitions || !animations) return close()
+        loading.blurBack(BLUR_BACK_MS)
+        screen.postDelayed(::close, BLUR_BACK_MS)
     }
 
     /**
@@ -1019,6 +1075,8 @@ class PlayerActivity : ComponentActivity() {
         )
         val swipe = SwipeToClose(screen, onClose = ::closeBySwipe)
         playerView.setOnTouchListener { _, event ->
+            // Solto para fechar: o vídeo fica onde o dedo o deixou enquanto o player fecha.
+            if (closingBySwipe) return@setOnTouchListener true
             val wasDragging = swipe.dragging
             if (swipe.onTouch(event)) {
                 // Virou arrastar: o toque que começou não mostra os controles nem conta como toque duplo.
@@ -1461,6 +1519,13 @@ class PlayerActivity : ComponentActivity() {
 
         /** Tempo para cancelar o "Turn off" depois que os vídeos acabam. */
         private const val TURN_OFF_DELAY_MS = 10_000L
+
+        /**
+         * Arrastado para fechar: o tempo da miniatura desfocada voltar por cima do vídeo, antes de o
+         * player fechar encolhendo (0,17 s). Na abertura, ela sai em 0,3 s; aqui, mais rápido, para
+         * o fechar não parecer lento.
+         */
+        private const val BLUR_BACK_MS = 160L
 
         private const val STEP_SECONDS = (TouchRules.SEEK_STEP_MS / 1000).toInt()
 

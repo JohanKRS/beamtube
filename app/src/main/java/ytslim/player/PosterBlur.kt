@@ -1,6 +1,7 @@
 package ytslim.player
 
 import android.graphics.Bitmap
+import android.graphics.ColorMatrix
 import android.graphics.Rect
 import coil3.size.Size
 import coil3.transform.Transformation
@@ -12,17 +13,23 @@ import coil3.transform.Transformation
  * embaixo; a de um vídeo em pé, dos lados), pequena e bem desfocada. A tela estica o resultado até as
  * bordas ([PlayerLoading]).
  *
+ * Desde a 1.0.8 o desfoque é mais leve (pedido do Johan, 2026-11-15: "o blur não precisa ser tão
+ * forte no início e no fim"): as formas grandes da miniatura aparecem, sem dar para ler nada. Na
+ * 1.0.7 eram 48 px e raio 7 (o desfoque media uns 16% do lado menor, e sobrava só uma mancha); agora
+ * são 64 px e raio 4, uns 7%. A mesma imagem fica no fundo da tela do fim ([EndScreen]) e volta por
+ * cima do vídeo ao arrastar para fechar ([PlayerLoading.blurBack]).
+ *
  * Feito à mão, num bitmap pequeno, para sair igual em todo aparelho: o desfoque do Android
  * (RenderEffect) só existe do 12 em diante, e as TVs do Johan são Android 11, 32 bits e fracas. Com
- * [SHORT_SIDE] px no lado menor, são uns 4 mil pontos: o desfoque inteiro custa menos de um
+ * [SHORT_SIDE] px no lado menor, são uns 7 mil pontos: o desfoque inteiro custa menos de um
  * milissegundo, numa thread do carregador de imagens.
  */
 internal object PosterBlur {
-    /** O lado menor do bitmap desfocado, em px. A tela amplia; de tão desfocado, não aparece serrilhado. */
-    const val SHORT_SIDE = 48
+    /** O lado menor do bitmap desfocado, em px. A tela amplia; desfocado, não aparece serrilhado. */
+    const val SHORT_SIDE = 64
 
-    /** O raio de cada passada da média ([PASSES] passadas), em px do bitmap pequeno: uns 15% do lado menor. */
-    const val RADIUS = 7
+    /** O raio de cada passada da média ([PASSES] passadas), em px do bitmap pequeno: o desfoque fica em uns 7% do lado menor. */
+    const val RADIUS = 4
 
     /** Três médias seguidas dão um desfoque quase igual ao gaussiano, sem bordas duras. */
     private const val PASSES = 3
@@ -141,8 +148,27 @@ internal object PosterBlur {
 
     /** O [blurred] no carregador de imagens: roda fora da thread da tela, e o resultado fica no cache dele. */
     object Coil : Transformation() {
-        override val cacheKey = "beamtube.poster-blur.v1"
+        override val cacheKey = "beamtube.poster-blur.v2"
 
         override suspend fun transform(input: Bitmap, size: Size): Bitmap = blurred(input)
+    }
+
+    /** A miniatura é decodificada em no máximo isto de cada lado, antes de reduzir e desfocar. */
+    const val DECODE_PX = 320
+
+    /** O brilho da miniatura desfocada: 35% mais escura (eram 55% com ela nítida). */
+    private const val BRIGHTNESS = 0.65f
+
+    /** As cores 40% mais fortes que as da miniatura, para não ficarem lavadas depois do desfoque. */
+    private const val SATURATION = 1.4f
+
+    /**
+     * O tom da miniatura desfocada, na tela de carregando e na do fim: um pouco escurecida, para o
+     * círculo e os textos aparecerem por cima, e com as cores reforçadas (o desfoque mistura tudo e
+     * deixa a imagem acinzentada).
+     */
+    fun tone(): ColorMatrix = ColorMatrix().apply {
+        setSaturation(SATURATION)
+        postConcat(ColorMatrix().apply { setScale(BRIGHTNESS, BRIGHTNESS, BRIGHTNESS, 1f) })
     }
 }

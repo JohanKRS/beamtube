@@ -130,6 +130,11 @@
     <string name="settings_app_icon_hint">El ícono nuevo puede tardar unos segundos en aparecer. Algunos launchers quitan el acceso directo de la pantalla de inicio cuando cambia; vuelve a agregar BeamTube desde la lista de apps.</string>
     <string name="settings_accent">Color de realce</string>
     <string name="settings_accent_hint">Los colores del ícono, un poco más claros donde el ícono es demasiado oscuro para verse. Se usa en la pestaña activa, el progreso, el foco y los botones activados, en la app y en el reproductor.</string>
+    <string name="settings_background">Fondo</string>
+    <string name="settings_background_hint">El color detrás de las listas y los ajustes, en este dispositivo. Con el negro puro, las pantallas OLED apagan los píxeles del fondo.</string>
+    <string name="background_graphite">Grafito</string>
+    <string name="background_near_black">Casi negro</string>
+    <string name="background_black">Negro puro (OLED)</string>
     <string name="accent_amber">Ámbar</string>
     <string name="accent_silver">Plata</string>
     <string name="accent_teal">Verde azulado</string>
@@ -149,7 +154,7 @@
     <string name="users_title">Usuarios</string>
     <string name="users_hint">Cada cuenta tiene sus propios temas, canales bloqueados y ajustes en este dispositivo. BeamTube se abre con el último que se usó.</string>
     <string name="user_guest">Invitado</string>
-    <string name="user_guest_desc">Solo Recomendados y búsqueda, sin cuenta y sin historial.</string>
+    <string name="user_guest_desc">Solo la búsqueda, sin cuenta y sin historial.</string>
     <string name="user_add">Añadir cuenta</string>
     <string name="user_menu">Cambiar de usuario</string>
     <string name="sign_in_guest">Usar sin cuenta</string>
@@ -236,6 +241,8 @@
     <string name="explore_intro_tv">Videos de los canales que destacan tus canales, nuevos y antiguos. Mantén OK en la pestaña para ver otra mezcla.</string>
     <string name="explore_empty">Todavía no hay nada que mostrar. Explorar usa los canales que tus canales destacan en sus páginas.</string>
     <string name="explore_filtered_empty">Ninguno de estos canales tiene videos que coincidan con los filtros.</string>
+    <string name="explore_filters_show">Mostrar filtros</string>
+    <string name="explore_filters_hide">Ocultar filtros</string>
     <string name="topics_step">%1$d de %2$d</string>
     <string name="topics_title_more">¿De qué quieres ver más?</string>
     <string name="topics_body_more">Elige todos los que quieras. Los videos sobre estos temas aparecen primero en Recomendados.</string>
@@ -248,7 +255,8 @@
     <string name="topics_done">Listo</string>
     <string name="settings_topics">Temas</string>
     <string name="settings_topics_choose">Elegir entre las sugerencias</string>
-    <string name="settings_topics_hint">Marca lo que quieres ver más y ver menos. Abajo puedes ajustar cada tema o crear los tuyos.</string>
+    <string name="settings_topics_yours">Tus temas</string>
+    <string name="settings_topics_hint">Marca lo que quieres ver más y ver menos. En Tus temas puedes ajustar cada uno o crear los tuyos.</string>
     <string name="topic_documentaries">Documentales</string>
     <string name="topic_video_essays">Videoensayos</string>
     <string name="topic_history">Historia</string>

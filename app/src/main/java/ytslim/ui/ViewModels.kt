@@ -675,38 +675,6 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
-    enum class TopicList { EXCLUDED, PREFERRED }
-
-    private fun topics(list: TopicList): List<Topic> = when (list) {
-        TopicList.EXCLUDED -> settings.value.filters.excluded
-        TopicList.PREFERRED -> settings.value.filters.preferred
-    }
-
-    private fun setTopics(list: TopicList, topics: List<Topic>) {
-        viewModelScope.launch {
-            when (list) {
-                TopicList.EXCLUDED -> SettingsRepository.setExcludedTopics(topics)
-                TopicList.PREFERRED -> SettingsRepository.setPreferredTopics(topics)
-            }
-        }
-    }
-
-    /** Cria ([index] null) ou altera um tópico. Palavras-chave separadas por vírgula. */
-    fun saveTopic(list: TopicList, index: Int?, name: String, keywords: String) {
-        val current = topics(list).toMutableList()
-        // Um tópico das sugestões continua ligado a elas se o nome não mudou (só as palavras).
-        val before = index?.let(current::getOrNull)
-        val topic = Topic(name.trim(), TopicRules.parseKeywords(keywords), id = before?.id?.takeIf { before.name == name.trim() })
-        if (topic.name.isEmpty() || topic.keywords.isEmpty()) return
-        if (index != null && index in current.indices) current[index] = topic else current += topic
-        setTopics(list, current)
-    }
-
-    fun removeTopic(list: TopicList, index: Int) {
-        val current = topics(list)
-        if (index in current.indices) setTopics(list, current.filterIndexed { i, _ -> i != index })
-    }
-
     fun unblock(channelId: String) {
         viewModelScope.launch { SettingsRepository.unblock(channelId) }
     }
@@ -751,5 +719,45 @@ class SettingsViewModel : ViewModel() {
     fun signOut() {
         val user = Users.current.value ?: return
         AppScope.launch { Users.signOut(user) }
+    }
+}
+
+/**
+ * Os tópicos de ver mais e ver menos, um por um (1.0.8: numa tela só deles, aberta pelos Ajustes;
+ * até a 1.0.7 as duas listas ficavam no meio dos Ajustes e a página crescia com elas).
+ */
+class TopicListsViewModel : ViewModel() {
+    val settings: StateFlow<Settings> = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
+
+    enum class TopicList { EXCLUDED, PREFERRED }
+
+    private fun topics(list: TopicList): List<Topic> = when (list) {
+        TopicList.EXCLUDED -> settings.value.filters.excluded
+        TopicList.PREFERRED -> settings.value.filters.preferred
+    }
+
+    private fun setTopics(list: TopicList, topics: List<Topic>) {
+        viewModelScope.launch {
+            when (list) {
+                TopicList.EXCLUDED -> SettingsRepository.setExcludedTopics(topics)
+                TopicList.PREFERRED -> SettingsRepository.setPreferredTopics(topics)
+            }
+        }
+    }
+
+    /** Cria ([index] null) ou altera um tópico. Palavras-chave separadas por vírgula. */
+    fun saveTopic(list: TopicList, index: Int?, name: String, keywords: String) {
+        val current = topics(list).toMutableList()
+        // Um tópico das sugestões continua ligado a elas se o nome não mudou (só as palavras).
+        val before = index?.let(current::getOrNull)
+        val topic = Topic(name.trim(), TopicRules.parseKeywords(keywords), id = before?.id?.takeIf { before.name == name.trim() })
+        if (topic.name.isEmpty() || topic.keywords.isEmpty()) return
+        if (index != null && index in current.indices) current[index] = topic else current += topic
+        setTopics(list, current)
+    }
+
+    fun removeTopic(list: TopicList, index: Int) {
+        val current = topics(list)
+        if (index in current.indices) setTopics(list, current.filterIndexed { i, _ -> i != index })
     }
 }

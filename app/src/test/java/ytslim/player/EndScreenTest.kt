@@ -35,7 +35,7 @@ class EndScreenTest {
     private fun open(playNext: Boolean): EndScreen {
         val end = EndScreen(compose.activity, tv = true, onPlay = { played += it.id }, onBack = { backs++ })
         compose.mainClock.autoAdvance = false
-        compose.runOnUiThread { end.show(listOf(video("a"), video("b")), playNext) }
+        compose.runOnUiThread { end.show(listOf(video("a"), video("b")), playNext, poster = null) }
         compose.setContent { end.Content() }
         compose.mainClock.advanceTimeByFrame()
         return end

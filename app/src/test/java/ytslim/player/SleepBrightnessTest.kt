@@ -1,6 +1,5 @@
 package ytslim.player
 
-import android.graphics.drawable.ColorDrawable
 import androidx.activity.ComponentActivity
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -39,10 +38,29 @@ class SleepBrightnessTest {
     fun theWindowGetsADarkLayer() {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
         SleepBrightness.applyTo(activity.window, 25)
-        assertEquals(191, (activity.window.decorView.foreground as ColorDrawable).alpha)
+        assertEquals(191, android.graphics.Color.alpha((activity.window.decorView.foreground as SleepBrightness.Dim).color))
         SleepBrightness.applyTo(activity.window, 0)
-        assertEquals(230, (activity.window.decorView.foreground as ColorDrawable).alpha)
+        assertEquals(230, android.graphics.Color.alpha((activity.window.decorView.foreground as SleepBrightness.Dim).color))
         SleepBrightness.applyTo(activity.window, 100)
         assertNull(activity.window.decorView.foreground)
+    }
+
+    /**
+     * A camada cobre a janela toda mesmo com limites velhos (1.0.8: o player aberto já com o brilho
+     * baixo ficava com uma faixa clara no pé, do segundo vídeo em diante).
+     */
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun theDarkLayerCoversTheWholeWindowEvenWithOldBounds() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        SleepBrightness.applyTo(activity.window, 10)
+        val layer = activity.window.decorView.foreground!!
+        layer.setBounds(0, 0, 100, 90)
+        val bitmap = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.WHITE)
+        layer.draw(android.graphics.Canvas(bitmap))
+        // 90% de preto por cima do branco: o pé também escurece.
+        assertEquals(26f, android.graphics.Color.red(bitmap.getPixel(50, 95)).toFloat(), 1.5f)
+        assertEquals(26f, android.graphics.Color.red(bitmap.getPixel(50, 10)).toFloat(), 1.5f)
     }
 }
