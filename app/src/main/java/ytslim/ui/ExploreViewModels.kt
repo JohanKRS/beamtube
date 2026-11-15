@@ -79,6 +79,9 @@ class ExploreViewModel : ViewModel(), Refreshable {
         AppScope.launch { SettingsRepository.setExploreIntroSeen() }
     }
 
+    /** A aba já apareceu na tela ([seen]). Antes do init, que o lê (ver o [RecommendedViewModel]). */
+    private var seen = false
+
     init {
         // Abre na hora com o sorteio preparado na abertura anterior (1.0.11, pedido do Johan: logo
         // depois de ligar a TV, a Explore demorava a aparecer). Sem ele, sorteia como antes; como a
@@ -96,8 +99,6 @@ class ExploreViewModel : ViewModel(), Refreshable {
             }
         }
     }
-
-    private var seen = false
 
     /**
      * A aba apareceu na tela. Só então (uma vez, com a tela já assentada) o app sorteia por trás o

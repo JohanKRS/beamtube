@@ -370,12 +370,19 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Bea
    - *Versão 1.0.9 (2026-11-15), pedidos do Johan testando a 1.0.8* (ver "Como testar a 1.0.9"): o botão de legenda abre um painel com Off, o idioma do app, o original e inglês, sem repetir, com a tradução automática do YouTube quando não há legenda no idioma; o desfoque da miniatura mais leve (dá para reconhecê-la); arrastar para fechar sem mover o vídeo, desfocando e escurecendo; a tela do fim também com o brilho baixo; a faixa clara no pé do vídeo escurecido de verdade corrigida (a causa era o buraco da `SurfaceView`); as playlists inscritas numa tela própria dos Ajustes; e, no menu lateral da TV, a volta ao mesmo card (agora sim) e a seleção alinhada pelo bloco de novo. O Johan pediu a release quando estivesse pronta (2026-11-15).
    - *Versão 1.0.10 (2026-11-15), pedidos do Johan testando a 1.0.9* (ver "Como testar a 1.0.10"): o idioma da legenda sai do player e vai para Settings > Captions (o botão volta a só ligar e desligar); depois de arrastar o vídeo para fechar, a lista volta saindo do preto; na TV, descer para a linha de botões do player volta ao mesmo botão de antes; e, no site e no README, a linha da comparação fala em visual consistente, que não fica mudando, em vez de "o mesmo visual".
    - *Versão 1.0.11 (2026-11-15), pedidos do Johan na TV* (ver "Como testar a 1.0.11"): no player, com os controles escondidos, esquerda e direita mexem direto na linha do tempo, cima abre no canal e baixo no tocar/pausar; nas abas, cada toque anda uma só (logo depois de ligar a TV, um toque pulava até a Busca); e as Recomendações e a Explore abrem na hora, com a lista da última vez (o que está à vista não pula: a lista nova entra logo abaixo) e um sorteio preparado antes, carregadas por trás uma aba de cada vez, com a primeira tela na frente.
+   - *Versão 1.0.12 (2026-11-15), correção da 1.0.11* (ver "Como testar a 1.0.12"): a 1.0.11 fechava toda vez que abria, na TV e no celular (achado do Johan). As Recomendações, que desde a 1.0.11 abrem por trás logo depois das Inscrições, liam o `seen` antes de ele existir: o campo estava declarado depois do `init`, e o viewModelScope roda no Main.immediate, então a coleta começada no `init` rodou ali mesmo, dentro do construtor, e o achou nulo (NPE no `combine`, log da TCL pelo ADB). Os campos lidos no `init` agora vêm antes dele (Recomendações e Explore), e o `TabViewModelsTest` abre as abas que carregam por trás.
 
 Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", porque o motor acessa o real. Fica como ideia opcional para limpar o site.
 
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 1.0.12
+
+1. Abrir o BeamTube na TV e no celular: ele abre e fica aberto, com as Inscrições e, por trás, as outras abas, como a 1.0.11 prometia.
+2. Ir a Recommended e Explore logo depois de abrir: aparecem na hora (os passos 5 a 9 do "Como testar a 1.0.11" valem de novo).
+3. Botão YouTube (TV): depois da atualização, abrir o BeamTube uma vez e esperar uns 5 s; o botão YouTube do controle volta a abrir o BeamTube.
 
 ## Como testar a 1.0.11
 
