@@ -1,6 +1,7 @@
 package ytslim.player
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.AlertDialog
 import android.app.PictureInPictureParams
 import android.content.Context
@@ -147,6 +148,9 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var previewTime: TextView
     private lateinit var endScreen: EndScreen
 
+    /** A tela inteira do player (o que desce junto com o dedo no [SwipeToClose]). */
+    private lateinit var screen: View
+
     private var saveHistory = true
     private var external = false
 
@@ -230,6 +234,12 @@ class PlayerActivity : ComponentActivity() {
     /** O sentido escolhido no botão de girar; vale até fechar o player. null = segue o vídeo. */
     private var chosenOrientation: Int? = null
 
+    /** O player abriu com as animações dele ([useTransitions]); fechar usa as de fechar. */
+    private var transitions = false
+
+    /** Fechando por ter sido arrastado para baixo ([SwipeToClose]): a janela continua descendo. */
+    private var closingBySwipe = false
+
     /** Pulos seguidos com dois toques: o lado, até quando um toque só ainda soma, e o total. */
     private var streakZone: TouchRules.Zone? = null
     private var streakUntil = 0L
@@ -262,6 +272,7 @@ class PlayerActivity : ComponentActivity() {
         floatingPlayer?.get()?.takeIf { it !== this }?.finish()
         external = target.external
         if (savedInstanceState == null) requestedAtMs = intent.getLongExtra(EXTRA_REQUESTED_AT, 0L)
+        useTransitions()
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -945,8 +956,40 @@ class PlayerActivity : ComponentActivity() {
 
     override fun finish() {
         super.finish()
+        // Até o Android 13, a animação de fechar vale só se pedida logo depois do finish.
+        if (transitions && Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(R.anim.player_hold, if (closingBySwipe) R.anim.player_swipe_exit else R.anim.player_close_exit)
+        }
         // Fechando o player (voltar, ou o canal do vídeo), sair não abre a janelinha.
         updateMiniPlayer()
+    }
+
+    /**
+     * Abrir e fechar o player com uma animação curta (1.0.7, pedido do Johan: "coisinhas rápidas, só
+     * para dar um pouquinho mais de vida", "rápida e leve"), na TV e no celular: o player aparece
+     * crescendo um pouco por cima da lista (0,2 s) e, ao voltar, some encolhendo (0,17 s). A lista
+     * fica parada por baixo. Do Android 14 em diante, vale também para o voltar com prévia do gesto.
+     */
+    private fun useTransitions() {
+        transitions = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN, R.anim.player_open_enter, R.anim.player_hold)
+            overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, R.anim.player_hold, R.anim.player_close_exit)
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(R.anim.player_open_enter, R.anim.player_hold)
+        }
+    }
+
+    /** Arrastado para baixo e solto ([SwipeToClose]): fecha como o voltar, descendo em vez de encolher. */
+    private fun closeBySwipe() {
+        if (isFinishing) return
+        closingBySwipe = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, R.anim.player_hold, R.anim.player_swipe_exit)
+        }
+        close()
     }
 
     /**
@@ -954,6 +997,7 @@ class PlayerActivity : ComponentActivity() {
      * isso no performClick); dois toques nos lados voltam ou avançam 10 s, e cada toque a mais do
      * mesmo lado logo em seguida soma outros 10 s; dois toques no meio pausam ou tocam. Avançar
      * dentro de um trecho que o público pula, ou logo antes dele, vai para o fim do trecho ([jumpAhead]).
+     * Arrastar para baixo fecha o player ([SwipeToClose]).
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun bindTouchGestures() {
@@ -973,7 +1017,19 @@ class PlayerActivity : ComponentActivity() {
                 }
             },
         )
+        val swipe = SwipeToClose(screen, onClose = ::closeBySwipe)
         playerView.setOnTouchListener { _, event ->
+            val wasDragging = swipe.dragging
+            if (swipe.onTouch(event)) {
+                // Virou arrastar: o toque que começou não mostra os controles nem conta como toque duplo.
+                if (!wasDragging) {
+                    val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
+                    detector.onTouchEvent(cancel)
+                    cancel.recycle()
+                    streakTap = false
+                }
+                return@setOnTouchListener true
+            }
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 val zone = TouchRules.zone(event.x, playerView.width)
                 streakTap = zone != TouchRules.Zone.PLAY_PAUSE && zone == streakZone && SystemClock.uptimeMillis() < streakUntil
@@ -1339,12 +1395,13 @@ class PlayerActivity : ComponentActivity() {
         // A tela do fim do vídeo ([UpNext]), por cima de tudo.
         endScreen = EndScreen(this, tv = !touch, onPlay = ::playSuggestion, onBack = ::close)
 
-        return FrameLayout(this).apply {
+        screen = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             addView(playerView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
             addView(messageView, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER))
             addView(endScreen.view, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         }
+        return screen
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- O player fechando depois de arrastado para baixo: continua descendo e some. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_cubic"
+    android:shareInterpolator="true"
+    android:zAdjustment="top">
+    <alpha
+        android:duration="170"
+        android:fromAlpha="1"
+        android:toAlpha="0" />
+    <translate
+        android:duration="170"
+        android:fromYDelta="0"
+        android:toYDelta="20%" />
+</set>
