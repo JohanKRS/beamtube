@@ -187,6 +187,7 @@ Pedido do Johan (2026-11-14): vários usuários com troca rápida e um convidado
     - **"Voltar" com os controles na tela só esconde os controles** (1.0.8, pedido do Johan); com eles escondidos, sai do vídeo. Um painel aberto fecha antes. Só na TV: no celular e no tablet, "voltar" continua saindo.
     - **A linha dos botões dá a volta** (1.0.8, pedido do Johan): esquerda no tocar vai para a lua (o último botão) e direita na lua volta para o tocar (`PlayerIsland.wrapFocus`). No meio da linha as setas andam como antes.
     - **Descer de volta para a linha dos botões cai no mesmo botão de antes** (1.0.10, pedido do Johan): subir de um botão para a barra de tempo, ou até o nome do canal, e descer de novo volta para o botão de onde se saiu. Antes o Android escolhia o botão mais perto do meio da barra, que era sempre o Subscribe (`PlayerIsland.returnFocus`).
+    - **Com os controles escondidos, as setas já levam ao lugar certo** (1.0.11, pedido do Johan): esquerda e direita abrem os controles mexendo direto na barra de tempo (o ponto anda 10 s com a miniatura, OK pula para lá e "voltar" desiste, como na barra), cima abre no nome do canal e baixo no tocar/pausar. Sem o canal, ou com a barra desligada enquanto o vídeo carrega, abre no tocar/pausar. Antes, qualquer seta só abria os controles no tocar/pausar, e os lados andavam pelos botões (`PlayerActivity.showControlsFor`).
     - **Esquerda e direita na barra andam 10 s** (0.6.0, pedido do Johan), como os dois toques no celular; segurar anda mais rápido. Antes era o padrão do Media3, 1/20 do vídeo por toque (minutos num vídeo longo). Dentro de um vale, o avanço continua sendo o pulo.
     - **Barra de borda a borda** (2026-11-03, pedido do Johan no antes e depois): a ilha deixou de ser um cartão arredondado longe das bordas e virou uma **barra de vidro que preenche toda a parte de baixo**, até as laterais e a borda de baixo, sem cantos (o mesmo degradê, 76% em cima e 94% embaixo). O conteúdo fica a 14 dp das laterais no celular e a 48 dp na TV (`player_bar_side`), com a barra de tempo mais comprida.
     - **Na TV, like, dislike, Save e Subscribe descem para a barra de baixo** (mesmo pedido: "agora que tem um espação"), soltos logo depois do tocar/pausar; legenda, resolução e lua continuam à direita. Em cima fica só o título e o canal. No celular e no tablet a pílula continua em cima.
@@ -366,12 +367,22 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Bea
    - *Versão 1.0.8 (2026-11-15), pedidos do Johan testando a 1.0.7* (ver "Como testar a 1.0.8"): a miniatura desfocada também atrás da tela do fim, com um desfoque mais leve no carregando e no fim; arrastar para fechar como o reverso da abertura; os filtros da Explore atrás de um botão no celular e no tablet, com os chips de ponta a ponta; o convidado só com a busca (o YouTube não recomenda nada sem login); a cor do fundo nos Ajustes (grafite, quase preto ou preto puro) em todo aparelho; os tópicos um por um numa tela própria nos Ajustes; o Subscribe na linha de Videos e Playlists no canal do celular; na TV, o campo da busca na largura toda, o menu lateral menor, com o primeiro ícone alinhado às miniaturas e o foco voltando ao mesmo card, "voltar" escondendo os controles do player primeiro, a linha de botões dando a volta e a lua só abrindo e fechando o modo dormir, com o foco nela; a faixa clara no pé do vídeo com o brilho baixo; e a linha "Open Accessibility settings" abrindo a tela pelo nome. O Johan pediu a release "quando tiver tudo pronto" (2026-11-15); a conferência do botão da Acessibilidade pelo ADB fica para depois, com o PC dele ligado.
    - *Versão 1.0.9 (2026-11-15), pedidos do Johan testando a 1.0.8* (ver "Como testar a 1.0.9"): o botão de legenda abre um painel com Off, o idioma do app, o original e inglês, sem repetir, com a tradução automática do YouTube quando não há legenda no idioma; o desfoque da miniatura mais leve (dá para reconhecê-la); arrastar para fechar sem mover o vídeo, desfocando e escurecendo; a tela do fim também com o brilho baixo; a faixa clara no pé do vídeo escurecido de verdade corrigida (a causa era o buraco da `SurfaceView`); as playlists inscritas numa tela própria dos Ajustes; e, no menu lateral da TV, a volta ao mesmo card (agora sim) e a seleção alinhada pelo bloco de novo. O Johan pediu a release quando estivesse pronta (2026-11-15).
    - *Versão 1.0.10 (2026-11-15), pedidos do Johan testando a 1.0.9* (ver "Como testar a 1.0.10"): o idioma da legenda sai do player e vai para Settings > Captions (o botão volta a só ligar e desligar); depois de arrastar o vídeo para fechar, a lista volta saindo do preto; na TV, descer para a linha de botões do player volta ao mesmo botão de antes; e, no site e no README, a linha da comparação fala em visual consistente, que não fica mudando, em vez de "o mesmo visual".
+   - *Versão 1.0.11 (2026-11-15), pedido do Johan na TV* (ver "Como testar a 1.0.11"): no player, com os controles escondidos, esquerda e direita mexem direto na linha do tempo, cima abre no canal e baixo no tocar/pausar.
 
 Extensão do Firefox: deixa de ser necessária para o "Assistir mais tarde", porque o motor acessa o real. Fica como ideia opcional para limpar o site.
 
 ## Perguntas em aberto
 
 Nenhuma no momento. Falta a rotina de atualização do motor (resto da etapa 6) e os testes no aparelho das etapas 3 a 6.
+
+## Como testar a 1.0.11
+
+Na TV, num vídeo, esperar os controles sumirem antes de cada passo.
+
+1. Direita: os controles aparecem com o foco na barra de tempo e o ponto já 10 s à frente, com a miniatura. Mais direita anda mais; OK pula para lá. "Voltar" desiste e o vídeo segue de onde estava.
+2. Esquerda: o mesmo, 10 s para trás.
+3. Cima: os controles aparecem com o foco no nome do canal. Baixo: com o foco no tocar/pausar.
+4. Com os controles na tela, as setas continuam como antes (descer do tocar/pausar ou subir do canal esconde os controles; a linha dos botões dá a volta).
 
 ## Como testar a 1.0.10
 

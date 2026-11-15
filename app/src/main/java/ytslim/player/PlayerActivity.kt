@@ -120,6 +120,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var subscribeButton: TextView
     private lateinit var saveButton: ImageButton
     private lateinit var channelButton: TextView
+    private lateinit var playPauseButton: View
     private lateinit var captionsButton: ImageButton
     private lateinit var sleepButton: ImageButton
     private lateinit var rotateButton: ImageButton
@@ -837,6 +838,7 @@ class PlayerActivity : ComponentActivity() {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             keyStartedOpen = ::playerView.isInitialized && playerView.isControllerFullyVisible
         }
+        if (event.action == KeyEvent.ACTION_DOWN && showControlsFor(event)) return true
         if (event.action == KeyEvent.ACTION_DOWN && !touch && openPanel == sleepPanel && sleepPanelKey(event.keyCode)) return true
         if (event.action == KeyEvent.ACTION_DOWN && (event.repeatCount == 0 || keyStartedOpen) && hidesControls(event.keyCode)) {
             playerView.hideController()
@@ -870,6 +872,30 @@ class PlayerActivity : ComponentActivity() {
             if (jumpAhead(from, from + player.seekForwardIncrement)) return true
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * Na TV, com os controles escondidos, cada seta já abre os controles no lugar certo (1.0.11,
+     * pedido do Johan): esquerda e direita mexem direto na barra de tempo (o ponto anda 10 s, como
+     * na barra, e o OK confirma), cima vai para o nome do canal e baixo para o tocar/pausar. Antes,
+     * qualquer seta só abria os controles no tocar/pausar. Sem o canal (ou sem a barra, enquanto o
+     * vídeo carrega), fica o tocar/pausar. true se a seta abriu os controles.
+     */
+    private fun showControlsFor(event: KeyEvent): Boolean {
+        if (touch || openPanel != null || !::playerView.isInitialized || !playerView.useController || playerView.isControllerFullyVisible) {
+            return false
+        }
+        val target: View = when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> timeBar
+            KeyEvent.KEYCODE_DPAD_UP -> channelButton
+            KeyEvent.KEYCODE_DPAD_DOWN -> playPauseButton
+            else -> return false
+        }
+        playerView.showController()
+        val moved = target.isShown && target.isEnabled && target.requestFocus()
+        if (!moved) playPauseButton.requestFocus()
+        if (moved && target === timeBar) timeBar.onKeyDown(event.keyCode, event)
+        return true
     }
 
     /**
@@ -1392,6 +1418,7 @@ class PlayerActivity : ComponentActivity() {
         subscribeButton = playerView.findViewById(R.id.player_subscribe)
         saveButton = playerView.findViewById(R.id.player_save)
         channelButton = playerView.findViewById(R.id.player_channel)
+        playPauseButton = playerView.findViewById(androidx.media3.ui.R.id.exo_play_pause)
         captionsButton = playerView.findViewById(R.id.player_captions)
         sleepButton = playerView.findViewById(R.id.player_sleep)
         rotateButton = playerView.findViewById<ImageButton>(R.id.player_rotate).apply {
