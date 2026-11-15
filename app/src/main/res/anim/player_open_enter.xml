@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- O player abrindo (1.0.7, pedido do Johan: transições rápidas e leves): aparece crescendo um pouco, por cima da lista. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_cubic"
+    android:shareInterpolator="true"
+    android:zAdjustment="top">
+    <alpha
+        android:duration="200"
+        android:fromAlpha="0"
+        android:toAlpha="1" />
+    <scale
+        android:duration="200"
+        android:fromXScale="0.94"
+        android:fromYScale="0.94"
+        android:pivotX="50%"
+        android:pivotY="50%"
+        android:toXScale="1"
+        android:toYScale="1" />
+</set>
