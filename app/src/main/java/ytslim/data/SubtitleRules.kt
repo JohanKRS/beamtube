@@ -66,6 +66,21 @@ object SubtitleRules {
             ?: options.firstOrNull { CaptionLanguage.ORIGINAL in it.choices }
             ?: options.firstOrNull()
 
+    /**
+     * Se [chosen] é uma tradução automática, as legendas de verdade para pôr no lugar se ela não vier
+     * (1.0.12): desde novembro de 2026 o YouTube responde HTTP 429 a toda URL com `tlang` pedida fora
+     * do app dele, enquanto as legendas de verdade chegam. Primeiro a do original, depois a inglesa,
+     * depois as outras do vídeo. Sem a tradução, a pessoa vê ao menos a legenda que existe.
+     */
+    fun fallbacks(chosen: CaptionOption, options: List<CaptionOption>, captions: List<Caption>): List<Caption> {
+        if (!chosen.caption.translated) return emptyList()
+        val fromOptions = options.filterNot { it.caption.translated }
+            .sortedBy { if (CaptionLanguage.ORIGINAL in it.choices) 0 else if (CaptionLanguage.ENGLISH in it.choices) 1 else 2 }
+            .map { it.caption }
+        val others = captions.filterNot { it.translated }.sortedBy { it.auto }
+        return (fromOptions + others).distinctBy { it.url }
+    }
+
     private fun captionIn(language: String, real: List<Caption>, original: String?, canTranslate: Boolean): Caption? {
         real.firstOrNull { !it.auto && base(it.language) == language }?.let { return it }
         // A automática é a fala do vídeo: só vale no idioma original (as dos idiomas dublados são da dublagem).

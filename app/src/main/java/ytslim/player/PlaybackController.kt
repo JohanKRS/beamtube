@@ -209,6 +209,9 @@ class PlaybackController(
     private var readyInMs = -1L
     private var preparedInMs = -1L
     private var tracksInMs = -1L
+
+    /** A última linha de log das faixas de legenda, para só logar quando muda. */
+    private var textTracksLog: String? = null
     private var bufferedInMs = -1L
     private var firstFrameLogged = false
 
@@ -279,6 +282,7 @@ class PlaybackController(
         readyInMs = -1L
         preparedInMs = -1L
         tracksInMs = -1L
+        textTracksLog = null
         bufferedInMs = -1L
         firstFrameLogged = false
         switchedAtStart = false
@@ -397,14 +401,22 @@ class PlaybackController(
         val option = SubtitleRules.choose(options, settings.captionLanguage)
         val caption = option?.caption
         val captionsOn = caption != null && settings.captionsOn
-        if (option != null) Log.i(TAG, "captions: ${option.language}${if (caption?.translated == true) " (translated)" else ""}, wanted ${settings.captionLanguage}")
+        // As faixas que o vídeo tem (h: feita por pessoa, a: automática), para conferir pelo ADB.
+        val tracks = result.info.captions.filterNot { it.translated }.joinToString { "${if (it.auto) "a" else "h"}:${it.language}" }
+        Log.i(
+            TAG,
+            "captions: ${option?.let { it.language + if (caption?.translated == true) " (translated)" else "" } ?: "none"}, " +
+                "wanted ${settings.captionLanguage}, client ${result.info.clientName}, tracks [$tracks]",
+        )
         // Cada vídeo começa com as regras padrão: o que o usuário mudar vale só para o atual.
         player.trackSelectionParameters = TrackRules.defaults(
             player.trackSelectionParameters,
             originalAudioLabel = result.info.originalAudioLabel,
             captionsOn = captionsOn,
         )
-        player.setMediaSource(buildSource(result, caption), startPositionMs)
+        // Se for uma tradução automática e ela não vier (o YouTube tem recusado com 429), a legenda de verdade.
+        val fallbacks = option?.let { SubtitleRules.fallbacks(it, options, result.info.captions) }.orEmpty()
+        player.setMediaSource(buildSource(result, caption, fallbacks), startPositionMs)
         player.prepare()
         if (preparedInMs < 0) preparedInMs = SystemClock.elapsedRealtime() - requestedAt
         // Daqui em diante, o próprio player segura o processador enquanto toca.
@@ -412,6 +424,17 @@ class PlaybackController(
         _controls.update { it.copy(captionsAvailable = caption != null, captionsOn = captionsOn) }
         _state.value = State.Playing(result.info)
         if (!result.info.isLive) prefetchNextNearEnd()
+    }
+
+    /** Quantas faixas de legenda o player tem e qual tocou (deve haver uma só, a escolhida), para o ADB. */
+    private fun logTextTracks(tracks: Tracks) {
+        val text = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        if (text.isEmpty()) return
+        val selected = text.firstOrNull { it.isSelected }?.getTrackFormat(0)
+        val line = "text tracks: ${text.size}, selected ${selected?.let { it.language ?: it.label ?: "?" } ?: "none"}"
+        if (line == textTracksLog) return
+        textTracksLog = line
+        Log.i(TAG, line)
     }
 
     /**
@@ -436,7 +459,7 @@ class PlaybackController(
         }
     }
 
-    private fun buildSource(result: PlaybackResult.Ready, caption: Caption?): MediaSource {
+    private fun buildSource(result: PlaybackResult.Ready, caption: Caption?, fallbacks: List<Caption>): MediaSource {
         val http: DataSource.Factory = MediaHttp.factory(app, result.userAgent)
         val item = MediaItem.Builder().setMediaId(result.info.videoId).build()
         val main = when (val stream = result.stream) {
@@ -451,12 +474,12 @@ class PlaybackController(
             is Stream.Progressive -> ProgressiveMediaSource.Factory(http)
                 .createMediaSource(item.buildUpon().setUri(stream.url).build())
         }
-        val subtitle = caption?.let { subtitleSource(it, http) } ?: return main
+        val subtitle = caption?.let { subtitleSource(it, fallbacks, http) } ?: return main
         return MergingMediaSource(main, subtitle)
     }
 
     /** Legenda externa, lida na extração (como o DefaultMediaSourceFactory faz desde o Media3 1.4). */
-    private fun subtitleSource(caption: Caption, http: DataSource.Factory): MediaSource? {
+    private fun subtitleSource(caption: Caption, fallbacks: List<Caption>, http: DataSource.Factory): MediaSource? {
         val format = Format.Builder()
             .setSampleMimeType(caption.mimeType)
             .setLanguage(caption.language)
@@ -467,7 +490,13 @@ class PlaybackController(
         val parsers = DefaultSubtitleParserFactory()
         if (!parsers.supportsFormat(format)) return null
         val extractors = ExtractorsFactory { arrayOf(SubtitleExtractor(BlockCaptionParser(parsers.create(format)), format)) }
-        val lenient = LenientDataSource.Factory(http, LenientDataSource.emptyCaption(caption.mimeType))
+        val lenient = LenientDataSource.Factory(
+            http,
+            LenientDataSource.emptyCaption(caption.mimeType),
+            label = "captions ${caption.language}",
+            // Só as do mesmo formato: o leitor da legenda foi montado para ele.
+            alternates = fallbacks.filter { it.mimeType == caption.mimeType }.map { Uri.parse(it.url) },
+        )
         return ProgressiveMediaSource.Factory(lenient, extractors).createMediaSource(MediaItem.fromUri(caption.url))
     }
 
@@ -650,6 +679,7 @@ class PlaybackController(
         override fun onTracksChanged(tracks: Tracks) {
             if (tracksInMs < 0 && preparedInMs >= 0 && !tracks.isEmpty) tracksInMs = SystemClock.elapsedRealtime() - requestedAt
             enforceOriginalAudio(tracks)
+            logTextTracks(tracks)
             pickQuality(tracks)
             selectedHeight(tracks)?.let { height -> _quality.update { it.copy(playing = height) } }
             val info = current ?: return

@@ -1224,8 +1224,11 @@ object TvUi : Screens {
         // Lido de novo a cada volta para o app: a pessoa liga o serviço nos ajustes do Android e o
         // botão é aprendido com o BeamTube fora da tela.
         var remoteButton by remember { mutableStateOf(RemoteButtonState.of(context)) }
+        // Nas TCL, sem o autoinício, o botão some depois de cada atualização ou reinício até o app abrir.
+        var autoStartBlocked by remember { mutableStateOf(ScreenOffService.autoStartBlocked(context)) }
         LifecycleResumeEffect(Unit) {
             remoteButton = RemoteButtonState.of(context)
+            autoStartBlocked = ScreenOffService.autoStartBlocked(context)
             onPauseOrDispose { }
         }
 
@@ -1451,7 +1454,11 @@ object TvUi : Screens {
                                 }
                             },
                             headlineContent = { Text(stringResource(R.string.settings_remote_open)) },
-                            supportingContent = { Text(stringResource(remoteButton.text)) },
+                            supportingContent = {
+                                // Nas TCL (1.0.12): o app não consegue se liberar, então diz o que esperar.
+                                val text = stringResource(remoteButton.text)
+                                Text(if (on && autoStartBlocked) text + "\n" + stringResource(R.string.settings_remote_auto_start) else text)
+                            },
                             trailingContent = {
                                 Text(stringResource(if (on) R.string.settings_remote_on else R.string.settings_remote_off))
                             },

@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.liskovsoft.googlecommon.common.helpers.DefaultHeaders
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo
+import com.liskovsoft.mediaserviceinterfaces.data.MediaSubtitle
 
 /** O que o player precisa para tocar um vídeo. */
 sealed interface Stream {
@@ -164,6 +165,27 @@ object PlaybackRepository {
         lowQuality ?: PlaybackResult.Unplayable(lastReason)
     }
 
+    /**
+     * As legendas do motor. Ele junta à lista as traduções automáticas da legenda da fala (a URL leva
+     * `tlang`) e põe um "*" no nome delas **e também no da própria legenda automática** (o
+     * `CaptionTrack.getName` do motor). Até a 1.0.11 o "*" contava como tradução, e a automática
+     * saía da lista: vídeo só com ela ficava sem legenda, e o idioma original, sem ela, ficava
+     * desconhecido (a escolha "Original" virava a do idioma do app). A tradução no próprio idioma da
+     * origem vem com a URL dela, sem `tlang`: sai como repetida.
+     */
+    internal fun captionsOf(subtitles: List<MediaSubtitle>): List<Caption> = subtitles.mapNotNull { sub ->
+        val url = sub.baseUrl ?: return@mapNotNull null
+        Caption(
+            url = url,
+            mimeType = sub.mimeType,
+            language = sub.languageCode,
+            name = sub.name?.removeSuffix("*"),
+            auto = sub.type == "asr" || sub.vssId?.startsWith("a.") == true,
+            translatable = sub.isTranslatable,
+            translated = TLANG.containsMatchIn(url),
+        )
+    }.distinctBy { it.url }
+
     /** Chamado quando o player falha (ex.: HTTP 403): o próximo load usa outro cliente. */
     fun switchClient() {
         Engine.service.switchNextClient()
@@ -181,7 +203,7 @@ object PlaybackRepository {
         info.isLive && info.containsHlsUrl() -> Stream.HlsUrl(info.hlsManifestUrl)
         info.isLive && info.containsDashUrl() -> Stream.DashUrl(info.dashManifestUrl)
         info.isLive -> null
-        info.containsDashFormats() -> info.createMpdStream()?.use { Stream.DashManifest(it.readBytes()) }
+        info.containsDashFormats() -> info.createMpdStream()?.use { Stream.DashManifest(MpdRules.withoutCaptions(it.readBytes())) }
         info.containsHlsUrl() -> Stream.HlsUrl(info.hlsManifestUrl)
         info.containsUrlFormats() -> info.createUrlList()?.firstOrNull()?.let { Stream.Progressive(it) }
         else -> null
@@ -201,18 +223,7 @@ object PlaybackRepository {
             originalAudioLabel = AudioRules.originalLabel(labels),
             audioLabels = labels,
             clientName = clientInfo?.clientName,
-            captions = subtitles.orEmpty().mapNotNull { sub ->
-                Caption(
-                    url = sub.baseUrl ?: return@mapNotNull null,
-                    mimeType = sub.mimeType,
-                    language = sub.languageCode,
-                    name = sub.name,
-                    auto = sub.type == "asr" || sub.vssId?.startsWith("a.") == true,
-                    translatable = sub.isTranslatable,
-                    // O motor junta as traduções automáticas da legenda da fala: a URL leva tlang e o nome, "*".
-                    translated = TLANG.containsMatchIn(sub.baseUrl) || sub.name?.endsWith("*") == true,
-                )
-            },
+            captions = captionsOf(subtitles.orEmpty()),
             storyboard = if (isLive) null else Storyboard.from(runCatching { createStoryboard() }.getOrNull()),
         )
     }

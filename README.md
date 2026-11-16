@@ -268,6 +268,9 @@ service: Settings > Accessibility > BeamTube. In BeamTube, Settings > YouTube bu
 shows whether it's on and opens that screen. The service only puts the device to sleep and listens
 for the remote's YouTube button; it doesn't read the screen. On Android 13 and newer, an app
 installed outside the Play Store may need "Allow restricted settings" first (App info > ⋮).
+On TCL TVs, the system doesn't let apps start on their own, so after BeamTube updates or the TV
+restarts, the YouTube button comes back once you open BeamTube. To skip that, allow auto-start over
+ADB: `adb shell appops set app.beamtube AUTO_START allow`.
 
 ## Privacy
 

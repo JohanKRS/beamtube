@@ -80,4 +80,48 @@ class LenientDataSourceTest {
         source.close()
         assertEquals(2, upstream.opened)
     }
+
+    /** Recusa as URLs com tlang (como o YouTube faz desde 2026-11) e entrega o resto. */
+    private class RefusesTranslations : DataSource {
+        private var source: ByteArrayDataSource? = null
+        val asked = mutableListOf<String>()
+
+        override fun addTransferListener(transferListener: TransferListener) = Unit
+        override fun open(dataSpec: DataSpec): Long {
+            asked += dataSpec.uri.toString()
+            if (dataSpec.uri.getQueryParameter("tlang") != null) throw IOException("HTTP 429")
+            val lang = dataSpec.uri.getQueryParameter("lang")
+            return ByteArrayDataSource("WEBVTT\n\n00:01.000 --> 00:02.000\n$lang\n".toByteArray()).also { source = it }.open(dataSpec)
+        }
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int = checkNotNull(source).read(buffer, offset, length)
+        override fun getUri(): Uri? = source?.uri
+        override fun close() { source?.close(); source = null }
+    }
+
+    @Test
+    fun aRefusedTranslationGivesWayToTheRealCaption() {
+        val upstream = RefusesTranslations()
+        val source = LenientDataSource(
+            upstream,
+            LenientDataSource.emptyCaption("text/vtt"),
+            alternates = listOf(Uri.parse("https://x/t?lang=ja&tlang=en"), Uri.parse("https://x/t?lang=en")),
+        )
+        source.open(DataSpec(Uri.parse("https://x/t?lang=en&tlang=pt")))
+        val text = String(DataSourceUtil.readToEnd(source))
+        source.close()
+        assertEquals("WEBVTT\n\n00:01.000 --> 00:02.000\nen\n", text)
+        assertEquals(3, upstream.asked.size)
+    }
+
+    @Test
+    fun withoutAlternatesThatWorkTheCaptionIsEmpty() {
+        val source = LenientDataSource(
+            RefusesTranslations(),
+            LenientDataSource.emptyCaption("text/vtt"),
+            alternates = listOf(Uri.parse("https://x/t?lang=ja&tlang=en")),
+        )
+        source.open(DataSpec(Uri.parse("https://x/t?lang=en&tlang=pt")))
+        assertEquals("WEBVTT\n\n", String(DataSourceUtil.readToEnd(source)))
+        source.close()
+    }
 }
