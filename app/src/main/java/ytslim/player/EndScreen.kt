@@ -65,6 +65,7 @@ import ytslim.data.Video
 import ytslim.ui.Look
 import ytslim.ui.TypeScale
 import ytslim.ui.formatDuration
+import ytslim.ui.spacedDots
 
 /**
  * A tela do fim do vídeo ([UpNext]): "Up next" com as sugestões numa fileira e o "Back" (com o foco
@@ -278,23 +279,34 @@ internal class EndScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
+            // Todos os cards com a mesma altura (1.0.12, achado do Johan na TV): o título sempre ocupa
+            // duas linhas e o canal, uma. Antes, cada card tinha a altura do texto dele, a fileira
+            // mudava de altura conforme rolava, e a tela inteira (centrada) pulava.
             BasicText(
                 video.title,
                 style = TypeScale.titleSmall.copy(color = Look.Text, fontSize = 13.sp, lineHeight = 17.sp),
                 maxLines = 2,
+                minLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            video.channelName?.takeIf { it.isNotBlank() }?.let { channel ->
-                Spacer(Modifier.height(4.dp))
-                BasicText(
-                    channel,
-                    style = TypeScale.bodySmall.copy(color = Look.Sub),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            Spacer(Modifier.height(4.dp))
+            BasicText(
+                spacedDots(channelLine(video)),
+                style = TypeScale.bodySmall.copy(color = Look.Sub),
+                maxLines = 1,
+                minLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
+
+    /**
+     * O canal do card. Só o primeiro (o próximo da lista de onde o vídeo veio) traz o nome do canal
+     * separado; os relacionados da página do vídeo trazem só a linha do YouTube, que começa por ele
+     * ("Canal • 1,2 mi de visualizações • há 2 anos"): fica essa linha.
+     */
+    private fun channelLine(video: Video): String =
+        video.channelName?.takeIf { it.isNotBlank() } ?: video.info?.takeIf { it.isNotBlank() } ?: ""
 
     private companion object {
         /** O véu escuro por cima da miniatura: mais leve em cima, mais forte embaixo, onde ficam os títulos. */

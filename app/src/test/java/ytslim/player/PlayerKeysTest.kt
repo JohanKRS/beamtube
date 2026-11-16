@@ -293,6 +293,39 @@ class PlayerKeysTest {
     }
 
     /**
+     * 1.0.12, achado do Johan: a primeira seta com os controles escondidos abria o preview fora do
+     * lugar, porque ele era posto antes do layout dos controles, com as medidas de antes. Depois de
+     * desenhar, o cartão fica centrado no ponto da barra, logo acima da ilha.
+     */
+    @Test
+    fun theFirstPreviewWithTheControlsHiddenOpensInPlace() {
+        hideWithAVideo()
+        // Com os controles escondidos, a ilha muda (como quando chegam os botões da página do vídeo):
+        // ela só mede de novo quando os controles voltam.
+        val island = playerView.findViewById<View>(R.id.player_island)
+        island.setPadding(island.paddingLeft, island.paddingTop + 60, island.paddingRight, island.paddingBottom)
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        val preview = playerView.findViewById<View>(R.id.player_preview)
+        assertTrue(preview.isShown)
+        assertEquals(expectedPreviewSpot(preview, positionMs = 110_000), preview.translationX to preview.translationY)
+    }
+
+    /** O lugar do preview do ponto [positionMs] com as medidas de agora (a conta do PlayerActivity.placePreview). */
+    private fun expectedPreviewSpot(preview: View, positionMs: Long): Pair<Float, Float> {
+        val root = preview.parent as View
+        val timeBar = playerView.findViewById<ChapterTimeBar>(R.id.exo_progress)
+        val island = playerView.findViewById<View>(R.id.player_island)
+        fun View.windowX() = IntArray(2).also { getLocationInWindow(it) }[0]
+        fun View.windowY() = IntArray(2).also { getLocationInWindow(it) }[1]
+        val center = timeBar.windowX() - root.windowX() + timeBar.xOf(positionMs)
+        val width = preview.layoutParams.width.toFloat()
+        val edge = activity.resources.getDimension(R.dimen.player_edge)
+        val left = (center - width / 2).coerceIn(edge, (root.width - edge - width).coerceAtLeast(edge))
+        val dp10 = (10 * activity.resources.displayMetrics.density).toInt()
+        return left to (island.windowY() - root.windowY() - dp10 - root.height).toFloat()
+    }
+
+    /**
      * Um vídeo de 10 min parado em 1:40 (o player do teste não tem vídeo, e sem ele a barra e o
      * tocar/pausar ficam desligados), o foco num botão e os controles escondidos, já sem animação.
      */
@@ -308,10 +341,10 @@ class PlayerKeysTest {
 
     private fun controlsShowing() = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller).isShown
 
-    private class OneVideo : SimpleBasePlayer(Looper.getMainLooper()) {
+    private class OneVideo(private val durationMs: Long = 600_000) : SimpleBasePlayer(Looper.getMainLooper()) {
         override fun getState(): State = State.Builder()
             .setAvailableCommands(Player.Commands.Builder().addAllCommands().remove(Player.COMMAND_SET_VIDEO_SURFACE).build())
-            .setPlaylist(listOf(MediaItemData.Builder("video").setDurationUs(600_000_000).setIsSeekable(true).build()))
+            .setPlaylist(listOf(MediaItemData.Builder("video").setDurationUs(durationMs * 1000).setIsSeekable(true).build()))
             .setContentPositionMs(100_000)
             .setPlaybackState(Player.STATE_READY)
             .build()

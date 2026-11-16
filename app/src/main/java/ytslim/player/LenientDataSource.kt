@@ -1,6 +1,7 @@
 package ytslim.player
 
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
@@ -63,16 +64,20 @@ internal class LenientDataSource(
         // A URL pedida e, se ela falhar, as [alternates], uma por uma; sem nenhuma, a legenda vazia.
         val uris = listOf(dataSpec.uri) + alternates
         for ((index, uri) in uris.withIndex()) {
-            try {
-                upstream.open(if (index == 0) dataSpec else dataSpec.withUri(uri))
-                if (index > 0) using = uri
-                current = upstream
-                return upstream
-            } catch (e: IOException) {
-                if (failure == null) {
-                    failure = (e as? HttpDataSource.InvalidResponseCodeException)?.let { "HTTP ${it.responseCode}" } ?: e.javaClass.simpleName
+            // Uma falha de rede (sem resposta do servidor) tem mais uma chance na mesma URL; uma
+            // resposta de erro (ex.: 429) passa direto para a próxima.
+            for (attempt in 0 until ATTEMPTS) {
+                try {
+                    upstream.open(if (index == 0) dataSpec else dataSpec.withUri(uri))
+                    if (index > 0) using = uri
+                    current = upstream
+                    return upstream
+                } catch (e: IOException) {
+                    if (failure == null) failure = describe(e)
+                    runCatching { upstream.close() }
+                    if (e is HttpDataSource.InvalidResponseCodeException) break
+                    if (attempt + 1 < ATTEMPTS) SystemClock.sleep(RETRY_DELAY_MS)
                 }
-                runCatching { upstream.close() }
             }
         }
         return ByteArrayDataSource(fallback).also {
@@ -80,6 +85,10 @@ internal class LenientDataSource(
             current = it
         }
     }
+
+    private fun describe(e: IOException): String =
+        (e as? HttpDataSource.InvalidResponseCodeException)?.let { "HTTP ${it.responseCode}" }
+            ?: (e.javaClass.simpleName + ((e.cause?.message ?: e.message)?.let { ": ${it.take(120)}" } ?: ""))
 
     /** A alternativa que entrou no lugar da URL pedida, para o log. */
     private var using: Uri? = null
@@ -93,6 +102,7 @@ internal class LenientDataSource(
         if (label != null && current != null) {
             val result = when {
                 failure == null -> "$bytes bytes"
+                using == null && current === upstream -> "failed once ($failure), then $bytes bytes"
                 using != null -> "failed ($failure), using ${using?.getQueryParameter("lang") ?: "another"}: $bytes bytes"
                 else -> "failed ($failure), shown empty"
             }
@@ -114,6 +124,10 @@ internal class LenientDataSource(
     }
 
     companion object {
+        /** Quantas vezes a mesma URL é pedida quando a rede falha sem resposta. */
+        private const val ATTEMPTS = 2
+        private const val RETRY_DELAY_MS = 300L
+
         /** Uma legenda válida e vazia no formato pedido. */
         fun emptyCaption(mimeType: String?): ByteArray = when {
             mimeType?.contains("ttml") == true -> """<tt xmlns="http://www.w3.org/ns/ttml"><body/></tt>"""

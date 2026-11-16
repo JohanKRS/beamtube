@@ -44,6 +44,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.doOnPreDraw
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
@@ -212,6 +213,10 @@ class PlayerActivity : ComponentActivity() {
     }
     private val sheetsLoading = HashSet<Int>()
     private var previewFrame: Storyboard.Frame? = null
+
+    /** O ponto do último preview pedido, para refazer o lugar e o quadro depois do layout ([showPreview]). */
+    private var previewAt = 0L
+    private var previewRedoPending = false
     private val previewMatrix = Matrix()
     private val timeText = StringBuilder()
     private val timeFormat = java.util.Formatter(timeText, java.util.Locale.getDefault())
@@ -1241,6 +1246,21 @@ class PlayerActivity : ComponentActivity() {
         if (board != null) showFrame(board, positionMs)
         preview.visibility = View.VISIBLE
         placePreview(positionMs)
+        previewAt = positionMs
+        // Na primeira vez (1.0.12, achado do Johan na TV): a seta com os controles escondidos abre os
+        // controles e o preview juntos, antes do layout. A barra, a ilha e a própria miniatura ainda
+        // tinham as medidas de antes (ou nenhuma), e o cartão abria fora do lugar e maior. Com um
+        // layout pendente, o lugar e o quadro são refeitos logo antes de desenhar, já com as medidas novas.
+        val root = preview.parent as? View
+        if (!previewRedoPending && (root == null || root.isLayoutRequested || preview.isLayoutRequested || !previewImage.isLaidOut)) {
+            previewRedoPending = true
+            preview.doOnPreDraw {
+                previewRedoPending = false
+                if (preview.visibility != View.VISIBLE) return@doOnPreDraw
+                storyboard?.let { showFrame(it, previewAt) }
+                placePreview(previewAt)
+            }
+        }
     }
 
     /** Centra o cartão no círculo da barra, sem sair da tela, logo acima da ilha. */
