@@ -3,14 +3,16 @@ package ytslim.player
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Activity
+import android.app.AppOpsManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.os.Build
+import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -143,6 +145,31 @@ class ScreenOffService : AccessibilityService() {
             return list.split(':').any { ComponentName.unflattenFromString(it.trim()) == me }
         }
 
+        /** O AppOp do autoinício das TVs TCL ([autoStartBlocked]). */
+        private const val AUTO_START_OP = "android:auto_start"
+
+        /**
+         * A TV não deixa o app subir sozinho, por trás? Nas TCL (Android 14, medido em 2026-11-15
+         * pelo ADB), o "TclAppBoot" do sistema barra quem não tem o AppOp de autoinício, que fica
+         * negado para todo app instalado fora da fábrica: depois de uma atualização ou de a TV
+         * reiniciar, ele descarta o aviso ao app e não deixa a Acessibilidade conectar o serviço
+         * ("forbid bind service"). Com o app na tela, conecta: o [AccessibilityRebind] pede de novo
+         * quando o app abre. O app não consegue se liberar (só o sistema ou o ADB), e nesta TCL a
+         * tela de autoinício do Protetor de Segurança nem aparece; então os Ajustes só avisam.
+         * false em aparelho sem esse AppOp.
+         */
+        fun autoStartBlocked(context: Context): Boolean {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+            val ops = context.getSystemService(AppOpsManager::class.java) ?: return false
+            val mode = try {
+                ops.unsafeCheckOpRawNoThrow(AUTO_START_OP, Process.myUid(), context.packageName)
+            } catch (_: RuntimeException) {
+                // "Unknown operation string": não é uma TV com esse controle.
+                return false
+            }
+            return mode != AppOpsManager.MODE_ALLOWED
+        }
+
         /** O código do botão YouTube do controle já foi aprendido neste aparelho? */
         fun knowsYouTubeButton(context: Context): Boolean =
             !context.getSharedPreferences(PREFS, MODE_PRIVATE).getStringSet(PREF_YOUTUBE_BUTTON, null).isNullOrEmpty()
@@ -182,19 +209,29 @@ class ScreenOffService : AccessibilityService() {
             val found = runCatching {
                 manager.queryIntentActivities(Intent(action), PackageManager.MATCH_DEFAULT_ONLY)
             }.getOrDefault(emptyList())
-            return found.map { it.activityInfo }
-                .filter { info ->
-                    info.exported && info.enabled && info.applicationInfo.enabled &&
+            return found
+                .filter { match ->
+                    val info = match.activityInfo
+                    info.exported && info.enabled && info.applicationInfo.enabled && info.packageName !in STUB_APPS &&
                         (info.permission == null || context.checkSelfPermission(info.permission) == PackageManager.PERMISSION_GRANTED)
                 }
                 .sortedWith(
-                    compareBy<ActivityInfo>(
-                        { if (it.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) 0 else 1 },
-                        { SETTINGS_APPS.indexOf(it.packageName).let { index -> if (index < 0) SETTINGS_APPS.size else index } },
+                    compareBy<ResolveInfo>(
+                        { if (it.activityInfo.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) 0 else 1 },
+                        { SETTINGS_APPS.indexOf(it.activityInfo.packageName).let { index -> if (index < 0) SETTINGS_APPS.size else index } },
+                        { -it.priority },
                     ),
                 )
-                .map { Intent(action).setClassName(it.packageName, it.name) }
+                .map { Intent(action).setClassName(it.activityInfo.packageName, it.activityInfo.name) }
         }
+
+        /**
+         * Apps que só fingem atender os ajustes: o das TVs Android abre a janela "nenhum app pode
+         * executar esta ação" sem erro para o app perceber. Na TCL ele aparece na lista dos ajustes
+         * de Acessibilidade logo depois dos ajustes da TV (2026-11-15, pelo ADB); numa TV sem a tela
+         * de verdade, seria ele o aberto (o que o Johan viu na 1.0.8). Sem ele, cai nos ajustes gerais.
+         */
+        private val STUB_APPS = setOf("com.android.tv.frameworkpackagestubs")
 
         /** Os apps de ajustes conhecidos, na ordem de preferência: o da TV e o do celular. */
         private val SETTINGS_APPS = listOf("com.android.tv.settings", "com.android.settings")

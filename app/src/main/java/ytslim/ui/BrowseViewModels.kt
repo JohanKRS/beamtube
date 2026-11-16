@@ -94,6 +94,17 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     private val _refreshing = MutableStateFlow(false)
     override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
+    // Estes três ficam antes do init: o viewModelScope roda no Main.immediate, então a coleta que o
+    // init começa já lê o [seen] ali dentro do construtor. Declarado depois, ele ainda era nulo, e o
+    // app fechava toda vez que abria (1.0.11).
+    private var onScreen = false
+
+    /** Até onde a grade já mostrou a lista da tela ([SeenRows]). */
+    private val seen = MutableStateFlow(0)
+
+    /** Quantos vídeos, do começo, a grade mostra agora (vale para a lista que entrar no lugar). */
+    private var visible = 0
+
     init {
         // Abre com a lista guardada da última vez, e a da conta chega por trás, como nas Inscrições
         // (1.0.11, pedido do Johan: logo depois de ligar a TV, as Recomendações demoravam a aparecer).
@@ -122,14 +133,6 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     fun reload() = load(quiet = false)
 
     override fun refresh() = load(quiet = raw.value is Raw.Loaded)
-
-    private var onScreen = false
-
-    /** Até onde a grade já mostrou a lista da tela ([SeenRows]). */
-    private val seen = MutableStateFlow(0)
-
-    /** Quantos vídeos, do começo, a grade mostra agora (vale para a lista que entrar no lugar). */
-    private var visible = 0
 
     /** A grade está mostrando os [count] primeiros vídeos. */
     fun seen(count: Int) {

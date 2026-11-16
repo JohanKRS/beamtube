@@ -118,4 +118,19 @@ class SubtitleRulesTest {
         assertEquals("en", SubtitleRules.base("en‐US"))
         assertEquals("ja", SubtitleRules.originalLanguage(null, listOf(caption("pt"), caption("ja", auto = true))))
     }
+
+    @Test
+    fun aTranslationFallsBackToTheRealCaptions() {
+        // App em português, vídeo em japonês com legenda em inglês e em japonês feitas por pessoa.
+        val list = listOf(caption("en"), caption("ja"), caption("ja", auto = true))
+        val options = SubtitleRules.options(list, "pt", "ja")
+        val pt = SubtitleRules.choose(options, APP)!!
+        assertTrue(pt.caption.translated)
+        val fallbacks = SubtitleRules.fallbacks(pt, options, list)
+        // Primeiro o original, depois o inglês, depois a automática; nenhuma tradução.
+        assertEquals(listOf("ja" to false, "en" to false, "ja" to true), fallbacks.map { it.language to it.auto })
+        assertTrue(fallbacks.none { it.translated })
+        // A legenda de verdade não tem plano B: ela já é a que existe.
+        assertTrue(SubtitleRules.fallbacks(SubtitleRules.choose(options, ENGLISH)!!, options, list).isEmpty())
+    }
 }
