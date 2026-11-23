@@ -3,11 +3,8 @@ package ytslim.ui
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 
 /**
@@ -17,35 +14,53 @@ import androidx.compose.runtime.snapshots.Snapshot
  *   depois da guardada, o puxar para atualizar). Sozinha, a grade seguraria o primeiro vídeo de antes
  *   no topo, com os novos escondidos acima dele.
  * - Quando [VideoListContent.jumpToTop] muda (as Inscrições atualizadas sozinhas depois de o app
- *   ficar um tempo fora), ela sobe até o primeiro vídeo, de onde estiver.
+ *   ficar um tempo fora, ou as Recomendações ao tirar as fileiras antigas), ela sobe até o primeiro
+ *   vídeo, de onde estiver.
  *
- * Nos dois casos [onTop] roda em seguida (na TV, o foco vai para o primeiro vídeo).
+ * [onStartTop] roda ainda na composição, antes de a grade medir a lista nova (na TV, guarda se o
+ * foco estava na grade antes de o card antigo sumir); [onTop] roda em seguida (o foco vai para o
+ * primeiro vídeo).
  */
 @Composable
-fun ListTop(grid: LazyGridState, content: VideoListContent, onTop: suspend () -> Unit = {}) {
+fun ListTop(
+    grid: LazyGridState,
+    content: VideoListContent,
+    onStartTop: () -> Unit = {},
+    onTop: suspend () -> Unit = {},
+) {
     val firstKey = content.videos.firstOrNull()?.let { it.id + it.playlistIndex }
     val shown = remember { arrayOfNulls<String>(1) }
-    val kept = remember { intArrayOf(0) }
+    val topCount = remember { intArrayOf(0) }
+    // IntArray salvo sem MutableState: atualiza na composição sem disparar recomposição extra.
+    val jumped = rememberSaveable { intArrayOf(content.jumpToTop) }
     // Na composição, antes da grade medir a lista nova (é quando o requestScrollToItem vale).
-    val keptTimes = remember(firstKey) {
+    val goToTop = remember(firstKey, content.jumpToTop) {
         val before = shown[0]
         shown[0] = firstKey
+        // ViewModel novo depois de o processo reiniciar: jumpToTop voltou a 0.
+        if (content.jumpToTop < jumped[0]) jumped[0] = content.jumpToTop
+        val jump = content.jumpToTop != jumped[0]
+        if (jump) jumped[0] = content.jumpToTop
         // Sem observar: ler a posição aqui faria a grade recompor a cada rolagem.
-        val atTop = Snapshot.withoutReadObservation { grid.firstVisibleItemIndex == 0 && grid.firstVisibleItemScrollOffset == 0 }
-        if (before != null && firstKey != null && atTop) {
+        // Na TV, voltar até a primeira fileira pelo D-pad deixa o scrollOffset igual ao padding de
+        // cima (GridTop, 8 dp), e não 0: isso continua sendo o topo da lista.
+        val atTop = Snapshot.withoutReadObservation {
+            grid.firstVisibleItemIndex == 0 && grid.firstVisibleItemScrollOffset <= grid.layoutInfo.beforeContentPadding
+        }
+        val keep = before != null && firstKey != null && before != firstKey && atTop
+        if (jump || keep) {
+            onStartTop()
             grid.requestScrollToItem(0)
-            ++kept[0]
+            ++topCount[0]
         } else {
-            kept[0]
+            topCount[0]
         }
     }
-    LaunchedEffect(keptTimes) { if (keptTimes > 0) onTop() }
-
-    var jumped by rememberSaveable { mutableIntStateOf(content.jumpToTop) }
-    LaunchedEffect(content.jumpToTop) {
-        if (content.jumpToTop == jumped) return@LaunchedEffect
-        jumped = content.jumpToTop
-        grid.scrollToItem(0)
+    LaunchedEffect(goToTop) {
+        if (goToTop == 0) return@LaunchedEffect
+        if (grid.firstVisibleItemIndex != 0 || grid.firstVisibleItemScrollOffset != 0) grid.scrollToItem(0)
         onTop()
+        // Mover o foco (ou o BringIntoView do card anterior) pode deslocar a grade: garante o topo.
+        if (grid.firstVisibleItemIndex != 0 || grid.firstVisibleItemScrollOffset != 0) grid.scrollToItem(0)
     }
 }

@@ -25,8 +25,9 @@ import ytslim.data.Video
 /** Linha de baixo de um vídeo: de onde ele veio (playlist inscrita) ou a linha do YouTube. */
 @Composable
 fun subtitleOf(video: Video): String? {
-    val playlist = video.fromPlaylist ?: return video.info ?: video.channelName
-    return video.channelName?.let { stringResource(R.string.from_playlist, it, playlist) }
+    val name = channelNameOf(video)
+    val playlist = video.fromPlaylist ?: return video.info ?: name
+    return name?.let { stringResource(R.string.from_playlist, it, playlist) }
         ?: stringResource(R.string.from_playlist_no_channel, playlist)
 }
 

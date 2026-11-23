@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import ytslim.R
 import ytslim.data.Channel
+import ytslim.data.Handles
 import ytslim.data.SavedVideos
+import ytslim.data.TopicRules
 import ytslim.data.Video
 import ytslim.data.VideoActions
 
@@ -74,9 +76,12 @@ fun blockNotice(res: Resources, outcome: ChannelViewModel.BlockOutcome) {
     Notices.show(res.getString(text), long = outcome != ChannelViewModel.BlockOutcome.UNBLOCKED)
 }
 
+/** O nome do canal do vídeo (do campo próprio ou, quando falta, do começo da linha [Video.info]). */
+fun channelNameOf(video: Video): String? = Handles.resolveChannelName(video.channelName, video.info)
+
 /** O canal de um vídeo, para abrir a página dele. null quando o YouTube não manda o ID. */
 fun channelOf(video: Video): Channel? =
-    video.channelId?.takeIf { it.isNotBlank() }?.let { Channel(it, video.channelName.orEmpty(), info = null, thumbnailUrl = null) }
+    video.channelId?.takeIf { it.isNotBlank() }?.let { Channel(it, channelNameOf(video).orEmpty(), info = null, thumbnailUrl = null) }
 
 /**
  * Abre o canal de um vídeo. Quando o card veio sem o ID do canal (as Recomendações vêm assim), ele
@@ -88,7 +93,7 @@ fun CoroutineScope.openChannelOf(video: Video, res: Resources, onOpenChannel: (C
         val found = VideoActions.channel(video.id)
             ?: return@launch Notices.show(res.getString(R.string.channel_not_found))
         // O nome do card, quando há: é o que a pessoa viu.
-        onOpenChannel(found.copy(title = video.channelName?.takeIf { it.isNotBlank() } ?: found.title))
+        onOpenChannel(found.copy(title = channelNameOf(video) ?: found.title))
     }
 }
 
@@ -97,8 +102,25 @@ fun CoroutineScope.openChannelOf(video: Video, res: Resources, onOpenChannel: (C
  * vira "12K views · 2 hours ago" (o nome do canal aparece à parte, com o avatar).
  */
 fun metaAfterChannel(info: String?, channelName: String?, published: String?): String? {
-    val parts = info.orEmpty().split('•', '·').map { it.trim() }.filter { it.isNotEmpty() }
-    val rest = parts.filterNot { channelName != null && it.equals(channelName.trim(), ignoreCase = true) }
+    val parts = Handles.parts(info)
+    val channel = channelName?.let(Handles::clean)?.ifEmpty { null }
+    val normChannel = channel?.let(TopicRules::normalize)?.ifEmpty { null }
+    val rest = parts.filterIndexed { index, part ->
+        if (channel == null) return@filterIndexed true
+        if (part.equals(channel, ignoreCase = true)) return@filterIndexed false
+        // Colaboração na linha do YouTube ("3Blue1Brown and PolyaMath • 500K views"): o canal já
+        // aparece na primeira linha do card, então o pedaço inicial sai da segunda.
+        if (index == 0 && parts.size >= 2) {
+            val collab = if (normChannel != null) {
+                val normPart = TopicRules.normalize(part)
+                normPart == normChannel || normPart.startsWith("$normChannel ")
+            } else {
+                part.startsWith("$channel ", ignoreCase = true)
+            }
+            if (collab) return@filterIndexed false
+        }
+        true
+    }
     return rest.joinToString(" · ").ifEmpty { published?.takeIf { it.isNotBlank() } }
 }
 
@@ -108,8 +130,8 @@ fun metaAfterChannel(info: String?, channelName: String?, published: String?): S
  * linha de detalhes das listas (vídeos, playlists e canais).
  */
 fun spacedDots(raw: String): androidx.compose.ui.text.AnnotatedString = androidx.compose.ui.text.buildAnnotatedString {
-    // O YouTube separa com "•" (as playlists chegam assim): um ponto só no app inteiro.
-    val text = raw.replace(" • ", DOT)
+    // O YouTube separa com "•" (as playlists chegam assim), às vezes cercado por marcas bidi: um ponto só no app inteiro.
+    val text = Handles.clean(raw).replace(" • ", DOT)
     append(text)
     var at = text.indexOf(DOT)
     while (at >= 0) {

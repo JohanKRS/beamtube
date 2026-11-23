@@ -68,6 +68,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
             val loadingMore: Boolean,
             val cached: Boolean = false,
             val kept: Boolean = false,
+            val jump: Int = 0,
         ) : Raw {
             /** As páginas da conta, sem as fileiras antigas. */
             val fresh: List<List<Video>> get() = if (kept) pages.drop(1) else pages
@@ -87,10 +88,13 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     private fun content(raw: Raw, settings: Settings): UiState<VideoListContent> = when (raw) {
         Raw.Loading -> UiState.Loading
         is Raw.Error -> UiState.Error(raw.message)
-        is Raw.Loaded -> UiState.Ready(VideoListContent(shown(raw.pages, settings), raw.lastPage.hasMore, raw.loadingMore, cached = raw.cached))
+        is Raw.Loaded -> UiState.Ready(
+            VideoListContent(shown(raw.pages, settings), raw.lastPage.hasMore, raw.loadingMore, cached = raw.cached, jumpToTop = raw.jump),
+        )
     }
 
     private var job: Job? = null
+    private var jumps = 0
     private val _refreshing = MutableStateFlow(false)
     override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
@@ -154,9 +158,11 @@ class RecommendedViewModel : ViewModel(), Refreshable {
         onScreen = shown
         val loaded = raw.value as? Raw.Loaded ?: return
         if (shown || !loaded.kept) return
-        // Uma página a caminho ainda conta com as fileiras antigas: recomeça sem elas.
+        // Uma página a caminho ainda conta com as fileiras antigas: recomeça sem elas, e a volta
+        // para a aba abre no começo da lista nova (sem herdar a rolagem que incluía as antigas).
         job?.cancel()
-        raw.value = loaded.copy(pages = loaded.fresh, kept = false, loadingMore = false)
+        jumps++
+        raw.value = loaded.copy(pages = loaded.fresh, kept = false, loadingMore = false, jump = jumps)
         newListSeen()
         fill(extra = 0)
     }
@@ -173,7 +179,7 @@ class RecommendedViewModel : ViewModel(), Refreshable {
             val fresh = runCatching { LibraryRepository.recommended() }
                 .onSuccess { ChannelFeedback.note(it.videos) }
                 // Sem rede, a lista que está na tela (a guardada, ou a de antes do puxar) fica.
-                .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false) }, { if (quiet) raw.value else Raw.Error(it.toMessage()) })
+                .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false, jump = jumps) }, { if (quiet) raw.value else Raw.Error(it.toMessage()) })
             val old = raw.value
             val below = quiet && !byUser && onScreen && fresh is Raw.Loaded && old is Raw.Loaded && fresh !== old
             val keep = if (below) withContext(Dispatchers.Default) { FreshBelow.keep(shown(old.pages, settings.value), seen.value) } else null

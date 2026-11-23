@@ -38,7 +38,7 @@ object RelativeTime {
         listOf("month", "mês", "mes") to 30 * DAY,
         listOf("year", "ano", "año") to 365 * DAY,
     )
-    private val NUMBER_AND_WORD = Regex("""(\d+)\s*([^\d\s•·,.]+)""")
+    private val NUMBER_AND_WORD = Regex("""(\d+)[\s\u00A0\u202F]*([^\d\s\u00A0\u202F•·,.]+)""")
 
     /** Quantos milissegundos atrás, ou null se o texto não tiver um tempo relativo. */
     fun agoMs(text: String?): Long? {
@@ -128,18 +128,18 @@ object FeedFilter {
  */
 object ViewCount {
     private val VIEWS_WORDS = listOf("view", "visualiza", "exibi", "vista")
-    private val NUMBER = Regex("""(\d+(?:[.,]\d+)*)\s*(mil|mi|bi|mln|mld|bn|k|m|b)?(?![a-z])""")
+    private val NUMBER = Regex("""(\d+(?:[.,]\d+)*)[\s\u00A0\u202F]*(mil|mi|bi|mln|mld|bn|k|m|b)?(?![a-z])""")
 
     fun parse(text: String?): Long? {
         if (text.isNullOrBlank()) return null
         // A parte com "views" e um número (o nome do canal também pode ter "view": "Review Lab").
-        return text.lowercase().split('•', '·').map { it.trim() }
+        return Handles.parts(text.lowercase())
             .filter { part -> VIEWS_WORDS.any { part.contains(it) } }
             .firstNotNullOfOrNull(::parsePart)
     }
 
     private fun parsePart(part: String): Long? {
-        if (part.startsWith("no ") || part.startsWith("nenhuma")) return 0
+        if (part.startsWith("no ") || part.startsWith("nenhuma") || part.startsWith("sin ")) return 0
         val match = NUMBER.find(part) ?: return null
         val (digits, suffix) = match.destructured
         val factor = when (suffix) {

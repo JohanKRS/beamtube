@@ -17,6 +17,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -50,10 +53,10 @@ class ListTopTest {
 
     private lateinit var grid: LazyGridState
 
-    private fun show(first: VideoListContent, withListTop: Boolean = true): (VideoListContent) -> Unit {
+    private fun show(first: VideoListContent, withListTop: Boolean = true, topPadding: Dp = 0.dp): (VideoListContent) -> Unit {
         var content by mutableStateOf(first)
         // A lista chega como parâmetro, como nas telas do app (a grade só a vê depois de recompor).
-        compose.setContent { Grid(content, withListTop) }
+        compose.setContent { Grid(content, withListTop, topPadding) }
         compose.waitForIdle()
         return { next ->
             content = next
@@ -62,10 +65,15 @@ class ListTopTest {
     }
 
     @Composable
-    private fun Grid(content: VideoListContent, withListTop: Boolean) {
+    private fun Grid(content: VideoListContent, withListTop: Boolean, topPadding: Dp = 0.dp) {
         grid = rememberLazyGridState()
         if (withListTop) ListTop(grid, content)
-        LazyVerticalGrid(state = grid, columns = GridCells.Fixed(1), modifier = Modifier.height(400.dp)) {
+        LazyVerticalGrid(
+            state = grid,
+            columns = GridCells.Fixed(1),
+            contentPadding = PaddingValues(top = topPadding),
+            modifier = Modifier.height(400.dp),
+        ) {
             items(content.videos, key = { it.id + it.playlistIndex }) { Box(Modifier.height(100.dp)) { Text(it.title) } }
         }
     }
@@ -81,6 +89,16 @@ class ListTopTest {
     @Test
     fun atTheTopNewVideosShowUpOnTop() {
         val update = show(content(old))
+        update(content(new + old))
+        assertEquals(0, grid.firstVisibleItemIndex)
+        compose.onNodeWithText("Video new1").assertIsDisplayed()
+    }
+
+    @Test
+    fun offsetWithinTopPaddingStillCountsAsTop() {
+        val update = show(content(old), topPadding = 8.dp)
+        compose.runOnUiThread { runBlocking { grid.scrollToItem(0, grid.layoutInfo.beforeContentPadding) } }
+        compose.waitForIdle()
         update(content(new + old))
         assertEquals(0, grid.firstVisibleItemIndex)
         compose.onNodeWithText("Video new1").assertIsDisplayed()
@@ -103,6 +121,28 @@ class ListTopTest {
         compose.runOnUiThread { runBlocking { grid.scrollToItem(10) } }
         compose.waitForIdle()
         update(content(new + old, jump = 1))
+        assertEquals(0, grid.firstVisibleItemIndex)
+        compose.onNodeWithText("Video new1").assertIsDisplayed()
+    }
+
+    @Test
+    fun jumpToTopWhileTabIsOffScreenScrollsBackWhenReturning() {
+        var shownTab by mutableStateOf("feed")
+        var feed by mutableStateOf(content(old))
+        compose.setContent {
+            val holder = rememberSaveableStateHolder()
+            holder.SaveableStateProvider(shownTab) {
+                if (shownTab == "feed") Grid(feed, withListTop = true)
+            }
+        }
+        compose.waitForIdle()
+        compose.runOnUiThread { runBlocking { grid.scrollToItem(10) } }
+        compose.waitForIdle()
+        shownTab = "other"
+        compose.waitForIdle()
+        feed = content(new + old, jump = 1)
+        shownTab = "feed"
+        compose.waitForIdle()
         assertEquals(0, grid.firstVisibleItemIndex)
         compose.onNodeWithText("Video new1").assertIsDisplayed()
     }

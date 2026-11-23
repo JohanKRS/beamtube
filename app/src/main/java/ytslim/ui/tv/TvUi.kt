@@ -182,10 +182,12 @@ import ytslim.ui.HistoryViewModel
 import ytslim.ui.HomeTab
 import ytslim.ui.LightSlit
 import ytslim.ui.LocalAddAccount
+import ytslim.ui.LocalSession
 import ytslim.ui.homeTabs
 import ytslim.ui.monogramOf
 import ytslim.ui.ListTop
 import ytslim.ui.MetaLine
+import ytslim.ui.channelNameOf
 import ytslim.ui.metaAfterChannel
 import ytslim.ui.AppLanguage
 import ytslim.ui.Language
@@ -463,7 +465,7 @@ object TvUi : Screens {
 
     @Composable
     override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, onReload: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
-        val initialFocus = rememberSaveable { mutableStateOf(true) }
+        val initialFocus = rememberSaveable(LocalSession.current) { mutableStateOf(tab == HomeTab.SUBSCRIPTIONS) }
         var tabsFocused by remember { mutableStateOf(false) }
         // OK na aba aberta recarrega a lista dela (1.0.6, pedido do Johan: "quando tiver em cima da
         // aba e apertar OK, recarrega"; até a 1.0.5 só segurando o OK). Conta só o OK que desceu
@@ -1982,7 +1984,7 @@ object TvUi : Screens {
                         if (!isHeld) onHold(index)
                     },
                     headlineContent = { Text(video.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    supportingContent = video.channelName?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                    supportingContent = channelNameOf(video)?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
                     leadingContent = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("${index + 1}", textAlign = TextAlign.End, modifier = Modifier.width(36.dp))
@@ -2205,16 +2207,31 @@ object TvUi : Screens {
         val saved by SavedVideos.ids.collectAsStateWithLifecycle()
         val grid = rememberLazyGridState()
         var inGrid by remember { mutableStateOf(false) }
+        val hadFocus = remember { booleanArrayOf(false) }
+        var resetFocus by remember { mutableStateOf(false) }
         PrefetchThumbnails(content.videos, grid)
         if (onSeen != null) SeenRows(grid, onSeen)
         // De volta ao começo com vídeos novos: o foco que estava na grade vai para o primeiro deles.
-        ListTop(grid, content) {
-            if (!inGrid) return@ListTop
+        // Com o foco fora (nas abas ou no menu lateral), o focusRestorer ainda lembraria o card
+        // antigo (agora fileiras abaixo), e entrar na grade rolaria até ele: [resetFocus] faz a
+        // próxima entrada cair no primeiro vídeo.
+        ListTop(
+            grid = grid,
+            content = content,
+            onStartTop = { hadFocus[0] = inGrid },
+        ) {
+            val focused = hadFocus[0] || inGrid
+            hadFocus[0] = false
+            if (!focused) {
+                resetFocus = true
+                return@ListTop
+            }
             // O primeiro card só existe depois que a grade mede a lista nova.
             repeat(FOCUS_TRIES) {
                 withFrameNanos { }
                 if (runCatching { firstFocus.requestFocus() }.getOrElse { false } != false) return@ListTop
             }
+            resetFocus = true
         }
         LazyVerticalGrid(
             state = grid,
@@ -2222,8 +2239,22 @@ object TvUi : Screens {
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
             verticalArrangement = Arrangement.spacedBy(GridGapY),
             contentPadding = PaddingValues(bottom = 48.dp, top = GridTop),
-            // Ir ao menu (ou às abas) e voltar devolve o foco a este card (1.0.9, [Home]).
-            modifier = Modifier.onFocusChanged { inGrid = it.hasFocus }.focusRestorer(),
+            // Ir ao menu (ou às abas) e voltar devolve o foco a este card (1.0.9, [Home]);
+            // depois de subir ao topo com o foco fora, [resetFocus] ignora o card antigo.
+            modifier = Modifier
+                .onFocusChanged {
+                    inGrid = it.hasFocus
+                    if (it.hasFocus) resetFocus = false
+                }
+                .then(
+                    if (resetFocus) {
+                        Modifier.focusProperties {
+                            onEnter = { if (content.videos.isNotEmpty()) runCatching { firstFocus.requestFocus() } }
+                        }
+                    } else {
+                        Modifier.focusRestorer()
+                    },
+                ),
         ) {
             if (content.videos.isEmpty() && !content.loadingMore) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -2342,7 +2373,7 @@ object TvUi : Screens {
                 if (menu) {
                     VideoMenu(
                         saved = saved,
-                        channelName = video.channelName?.takeIf { it.isNotBlank() },
+                        channelName = channelNameOf(video),
                         focusable = menuFocusable,
                         onDismiss = { menu = false },
                         onSave = if (showSaved) {
@@ -2555,7 +2586,7 @@ object TvUi : Screens {
      */
     @Composable
     private fun VideoText(video: Video) {
-        val name = video.channelName?.takeIf { it.isNotBlank() }
+        val name = channelNameOf(video)
         if (video.fromPlaylist != null || name == null) return CardText(video.title, subtitleOf(video))
         CardText(video.title, null)
         val rest = metaAfterChannel(video.info, name, video.published)

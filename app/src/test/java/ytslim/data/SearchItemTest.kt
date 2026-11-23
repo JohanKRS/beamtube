@@ -41,4 +41,20 @@ class SearchItemTest {
 
         assertNull(item().toSearchItem())
     }
+
+    @Test
+    fun toVideoRecoversChannelNameFromInfoWhenAuthorIsMissingOrBadge() {
+        val noAuthor = item(videoId = "rec1").apply {
+            setAuthor(null)
+            setSecondTitle("\u200EVeritasium\u200E • \u200E16.1M views\u200E • \u200E9 hours ago\u200E")
+        }.toVideo(home = true)!!
+        assertEquals("Veritasium", noAuthor.channelName)
+        assertEquals("Veritasium • 16.1M views • 9 hours ago", noAuthor.info)
+
+        val badgeAuthor = item(videoId = "rec2").apply {
+            setAuthor("4K")
+            setSecondTitle("3Blue1Brown • 500K views • 1 day ago")
+        }.toVideo(home = true)!!
+        assertEquals("3Blue1Brown", badgeAuthor.channelName)
+    }
 }

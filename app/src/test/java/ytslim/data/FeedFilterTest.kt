@@ -73,7 +73,12 @@ class FeedFilterTest {
         assertEquals(12_000L, ViewCount.parse("12 mil visualizações"))
         assertEquals(1_234L, ViewCount.parse("1.234 visualizações"))
         assertEquals(3_100_000_000L, ViewCount.parse("3.1B views"))
+        assertEquals(1_200_000L, ViewCount.parse("Canal • 1,2\u00A0mi de visualizações • há 3 dias"))
         assertEquals(0L, ViewCount.parse("No views"))
+        assertEquals(0L, ViewCount.parse("\u200ENo views\u200E"))
+        assertEquals(0L, ViewCount.parse("Nenhuma visualização"))
+        assertEquals(0L, ViewCount.parse("Sin visualizaciones"))
+        assertEquals(0L, ViewCount.parse("Sin vistas"))
         assertNull(ViewCount.parse("Channel • 3 days ago"))
     }
 }

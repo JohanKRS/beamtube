@@ -32,6 +32,14 @@ object ListCache {
         io {
             runCatching { json.decodeFromString(Saved.serializer(), file(key).readText()) }.getOrNull()
         }?.takeIf { nowMs - it.savedAt in 0..MAX_AGE_MS && it.videos.isNotEmpty() }
+            ?.let { saved ->
+                // Listas guardadas antes da correção dos Recomendados podem estar sem channelName.
+                saved.copy(videos = saved.videos.map { v ->
+                    val name = Handles.resolveChannelName(v.channelName, v.info)
+                    val info = Handles.strip(v.info)
+                    if (name == v.channelName && info == v.info) v else v.copy(channelName = name, info = info)
+                })
+            }
     }
 
     suspend fun save(key: String, title: String?, videos: List<Video>, nowMs: Long = System.currentTimeMillis()) = mutex.withLock {
