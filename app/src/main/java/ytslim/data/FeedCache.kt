@@ -44,6 +44,12 @@ object FeedCache {
         io { target.delete() }
     }
 
+    /** Esquece o feed na memória, quando o arquivo some por fora (o Sign out apaga a pasta do usuário). */
+    suspend fun forget() = mutex.withLock {
+        cachedPath = null
+        cached = null
+    }
+
     private suspend fun update(change: (Saved?) -> Saved?) = mutex.withLock {
         val target = file
         val updated = change(readLocked(target)) ?: return@withLock

@@ -285,6 +285,8 @@ object Users {
                 File(dir(user.slot), ExploreRepository.NEXT_FILE).delete()
             }
         }
+        // O feed fica também na memória; sem isso, a mesma conta voltando abriria o feed apagado.
+        FeedCache.forget()
         forgetSession()
         val next = io {
             synchronized(this) {
