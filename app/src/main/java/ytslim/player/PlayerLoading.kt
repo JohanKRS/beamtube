@@ -140,7 +140,7 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
             return
         }
         poster.animate().cancel()
-        poster.animate().alpha(0f).setDuration(POSTER_FADE_MS).setInterpolator(DecelerateInterpolator())
+        poster.animate().alpha(0f).setDuration(POSTER_FADE_MS).setInterpolator(DECELERATE)
             .withEndAction { hidePoster() }
     }
 
@@ -167,10 +167,10 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
         val from = dragFrom ?: return
         dragFrom = null
         if (!from) {
-            poster.animate().alpha(0f).setDuration(UNDRAG_MS).setInterpolator(DecelerateInterpolator())
+            poster.animate().alpha(0f).setDuration(UNDRAG_MS).setInterpolator(DECELERATE)
                 .withEndAction { hidePoster() }
         }
-        shade.animate().alpha(0f).setDuration(UNDRAG_MS).setInterpolator(DecelerateInterpolator())
+        shade.animate().alpha(0f).setDuration(UNDRAG_MS).setInterpolator(DECELERATE)
             .withEndAction { shade.visibility = View.GONE }
     }
 
@@ -188,8 +188,8 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
             poster.visibility = View.VISIBLE
         }
         shade.visibility = View.VISIBLE
-        poster.animate().alpha(1f).setDuration(durationMs).setInterpolator(DecelerateInterpolator())
-        shade.animate().alpha(1f).setDuration(durationMs).setInterpolator(AccelerateInterpolator())
+        poster.animate().alpha(1f).setDuration(durationMs).setInterpolator(DECELERATE)
+        shade.animate().alpha(1f).setDuration(durationMs).setInterpolator(ACCELERATE)
     }
 
     /** Quanto a tela escurece arrastando, no ponto em que soltar fecha (fechando, vai ao preto). */
@@ -228,6 +228,9 @@ internal class PlayerLoading(context: Context, tv: Boolean) : FrameLayout(contex
     }
 
     private companion object {
+        val DECELERATE = DecelerateInterpolator()
+        val ACCELERATE = AccelerateInterpolator()
+
         /** O disco inteiro; o anel fica para dentro ([LoadingRing]). */
         const val RING_DP = 64
         const val RING_TV_DP = 80

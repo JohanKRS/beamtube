@@ -44,6 +44,10 @@ internal suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { b
 internal suspend fun <T : Any> Observable<T>.firstOrNull(): T? =
     withContext(Dispatchers.IO) { awaitFirstOrNull() }
 
+/** Primeiro valor de um Observable do motor, já transformado fora da thread principal. */
+internal suspend fun <T : Any, R> Observable<T>.firstOrNullMapped(transform: (T?) -> R): R =
+    withContext(Dispatchers.IO) { transform(awaitFirstOrNull()) }
+
 /** Espera um Observable<Void> do motor terminar (ações como like ou inscrever). */
 internal suspend fun Observable<Void>.complete() {
     withContext(Dispatchers.IO) { ignoreElements().await() }

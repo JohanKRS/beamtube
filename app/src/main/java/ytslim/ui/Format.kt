@@ -6,5 +6,13 @@ fun formatDuration(ms: Long): String {
     val h = total / 3600
     val m = (total % 3600) / 60
     val s = total % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+    return buildString(8) {
+        if (h > 0) {
+            append(h).append(':')
+            if (m < 10) append('0')
+        }
+        append(m).append(':')
+        if (s < 10) append('0')
+        append(s)
+    }
 }

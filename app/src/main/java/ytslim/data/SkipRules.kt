@@ -33,13 +33,20 @@ object SkipRules {
     const val MIN_VALLEY_MS = 15_000L
     const val MAX_VALLEY_MS = 300_000L
 
+    /** Um trecho que o público pula, já calculado a partir do gráfico de "mais repetidos". */
+    class Span(val startMs: Long, val endMs: Long)
+
     /**
      * O fim do trecho em que a posição está (ou que começa logo à frente), ou null se não há o que
      * pular aqui. Vale do começo do trecho até o fim dele, mesmo onde a audiência já subiu um pouco
      * antes de voltar à mediana: avançar no meio do patrocínio também pula o resto dele.
      */
-    fun valleyEnd(segments: List<HeatSegment>, positionMs: Long): Long? {
-        val span = spans(segments).firstOrNull { positionMs < it.endMs } ?: return null
+    fun valleyEnd(segments: List<HeatSegment>, positionMs: Long): Long? =
+        valleyEndOf(spans(segments), positionMs)
+
+    /** Versão sobre os trechos já calculados ([spans]), para não reordenar o gráfico a cada pulo. */
+    fun valleyEndOf(spans: List<Span>, positionMs: Long): Long? {
+        val span = spans.firstOrNull { positionMs < it.endMs } ?: return null
         if (span.startMs > positionMs + LOOKAHEAD_MS) return null
         return span.endMs.takeIf { it >= positionMs + MIN_JUMP_MS }
     }
@@ -50,10 +57,8 @@ object SkipRules {
      */
     fun valleys(segments: List<HeatSegment>): List<Long> = spans(segments).map { it.startMs }
 
-    private class Span(val startMs: Long, val endMs: Long)
-
     /** Os vales: de onde a audiência despenca até onde ela volta à mediana. */
-    private fun spans(segments: List<HeatSegment>): List<Span> {
+    fun spans(segments: List<HeatSegment>): List<Span> {
         if (segments.size < 5) return emptyList()
         val median = median(segments)
         if (median <= 0f) return emptyList()
@@ -77,5 +82,9 @@ object SkipRules {
         return spans
     }
 
-    private fun median(segments: List<HeatSegment>): Float = segments.map { it.intensity }.sorted()[segments.size / 2]
+    private fun median(segments: List<HeatSegment>): Float {
+        val values = FloatArray(segments.size) { segments[it].intensity }
+        values.sort()
+        return values[values.size / 2]
+    }
 }

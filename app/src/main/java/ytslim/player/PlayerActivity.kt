@@ -67,6 +67,8 @@ import coil3.toBitmap
 import java.lang.ref.WeakReference
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import ytslim.MainActivity
@@ -148,7 +150,9 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var previewImage: ImageView
     private lateinit var previewChapter: TextView
     private lateinit var previewTime: TextView
-    private lateinit var endScreen: EndScreen
+    private var endScreen: EndScreen? = null
+    private var exoControllerView: View? = null
+    private var exoContentFrame: View? = null
 
     /** A tela inteira do player (a altura dela mede o arrastar do [SwipeToClose]). */
     private lateinit var screen: View
@@ -199,6 +203,9 @@ class PlayerActivity : ComponentActivity() {
     /** Os trechos que o avanço pula inteiros, marcados agora na barra de tempo. */
     private var shownSkipSpots: List<Long> = emptyList()
     private var showingLive = false
+    private var showingAtLive: Boolean? = null
+    private val liveTicking = MutableStateFlow(false)
+    private val liveWindow = Timeline.Window()
 
     /** Os capítulos do vídeo atual (frestas na barra, o nome do atual e o do preview). */
     private var chapters: List<Chapter> = emptyList()
@@ -213,11 +220,18 @@ class PlayerActivity : ComponentActivity() {
     }
     private val sheetsLoading = HashSet<Int>()
     private var previewFrame: Storyboard.Frame? = null
+    private var lastDrawnSheet: Bitmap? = null
+    private var lastDrawnFrame: Storyboard.Frame? = null
+    private var lastDrawnW = 0
+    private var lastDrawnH = 0
 
     /** O ponto do último preview pedido, para refazer o lugar e o quadro depois do layout ([showPreview]). */
     private var previewAt = 0L
     private var previewRedoPending = false
     private val previewMatrix = Matrix()
+    private val previewSpot = IntArray(2)
+    private var previewEdgePx = 0f
+    private var previewGapPx = 0
     private val timeText = StringBuilder()
     private val timeFormat = java.util.Formatter(timeText, java.util.Locale.getDefault())
 
@@ -347,9 +361,12 @@ class PlayerActivity : ComponentActivity() {
                 launch { controller.ended.collect(::onEnded) }
                 launch { controller.quality.collect(::renderQuality) }
                 launch {
-                    while (true) {
-                        renderLive()
-                        delay(LIVE_TICK_MS)
+                    renderLive()
+                    liveTicking.collectLatest { live ->
+                        while (live) {
+                            delay(LIVE_TICK_MS)
+                            renderLive()
+                        }
                     }
                 }
                 launch { combine(PlayQueue.active, PlayQueue.left) { _, _ -> }.collect { renderSleep() } }
@@ -390,6 +407,8 @@ class PlayerActivity : ComponentActivity() {
                     storyboard = board
                     sheets.clear()
                     sheetsLoading.clear()
+                    lastDrawnSheet = null
+                    lastDrawnFrame = null
                 }
                 showTitle()
                 showDetail()
@@ -574,20 +593,25 @@ class PlayerActivity : ComponentActivity() {
         val live = player.isCurrentMediaItemLive
         if (live != showingLive) {
             showingLive = live
+            showingAtLive = null
             positionView.visibility = if (live) View.GONE else View.VISIBLE
             durationView.visibility = if (live) View.GONE else View.VISIBLE
             liveButton.visibility = if (live) View.VISIBLE else View.GONE
+            liveTicking.value = live
         }
         if (!live) return
         val atLive = behindLiveMs(player) < LIVE_SLACK_MS
-        liveButton.compoundDrawableTintList = ColorStateList.valueOf(color(if (atLive) R.color.player_live else R.color.player_text_secondary))
+        if (atLive != showingAtLive) {
+            showingAtLive = atLive
+            liveButton.compoundDrawableTintList = ColorStateList.valueOf(color(if (atLive) R.color.player_live else R.color.player_text_secondary))
+        }
     }
 
     /** Quanto o vídeo está atrás do ponto em que o player toca uma live (a folga que ele mantém do fim). */
     private fun behindLiveMs(player: Player): Long {
         val offset = player.currentLiveOffset
         if (offset == C.TIME_UNSET || player.currentTimeline.isEmpty) return 0
-        val window = player.currentTimeline.getWindow(player.currentMediaItemIndex, Timeline.Window())
+        val window = player.currentTimeline.getWindow(player.currentMediaItemIndex, liveWindow)
         val target = window.liveConfiguration?.targetOffsetMs?.takeIf { it != C.TIME_UNSET } ?: 0
         return offset - target
     }
@@ -783,15 +807,22 @@ class PlayerActivity : ComponentActivity() {
                     closePanel(focusButton = false)
                     playerView.hideController()
                     playerView.useController = false
-                    endScreen.show(suggestions, playNext = settings.endAction == EndAction.NEXT, poster = loading.posterUrl)
+                    ensureEndScreen().show(suggestions, playNext = settings.endAction == EndAction.NEXT, poster = loading.posterUrl)
                 }
             }
         }
     }
 
+    /** A tela do fim só é criada quando o vídeo acaba: abrir um vídeo não sobe o Compose à toa. */
+    private fun ensureEndScreen(): EndScreen = endScreen ?: EndScreen(this, tv = !touch, onPlay = ::playSuggestion, onBack = ::close).also {
+        endScreen = it
+        (screen as FrameLayout).addView(it.view, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+    }
+
     private fun hideEndScreen() {
-        if (!::endScreen.isInitialized || !endScreen.shown) return
-        endScreen.hide()
+        val end = endScreen ?: return
+        if (!end.shown) return
+        end.hide()
         playerView.useController = !floating
         playerView.requestFocus()
     }
@@ -829,8 +860,9 @@ class PlayerActivity : ComponentActivity() {
             return true
         }
         // Com a tela do fim aberta, as teclas são dela (e cada uma recomeça a contagem); "voltar" sai do player.
-        if (::endScreen.isInitialized && endScreen.shown) {
-            if (event.action == KeyEvent.ACTION_DOWN) endScreen.touched()
+        val end = endScreen
+        if (end != null && end.shown) {
+            if (event.action == KeyEvent.ACTION_DOWN) end.touched()
             return super.dispatchKeyEvent(event)
         }
         hidingKey?.let { key ->
@@ -932,7 +964,7 @@ class PlayerActivity : ComponentActivity() {
             else -> return false
         }
         if (openPanel != null || !::playerView.isInitialized || !playerView.isControllerFullyVisible) return false
-        val controls = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller) ?: return false
+        val controls = exoControllerView ?: return false
         val focused = controls.findFocus() ?: return false
         return focused.focusSearch(direction)?.isInside(controls) != true
     }
@@ -941,7 +973,8 @@ class PlayerActivity : ComponentActivity() {
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && turnOffJob != null) cancelTurnOff(announce = true)
-        if (event.actionMasked == MotionEvent.ACTION_DOWN && ::endScreen.isInitialized && endScreen.shown) endScreen.touched()
+        val end = endScreen
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && end != null && end.shown) end.touched()
         return super.dispatchTouchEvent(event)
     }
 
@@ -960,6 +993,9 @@ class PlayerActivity : ComponentActivity() {
                 updateMiniPlayer()
             }
             if (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED)) renderLoading()
+            if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_PLAYBACK_STATE_CHANGED)) {
+                renderLive()
+            }
         }
     }
 
@@ -988,10 +1024,9 @@ class PlayerActivity : ComponentActivity() {
     private fun bindMiniPlayer() {
         addOnPictureInPictureModeChangedListener { showFloating(it.isInPictureInPictureMode) }
         // Onde o vídeo está na tela, para a janelinha sair dele.
-        playerView.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)
-            ?.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
-                if (left != oldLeft || top != oldTop || right != oldRight || bottom != oldBottom) updateMiniPlayer()
-            }
+        exoContentFrame?.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (left != oldLeft || top != oldTop || right != oldRight || bottom != oldBottom) updateMiniPlayer()
+        }
     }
 
     private fun showFloating(on: Boolean) {
@@ -1011,7 +1046,7 @@ class PlayerActivity : ComponentActivity() {
             }
         }
         // Sem os controles da tela na janelinha (escondê-los também baixa a legenda).
-        playerView.useController = !on && !(::endScreen.isInitialized && endScreen.shown)
+        playerView.useController = !on && endScreen?.shown != true
     }
 
     private fun floats() =
@@ -1023,7 +1058,7 @@ class PlayerActivity : ComponentActivity() {
         val size = controller.player.videoSize
         val (width, height) = MiniPlayerRules.shape(size.width, size.height, size.pixelWidthHeightRatio)
         val params = PictureInPictureParams.Builder().setAspectRatio(Rational(width, height))
-        val video = playerView.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)
+        val video = exoContentFrame
         if (!floating && video != null && video.getGlobalVisibleRect(videoBounds) && !videoBounds.isEmpty) {
             params.setSourceRectHint(videoBounds)
         }
@@ -1238,9 +1273,10 @@ class PlayerActivity : ComponentActivity() {
     private fun showPreview(positionMs: Long) {
         chapterView.visibility = View.GONE
         val chapter = Chapters.at(chapters, positionMs)?.title
-        previewChapter.text = chapter
+        if (previewChapter.text?.toString() != chapter) previewChapter.text = chapter
         previewChapter.visibility = if (chapter != null) View.VISIBLE else View.GONE
-        previewTime.text = Util.getStringForTime(timeText, timeFormat, positionMs)
+        val formattedTime = Util.getStringForTime(timeText, timeFormat, positionMs)
+        if (previewTime.text?.toString() != formattedTime) previewTime.text = formattedTime
         val board = storyboard
         previewImage.visibility = if (board != null) View.VISIBLE else View.GONE
         if (board != null) showFrame(board, positionMs)
@@ -1266,7 +1302,7 @@ class PlayerActivity : ComponentActivity() {
     /** Centra o cartão no círculo da barra, sem sair da tela, logo acima da ilha. */
     private fun placePreview(positionMs: Long) {
         val root = preview.parent as? View ?: return
-        val spot = IntArray(2)
+        val spot = previewSpot
         root.getLocationInWindow(spot)
         val rootX = spot[0]
         val rootY = spot[1]
@@ -1275,11 +1311,11 @@ class PlayerActivity : ComponentActivity() {
         islandView.getLocationInWindow(spot)
         val islandTop = spot[1] - rootY
         val width = preview.layoutParams.width.toFloat()
-        val edge = resources.getDimension(R.dimen.player_edge)
+        val edge = previewEdgePx
         val left = (center - width / 2).coerceIn(edge, (root.width - edge - width).coerceAtLeast(edge))
         preview.translationX = left
         // O cartão fica embaixo (layout_gravity bottom): sobe até 10 dp acima da ilha.
-        preview.translationY = (islandTop - dp(10) - root.height).toFloat()
+        preview.translationY = (islandTop - previewGapPx - root.height).toFloat()
     }
 
     /** Mostra o quadro de [positionMs] na miniatura do preview, baixando a folha dele se faltar. */
@@ -1287,7 +1323,13 @@ class PlayerActivity : ComponentActivity() {
         val frame = board.frameAt(positionMs)
         previewFrame = frame
         val sheet = sheets[frame.sheet]
-        if (sheet != null) drawFrame(sheet, board, frame) else previewImage.setImageDrawable(null)
+        if (sheet != null) {
+            drawFrame(sheet, board, frame)
+        } else {
+            lastDrawnSheet = null
+            lastDrawnFrame = null
+            previewImage.setImageDrawable(null)
+        }
         loadSheet(board, frame.sheet)
         // A seguinte também, para o arrastar não esperar na virada de folha.
         if (frame.sheet + 1 < board.sheetCount(controller.player.duration)) loadSheet(board, frame.sheet + 1)
@@ -1320,6 +1362,15 @@ class PlayerActivity : ComponentActivity() {
         val viewWidth = previewImage.width.takeIf { it > 0 } ?: previewImage.layoutParams.width
         val viewHeight = previewImage.height.takeIf { it > 0 } ?: previewImage.layoutParams.height
         if (frameWidth <= 0 || frameHeight <= 0 || viewWidth <= 0 || viewHeight <= 0) return
+        if (lastDrawnSheet === sheet && lastDrawnFrame == frame && lastDrawnW == viewWidth && lastDrawnH == viewHeight &&
+            (previewImage.drawable as? BitmapDrawable)?.bitmap === sheet
+        ) {
+            return
+        }
+        lastDrawnSheet = sheet
+        lastDrawnFrame = frame
+        lastDrawnW = viewWidth
+        lastDrawnH = viewHeight
         // Preenche o 16:9 da miniatura (corta um pouco se o quadro tiver outra proporção).
         val scale = maxOf(viewWidth / frameWidth, viewHeight / frameHeight)
         previewMatrix.setScale(scale, scale)
@@ -1430,6 +1481,10 @@ class PlayerActivity : ComponentActivity() {
 
     private fun buildLayout(initialTitle: String?): View {
         playerView = layoutInflater.inflate(R.layout.player_view, null) as PlayerView
+        exoControllerView = playerView.findViewById(androidx.media3.ui.R.id.exo_controller)
+        exoContentFrame = playerView.findViewById(androidx.media3.ui.R.id.exo_content_frame)
+        previewEdgePx = resources.getDimension(R.dimen.player_edge)
+        previewGapPx = dp(10)
         titleView = playerView.findViewById<TextView>(R.id.player_title).apply { text = initialTitle }
         detailView = playerView.findViewById(R.id.player_detail)
         actions = playerView.findViewById(R.id.player_actions)
@@ -1525,20 +1580,19 @@ class PlayerActivity : ComponentActivity() {
             visibility = View.GONE
         }
 
-        // A tela do fim do vídeo ([UpNext]), por cima de tudo.
-        endScreen = EndScreen(this, tv = !touch, onPlay = ::playSuggestion, onBack = ::close)
-
+        // A tela do fim ([EndScreen]) entra só quando o vídeo acaba ([ensureEndScreen]).
         screen = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             addView(playerView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
             addView(messageView, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER))
-            addView(endScreen.view, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         }
         return screen
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        previewEdgePx = resources.getDimension(R.dimen.player_edge)
+        previewGapPx = dp(10)
         if (::island.isInitialized) island.fit(newConfig.screenWidthDp)
     }
 

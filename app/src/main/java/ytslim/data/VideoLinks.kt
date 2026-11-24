@@ -57,11 +57,13 @@ object VideoLinks {
             k to java.net.URLDecoder.decode(v, "UTF-8")
         }
 
+    private val TIME_PARTS = Regex("""^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$""")
+
     /** "90", "90s", "1m30s", "1h2m3s" -> segundos. */
     internal fun parseTime(value: String?): Long {
         if (value.isNullOrBlank()) return 0
         value.toLongOrNull()?.let { return it }
-        val match = Regex("""^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$""").matchEntire(value) ?: return 0
+        val match = TIME_PARTS.matchEntire(value) ?: return 0
         val (h, m, s) = match.destructured
         return (h.toLongOrNull() ?: 0) * 3600 + (m.toLongOrNull() ?: 0) * 60 + (s.toLongOrNull() ?: 0)
     }

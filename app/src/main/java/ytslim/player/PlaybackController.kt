@@ -34,7 +34,9 @@ import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.text.DefaultSubtitleParserFactory
 import androidx.media3.extractor.text.SubtitleExtractor
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,12 +45,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AudioRules
 import ytslim.data.AuthRepository
 import ytslim.data.Caption
 import ytslim.data.Chapter
-import ytslim.data.HeatSegment
 import ytslim.data.HeatmapRepository
 import ytslim.data.PlaybackInfo
 import ytslim.data.Published
@@ -217,7 +219,7 @@ class PlaybackController(
 
     /** A qualidade do início foi trocada pelo app depois da escolha do Media3 (deveria ser raro agora). */
     private var switchedAtStart = false
-    private var heatmap: List<HeatSegment> = emptyList()
+    private var skipSpans: List<SkipRules.Span> = emptyList()
 
     /** O vídeo aberto agora. */
     var videoId: String? = null
@@ -296,7 +298,7 @@ class PlaybackController(
         this.fromQueue = fromQueue
         _ended.value = false
         errorRetries = 0
-        heatmap = emptyList()
+        skipSpans = emptyList()
         manualHeight = null
         _quality.value = Quality()
         _controls.value = Controls()
@@ -340,14 +342,24 @@ class PlaybackController(
         _state.value = State.Loading
         holdAwake()
         loadJob = scope.launch {
+            // Lê onde o vídeo parou em paralelo ao pedido do stream (no primeiro vídeo, o arquivo ainda não foi lido).
+            val savedStart = if (startPositionMs > 0) null else async { WatchPositions.startAt(videoId, resumeHintMs) }
             val result = runCatching { PlaybackRepository.load(videoId) }
                 .getOrElse { PlaybackResult.Unplayable(it.message) }
             if (readyInMs < 0) readyInMs = SystemClock.elapsedRealtime() - requestedAt
             when (result) {
-                is PlaybackResult.Unplayable -> fail(result.reason ?: res.getString(R.string.player_unplayable))
+                is PlaybackResult.Unplayable -> {
+                    savedStart?.cancel()
+                    fail(result.reason ?: res.getString(R.string.player_unplayable))
+                }
                 is PlaybackResult.Ready -> {
                     // Uma live começa no ao vivo, como antes.
-                    val from = if (startPositionMs > 0 || result.info.isLive) startPositionMs else WatchPositions.startAt(videoId, resumeHintMs)
+                    val from = if (startPositionMs > 0 || result.info.isLive) {
+                        savedStart?.cancel()
+                        startPositionMs
+                    } else {
+                        savedStart?.await() ?: 0L
+                    }
                     play(result, from)
                 }
             }
@@ -363,8 +375,12 @@ class PlaybackController(
             withTimeoutOrNull(EXTRAS_WAIT_MS) { started.first { it } }
             launch {
                 val markers = HeatmapRepository.load(videoId)
-                heatmap = markers.heat
-                _controls.update { it.copy(skipSpots = SkipRules.valleys(heatmap), chapters = markers.chapters) }
+                val (spans, spots) = withContext(Dispatchers.Default) {
+                    val computed = SkipRules.spans(markers.heat)
+                    computed to computed.map { it.startMs }
+                }
+                skipSpans = spans
+                _controls.update { it.copy(skipSpots = spots, chapters = markers.chapters) }
             }
             if (AuthRepository.isSigned()) {
                 launch {
@@ -416,7 +432,9 @@ class PlaybackController(
         )
         // Se for uma tradução automática e ela não vier (o YouTube tem recusado com 429), a legenda de verdade.
         val fallbacks = option?.let { SubtitleRules.fallbacks(it, options, result.info.captions) }.orEmpty()
-        player.setMediaSource(buildSource(result, caption, fallbacks), startPositionMs)
+        // Monta o HttpEngine e lê o manifesto DASH fora da thread da tela.
+        val source = withContext(Dispatchers.IO) { buildSource(result, caption, fallbacks) }
+        player.setMediaSource(source, startPositionMs)
         player.prepare()
         if (preparedInMs < 0) preparedInMs = SystemClock.elapsedRealtime() - requestedAt
         // Daqui em diante, o próprio player segura o processador enquanto toca.
@@ -562,7 +580,7 @@ class PlaybackController(
      * de [to]. null = avanço normal.
      */
     fun jumpAhead(from: Long, to: Long): Long? {
-        val end = SkipRules.valleyEnd(heatmap, from) ?: return null
+        val end = SkipRules.valleyEndOf(skipSpans, from) ?: return null
         return end.takeIf { it > to }
     }
 

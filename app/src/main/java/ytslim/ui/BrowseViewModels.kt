@@ -1,5 +1,6 @@
 package ytslim.ui
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -17,7 +18,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -38,7 +38,6 @@ import ytslim.data.SearchFilters
 import ytslim.data.SearchItem
 import ytslim.data.SearchPage
 import ytslim.data.SearchRepository
-import ytslim.data.Settings
 import ytslim.data.SettingsRepository
 import ytslim.data.TopicRules
 import ytslim.data.Video
@@ -76,24 +75,28 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     }
 
     private val raw = MutableStateFlow<Raw>(Raw.Loading)
-    private val settings = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
+    private val filters = SettingsRepository.settings
+        .map { it.filters }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ContentFilters())
 
     // Os filtros olham o título de cada vídeo: fora da thread da tela, para a rolagem não engasgar.
-    val state: StateFlow<UiState<VideoListContent>> = combine(raw, settings, ::content)
+    val state: StateFlow<UiState<VideoListContent>> = combine(raw, filters, ::content)
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
 
-    private fun shown(pages: List<List<Video>>, settings: Settings): List<Video> = TopicRules.recommend(pages, settings.filters)
+    private fun shown(pages: List<List<Video>>, filters: ContentFilters): List<Video> = TopicRules.recommend(pages, filters)
 
-    private fun content(raw: Raw, settings: Settings): UiState<VideoListContent> = when (raw) {
+    private fun content(raw: Raw, filters: ContentFilters): UiState<VideoListContent> = when (raw) {
         Raw.Loading -> UiState.Loading
         is Raw.Error -> UiState.Error(raw.message)
         is Raw.Loaded -> UiState.Ready(
-            VideoListContent(shown(raw.pages, settings), raw.lastPage.hasMore, raw.loadingMore, cached = raw.cached, jumpToTop = raw.jump),
+            VideoListContent(shown(raw.pages, filters), raw.lastPage.hasMore, raw.loadingMore, cached = raw.cached, jumpToTop = raw.jump),
         )
     }
 
-    private var job: Job? = null
+    private var loadJob: Job? = null
+    private var fillJob: Job? = null
     private var jumps = 0
     private val _refreshing = MutableStateFlow(false)
     override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
@@ -124,10 +127,12 @@ class RecommendedViewModel : ViewModel(), Refreshable {
         viewModelScope.launch {
             combine(raw, seen) { loaded, count -> (loaded as? Raw.Loaded)?.takeIf { !it.cached && !it.loadingMore }?.let { it to count } }
                 .filterNotNull()
+                .distinctUntilChanged()
                 .debounce(1_000)
                 .collect { (loaded, count) ->
-                    AppScope.launch {
-                        val seenIds = shown(loaded.pages, settings.value).take(count).mapTo(HashSet()) { it.id }
+                    val currentFilters = filters.value
+                    AppScope.launch(Dispatchers.Default) {
+                        val seenIds = shown(loaded.pages, currentFilters).take(count).mapTo(HashSet()) { it.id }
                         ListCache.save(CACHE_KEY, null, FreshBelow.unseenFirst(loaded.fresh.flatten(), seenIds))
                     }
                 }
@@ -160,7 +165,8 @@ class RecommendedViewModel : ViewModel(), Refreshable {
         if (shown || !loaded.kept) return
         // Uma página a caminho ainda conta com as fileiras antigas: recomeça sem elas, e a volta
         // para a aba abre no começo da lista nova (sem herdar a rolagem que incluía as antigas).
-        job?.cancel()
+        loadJob?.cancel()
+        fillJob?.cancel()
         jumps++
         raw.value = loaded.copy(pages = loaded.fresh, kept = false, loadingMore = false, jump = jumps)
         newListSeen()
@@ -172,17 +178,18 @@ class RecommendedViewModel : ViewModel(), Refreshable {
      * na hora. Na carga da abertura, com a guardada na tela, só abaixo do que já foi visto ([onScreen]).
      */
     private fun load(quiet: Boolean, byUser: Boolean = true) {
-        job?.cancel()
+        loadJob?.cancel()
+        fillJob?.cancel()
         _refreshing.value = quiet
         if (!quiet) raw.value = Raw.Loading
-        job = viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             val fresh = runCatching { LibraryRepository.recommended() }
                 .onSuccess { ChannelFeedback.note(it.videos) }
                 // Sem rede, a lista que está na tela (a guardada, ou a de antes do puxar) fica.
                 .fold({ Raw.Loaded(listOf(it.videos), it, loadingMore = false, jump = jumps) }, { if (quiet) raw.value else Raw.Error(it.toMessage()) })
             val old = raw.value
             val below = quiet && !byUser && onScreen && fresh is Raw.Loaded && old is Raw.Loaded && fresh !== old
-            val keep = if (below) withContext(Dispatchers.Default) { FreshBelow.keep(shown(old.pages, settings.value), seen.value) } else null
+            val keep = if (below) withContext(Dispatchers.Default) { FreshBelow.keep(shown(old.pages, filters.value), seen.value) } else null
             // A aba pode ter saído da tela enquanto os filtros rodavam: aí a lista nova entra inteira.
             if (keep != null && onScreen && fresh is Raw.Loaded) {
                 raw.value = fresh.copy(pages = listOf(keep) + fresh.pages, kept = true)
@@ -201,13 +208,17 @@ class RecommendedViewModel : ViewModel(), Refreshable {
     /** Busca páginas até a tela ter pelo menos [MIN_ON_SCREEN] vídeos (e [extra] a mais que agora), até [MAX_PAGES]. */
     private fun fill(extra: Int) {
         val start = raw.value as? Raw.Loaded ?: return
-        if (start.loadingMore || _refreshing.value || !start.lastPage.hasMore) return
-        raw.value = start.copy(loadingMore = true)
-        job = viewModelScope.launch {
+        if (start.loadingMore || _refreshing.value || !start.lastPage.hasMore || fillJob?.isActive == true) return
+        fillJob = viewModelScope.launch {
             var current = start
+            var have = count(current)
+            val target = maxOf(MIN_ON_SCREEN, have + extra)
+            if (have >= target) return@launch
+            ensureActive()
+            current = current.copy(loadingMore = true)
+            raw.value = current
             var pages = 0
-            val target = maxOf(MIN_ON_SCREEN, count(current) + extra)
-            while (current.lastPage.hasMore && pages < MAX_PAGES && count(current) < target) {
+            while (current.lastPage.hasMore && pages < MAX_PAGES && have < target) {
                 val next = runCatching { LibraryRepository.more(current.lastPage) }.getOrNull()
                 // Um recarregar cancelou esta busca: não escreve por cima dele.
                 ensureActive()
@@ -215,13 +226,14 @@ class RecommendedViewModel : ViewModel(), Refreshable {
                 current = current.copy(pages = current.pages + listOf(next?.videos.orEmpty()), lastPage = next ?: VideoPage(emptyList(), null), loadingMore = true)
                 raw.value = current
                 pages++
+                if (current.lastPage.hasMore && pages < MAX_PAGES) have = count(current)
             }
             raw.value = current.copy(loadingMore = false)
         }
     }
 
     private suspend fun count(loaded: Raw.Loaded): Int =
-        withContext(Dispatchers.Default) { shown(loaded.pages, settings.value).size }
+        withContext(Dispatchers.Default) { shown(loaded.pages, filters.value).size }
 
     private companion object {
         const val MIN_ON_SCREEN = 12
@@ -246,6 +258,7 @@ class HistoryViewModel : VideoListViewModel("history", { LibraryRepository.histo
 /** Busca com filtros. Shorts e canais bloqueados ficam de fora; lives aparecem (só aqui). */
 @OptIn(FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SearchViewModel : ViewModel() {
+    @Immutable
     data class Results(val query: String, val items: List<SearchItem>, val hasMore: Boolean, val loadingMore: Boolean)
 
     private val _query = MutableStateFlow("")
@@ -257,15 +270,18 @@ class SearchViewModel : ViewModel() {
     /** null = nada buscado ainda. */
     private val raw = MutableStateFlow<UiState<Results>?>(null)
     private var lastPage: SearchPage? = null
-    private val settings = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
+    private val contentFilters = SettingsRepository.settings
+        .map { it.filters }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ContentFilters())
 
-    val results: StateFlow<UiState<Results>?> = combine(raw, settings, _filters) { state, settings, filters ->
+    val results: StateFlow<UiState<Results>?> = combine(raw, contentFilters, _filters) { state, content, filters ->
         if (state !is UiState.Ready) return@combine state
-        UiState.Ready(state.data.copy(items = shown(state.data.items, settings, filters)))
+        UiState.Ready(state.data.copy(items = shown(state.data.items, content, filters)))
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    private fun shown(items: List<SearchItem>, settings: Settings, filters: SearchFilters) =
-        items.filter { it.isAllowed(settings.filters, filters.duration) }
+    private fun shown(items: List<SearchItem>, content: ContentFilters, filters: SearchFilters) =
+        items.filter { it.isAllowed(content, filters.duration) }
 
     /** Sugestões do YouTube para o texto digitado (somem quando a busca é feita). */
     val suggestions: StateFlow<List<String>> = _query
@@ -331,10 +347,12 @@ class SearchViewModel : ViewModel() {
     private var autoPages = 0
 
     /** Com "30 min ou mais" (e afins) o app corta resultados: se sobrou pouco, busca mais páginas sozinho. */
-    private fun fillScreen() {
+    private suspend fun fillScreen() {
         val data = (raw.value as? UiState.Ready)?.data ?: return
-        if (!_filters.value.duration.checkedLocally || !data.hasMore || autoPages >= MAX_AUTO_PAGES) return
-        if (shown(data.items, settings.value, _filters.value).size >= MIN_ON_SCREEN) return
+        val filters = _filters.value
+        if (!filters.duration.checkedLocally || !data.hasMore || autoPages >= MAX_AUTO_PAGES) return
+        val count = withContext(Dispatchers.Default) { shown(data.items, contentFilters.value, filters).size }
+        if (count >= MIN_ON_SCREEN) return
         autoPages++
         more()
     }
@@ -354,6 +372,7 @@ class SearchViewModel : ViewModel() {
 
 /** Página do canal: vídeos (paginados), playlists, a inscrição e o bloqueio do canal. */
 class ChannelViewModel(private val channelId: String, private val name: String) : ViewModel(), Refreshable {
+    @Immutable
     data class Content(val videos: VideoListContent, val playlists: List<Playlist>)
 
     private val _state = MutableStateFlow<UiState<Content>>(UiState.Loading)
@@ -364,7 +383,8 @@ class ChannelViewModel(private val channelId: String, private val name: String) 
     override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
     val blocked: StateFlow<Boolean> = SettingsRepository.settings
-        .map { s -> s.filters.blocked.any { it.id == channelId } }
+        .map { s -> channelId in s.filters.blockedIds }
+        .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private val _subscription = MutableStateFlow<Subscription>(Subscription.Hidden)
@@ -377,7 +397,7 @@ class ChannelViewModel(private val channelId: String, private val name: String) 
         // inscritos (a mesma das Inscrições e da Explore) diz. Sem ela, o botão não aparece.
         viewModelScope.launch {
             if (!AuthRepository.isSigned()) return@launch
-            val ids = FeedRepository.subscribedChannelIds() ?: return@launch
+            val ids = FeedRepository.subscribedChannelIds(maxAgeMs = FeedRepository.CHANNELS_MAX_AGE_MS) ?: return@launch
             _subscription.value = Subscription.Shown(subscribed = channelId in ids)
         }
     }

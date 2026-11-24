@@ -50,4 +50,13 @@ class SkipRulesTest {
         assertEquals(listOf(sponsoredAt(38)), SkipRules.valleys(sponsored))
         assertEquals(emptyList<Long>(), SkipRules.valleys(emptyList()))
     }
+
+    @Test
+    fun precomputedSpansMatchDirectLookup() {
+        val spans = SkipRules.spans(sponsored)
+        assertEquals(SkipRules.valleys(sponsored), spans.map { it.startMs })
+        for (pos in listOf(0L, 200_000L, 310_000L, 317_000L, 360_000L, 380_000L, sponsoredAt(46), 800_000L)) {
+            assertEquals(SkipRules.valleyEnd(sponsored, pos), SkipRules.valleyEndOf(spans, pos))
+        }
+    }
 }

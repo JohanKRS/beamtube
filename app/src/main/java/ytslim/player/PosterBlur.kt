@@ -1,7 +1,9 @@
 package ytslim.player
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.ColorMatrix
+import android.graphics.Paint
 import android.graphics.Rect
 import coil3.size.Size
 import coil3.transform.Transformation
@@ -45,6 +47,9 @@ internal object PosterBlur {
     /** No máximo isto de cada lado sai como faixa: uma imagem toda escura não some inteira. */
     private const val MAX_BAR_FRACTION = 0.35f
 
+    private val SCALE_PAINT = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val DEFAULT_DIV = IntArray(256 * (2 * RADIUS + 1)) { it / (2 * RADIUS + 1) }
+
     /** A miniatura pronta para a tela de carregando: sem as faixas, pequena e desfocada. */
     fun blurred(source: Bitmap): Bitmap {
         val content = contentOf(source)
@@ -62,23 +67,65 @@ internal object PosterBlur {
     fun contentOf(source: Bitmap): Rect {
         val w = source.width
         val h = source.height
-        val pixels = IntArray(w * h)
-        source.getPixels(pixels, 0, w, 0, 0, w, h)
-        return contentOf(pixels, w, h)
+        if (w <= 0 || h <= 0) return Rect(0, 0, w, h)
+        // Lê uma linha/coluna por vez num buffer pequeno em vez de copiar o bitmap inteiro para ARGB.
+        val strip = IntArray(maxOf(w, h))
+        fun rowIsBar(y: Int): Boolean {
+            source.getPixels(strip, 0, w, 0, y, w, 1)
+            return stripIsBar(strip, w)
+        }
+        fun columnIsBar(x: Int, top: Int, height: Int): Boolean {
+            source.getPixels(strip, 0, 1, x, top, 1, height)
+            return stripIsBar(strip, height)
+        }
+        val maxRows = (h * MAX_BAR_FRACTION).toInt()
+        val maxColumns = (w * MAX_BAR_FRACTION).toInt()
+        var top = 0
+        while (top < maxRows && rowIsBar(top)) top++
+        var bottom = h
+        while (h - bottom < maxRows && rowIsBar(bottom - 1)) bottom--
+        val ch = bottom - top
+        var left = 0
+        if (ch > 0) {
+            while (left < maxColumns && columnIsBar(left, top, ch)) left++
+        }
+        var right = w
+        if (ch > 0) {
+            while (w - right < maxColumns && columnIsBar(right - 1, top, ch)) right--
+        }
+        return Rect(left, top, right, bottom)
+    }
+
+    private fun isDark(p: Int) =
+        (p shr 16 and 0xFF) <= BAR_DARK && (p shr 8 and 0xFF) <= BAR_DARK && (p and 0xFF) <= BAR_DARK
+
+    private fun stripIsBar(strip: IntArray, count: Int): Boolean {
+        val maxLit = (count * BAR_LIT_FRACTION).toInt()
+        var lit = 0
+        for (i in 0 until count) {
+            if (!isDark(strip[i]) && ++lit > maxLit) return false
+        }
+        return true
     }
 
     /** O mesmo, sobre os pontos ARGB da imagem ([contentOf]). */
     fun contentOf(pixels: IntArray, w: Int, h: Int): Rect {
-        fun dark(p: Int) = (p shr 16 and 0xFF) <= BAR_DARK && (p shr 8 and 0xFF) <= BAR_DARK && (p and 0xFF) <= BAR_DARK
         fun rowIsBar(y: Int, left: Int, right: Int): Boolean {
+            val maxLit = ((right - left) * BAR_LIT_FRACTION).toInt()
             var lit = 0
-            for (x in left until right) if (!dark(pixels[y * w + x])) lit++
-            return lit <= (right - left) * BAR_LIT_FRACTION
+            val base = y * w
+            for (x in left until right) {
+                if (!isDark(pixels[base + x]) && ++lit > maxLit) return false
+            }
+            return true
         }
         fun columnIsBar(x: Int, top: Int, bottom: Int): Boolean {
+            val maxLit = ((bottom - top) * BAR_LIT_FRACTION).toInt()
             var lit = 0
-            for (y in top until bottom) if (!dark(pixels[y * w + x])) lit++
-            return lit <= (bottom - top) * BAR_LIT_FRACTION
+            for (y in top until bottom) {
+                if (!isDark(pixels[y * w + x]) && ++lit > maxLit) return false
+            }
+            return true
         }
         val maxRows = (h * MAX_BAR_FRACTION).toInt()
         val maxColumns = (w * MAX_BAR_FRACTION).toInt()
@@ -100,11 +147,10 @@ internal object PosterBlur {
         val scale = minOf(1f, SHORT_SIDE.toFloat() / minOf(cw, ch))
         val w = maxOf(1, (cw * scale).toInt())
         val h = maxOf(1, (ch * scale).toInt())
-        val cut = Bitmap.createBitmap(source, content.left, content.top, cw, ch)
-        val small = Bitmap.createScaledBitmap(cut, w, h, true)
-        if (cut !== source && cut !== small) cut.recycle()
-        // Precisa ser um bitmap que se possa mudar (o createScaledBitmap devolve a mesma imagem se o tamanho já servir).
-        return if (small.isMutable && small !== source) small else small.copy(Bitmap.Config.ARGB_8888, true)
+        // Recorta e reduz em uma única alocação mutável ARGB_8888.
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        Canvas(out).drawBitmap(source, content, Rect(0, 0, w, h), SCALE_PAINT)
+        return out
     }
 
     /**
@@ -113,19 +159,22 @@ internal object PosterBlur {
      */
     fun blur(pixels: IntArray, w: Int, h: Int, radius: Int) {
         if (radius <= 0 || w == 0 || h == 0) return
+        val count = 2 * radius + 1
+        val div = if (radius == RADIUS) DEFAULT_DIV else IntArray(256 * count) { it / count }
         val temp = IntArray(pixels.size)
         repeat(PASSES) {
-            average(pixels, temp, lines = h, length = w, lineStep = w, step = 1, radius = radius)
-            average(temp, pixels, lines = w, length = h, lineStep = 1, step = w, radius = radius)
+            average(pixels, temp, lines = h, length = w, lineStep = w, step = 1, radius = radius, div = div)
+            average(temp, pixels, lines = w, length = h, lineStep = 1, step = w, radius = radius, div = div)
         }
     }
 
     /** Uma passada da média em cada linha (ou coluna), com a soma andando junto: o raio não pesa no custo. */
-    private fun average(src: IntArray, dst: IntArray, lines: Int, length: Int, lineStep: Int, step: Int, radius: Int) {
-        val count = 2 * radius + 1
+    private fun average(src: IntArray, dst: IntArray, lines: Int, length: Int, lineStep: Int, step: Int, radius: Int, div: IntArray) {
         val last = length - 1
+        val maxOffset = last * step
         for (line in 0 until lines) {
             val start = line * lineStep
+            val end = start + maxOffset
             var r = 0
             var g = 0
             var b = 0
@@ -135,13 +184,19 @@ internal object PosterBlur {
                 g += p shr 8 and 0xFF
                 b += p and 0xFF
             }
+            var outIdx = start
+            var leaveIdx = start - radius * step
+            var enterIdx = start + (radius + 1) * step
             for (i in 0..last) {
-                dst[start + i * step] = OPAQUE or (r / count shl 16) or (g / count shl 8) or (b / count)
-                val leaving = src[start + (i - radius).coerceAtLeast(0) * step]
-                val entering = src[start + (i + radius + 1).coerceAtMost(last) * step]
+                dst[outIdx] = OPAQUE or (div[r] shl 16) or (div[g] shl 8) or div[b]
+                val leaving = src[if (leaveIdx < start) start else leaveIdx]
+                val entering = src[if (enterIdx > end) end else enterIdx]
                 r += (entering shr 16 and 0xFF) - (leaving shr 16 and 0xFF)
                 g += (entering shr 8 and 0xFF) - (leaving shr 8 and 0xFF)
                 b += (entering and 0xFF) - (leaving and 0xFF)
+                outIdx += step
+                leaveIdx += step
+                enterIdx += step
             }
         }
     }

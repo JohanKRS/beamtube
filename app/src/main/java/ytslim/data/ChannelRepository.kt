@@ -1,19 +1,23 @@
 package ytslim.data
 
+import com.liskovsoft.googlecommon.common.helpers.YouTubeHelper
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
 
 /** A página básica de um canal: os vídeos (com paginação) e as playlists que ele mostra. */
 class ChannelPage(val videos: VideoPage, val playlists: List<Playlist>)
 
 object ChannelRepository {
-    suspend fun channel(channelId: String): ChannelPage {
-        val groups = Engine.content.getChannelObserve(channelId).firstOrNull().orEmpty()
-        return ChannelPage(videos = videosOf(groups), playlists = playlistsOf(groups))
-    }
+    suspend fun channel(channelId: String): ChannelPage =
+        Engine.content.getChannelObserve(channelId).firstOrNullMapped { raw ->
+            val groups = raw.orEmpty()
+            ChannelPage(videos = videosOf(groups), playlists = playlistsOf(groups))
+        }
 
     /** A aba de vídeos: o primeiro grupo com vídeos que não são Shorts (de preferência, o paginado). */
     private fun videosOf(groups: List<MediaGroup>): VideoPage {
-        val withVideos = groups.filter { g -> g.mediaItems.orEmpty().any { it.toVideo()?.isShorts == false } }
+        val withVideos = groups.filter { g ->
+            g.mediaItems.orEmpty().any { it.videoId != null && !it.isShorts && !YouTubeHelper.isShorts(it, false) }
+        }
         return (withVideos.firstOrNull { it.nextPageKey != null } ?: withVideos.firstOrNull()).toPage()
     }
 

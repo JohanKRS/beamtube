@@ -3,6 +3,7 @@ package ytslim.data
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import androidx.compose.runtime.Immutable
 import com.liskovsoft.googlecommon.service.oauth.YouTubeAccount
 import com.liskovsoft.mediaserviceinterfaces.oauth.Account
 import kotlinx.coroutines.flow.Flow
@@ -13,7 +14,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.Json
 import java.io.File
 import java.security.MessageDigest
 
@@ -25,6 +25,7 @@ import java.security.MessageDigest
  * motor ([Users.matches]): o e-mail, o @ do canal, o id da página (canais de marca) e um resumo do
  * token da conta (não o token).
  */
+@Immutable
 @Serializable
 data class User(
     val slot: String,
@@ -70,7 +71,6 @@ object Users {
 
     val guestUser = User(GUEST)
 
-    private val json = Json { ignoreUnknownKeys = true }
     private val serializer = ListSerializer(User.serializer())
 
     private lateinit var prefs: SharedPreferences
@@ -78,6 +78,8 @@ object Users {
 
     /** Todos os usuários que já entraram neste aparelho, inclusive os que saíram da conta. */
     private var records: List<User> = emptyList()
+    private var lastSavedRecords: List<User>? = null
+    private var lastSavedCurrent: String? = null
     private var resolved = false
 
     private val _current = MutableStateFlow<User?>(null)
@@ -93,10 +95,13 @@ object Users {
     fun init(context: Context) {
         prefs = context.getSharedPreferences("users", Context.MODE_PRIVATE)
         filesDir = context.filesDir
-        records = prefs.getString(RECORDS, null)?.let { runCatching { json.decodeFromString(serializer, it) }.getOrNull() }.orEmpty()
+        records = prefs.getString(RECORDS, null)?.let { runCatching { AppJson.decodeFromString(serializer, it) }.getOrNull() }.orEmpty()
+        lastSavedRecords = records
         resolved = false
         _accounts.value = records.filter { it.active }
-        _current.value = when (val slot = prefs.getString(CURRENT, null)) {
+        val slot = prefs.getString(CURRENT, null)
+        lastSavedCurrent = slot
+        _current.value = when (slot) {
             null -> null
             GUEST -> guestUser
             else -> records.firstOrNull { it.slot == slot && it.active }
@@ -145,7 +150,7 @@ object Users {
     @Synchronized
     private fun sync() {
         val engineAccounts = engineAccounts()
-        val active = reconcile(engineAccounts)
+        val active = reconcile(engineAccounts, persist = false)
         val selected = engineAccounts.indexOfFirst { it.isSelected }.takeIf { it >= 0 }?.let { active[it] }
         val stored = prefs.getString(CURRENT, null)
         val current = when {
@@ -163,7 +168,7 @@ object Users {
      * aparecer, com os ajustes para quando a conta voltar. Devolve os usuários na ordem das contas.
      */
     @Synchronized
-    internal fun reconcile(engineAccounts: List<YouTubeAccount>): List<User> {
+    internal fun reconcile(engineAccounts: List<YouTubeAccount>, persist: Boolean = true): List<User> {
         val list = records.toMutableList()
         val found = arrayOfNulls<User>(engineAccounts.size)
         // Primeiro pelo token (o mais seguro), depois pelo nome, pelo e-mail e pelo @.
@@ -180,7 +185,7 @@ object Users {
         val active = found.filterNotNull()
         records = list.map { r -> r.copy(active = active.any { it.slot == r.slot }) }
         _accounts.value = active
-        save()
+        if (persist) save()
         return active
     }
 
@@ -207,8 +212,11 @@ object Users {
     }
 
     private fun save(current: String? = _current.value?.slot) {
+        if (records == lastSavedRecords && current == lastSavedCurrent) return
+        lastSavedRecords = records
+        lastSavedCurrent = current
         prefs.edit()
-            .putString(RECORDS, json.encodeToString(serializer, records))
+            .putString(RECORDS, AppJson.encodeToString(serializer, records))
             .apply { if (current != null) putString(CURRENT, current) else remove(CURRENT) }
             .apply()
     }
@@ -295,6 +303,8 @@ object Users {
         PlayQueue.clear()
         SavedVideos.reset()
         ChannelFeedback.reset()
+        FeedRepository.forgetChannels()
+        LibraryRepository.forgetPlaylists()
         PlaybackRepository.forget()
         WatchPositions.forget()
         ExploreRepository.forget()
@@ -330,6 +340,16 @@ object Users {
                 (user.handle == null || account.channelName == null || user.handle == account.channelName)
         }
 
-    private fun digest(token: String): String =
-        MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }.take(24)
+    private val HEX = "0123456789abcdef".toCharArray()
+
+    private fun digest(token: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(token.toByteArray())
+        val out = CharArray(24)
+        for (i in 0 until 12) {
+            val b = bytes[i].toInt() and 0xFF
+            out[i * 2] = HEX[b ushr 4]
+            out[i * 2 + 1] = HEX[b and 0x0F]
+        }
+        return String(out)
+    }
 }

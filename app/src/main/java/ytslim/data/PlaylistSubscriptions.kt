@@ -30,7 +30,7 @@ object PlaylistSubscriptions {
 
     /** IDs das playlists do próprio usuário (com Assistir mais tarde). null se não deu para saber. */
     suspend fun ownPlaylistIds(): Set<String>? = runCatching {
-        io { Engine.mediaItems.getPlaylistsInfo(PROBE_VIDEO) }.orEmpty().mapNotNull { it.playlistId }.toSet()
+        io { Engine.mediaItems.getPlaylistsInfo(PROBE_VIDEO).orEmpty().mapNotNullTo(HashSet()) { it.playlistId } }
     }.getOrNull()?.takeIf { it.isNotEmpty() }
 
     /** Playlist de outro canal? Mixes ("RD…") e listas embutidas (WL, LL) ficam de fora. */
@@ -38,9 +38,11 @@ object PlaylistSubscriptions {
         playlistId != null && playlistId.length >= 5 && !playlistId.startsWith("RD") && playlistId !in own
 
     /** As playlists inscritas: as de outros canais que estão salvas na conta. */
-    suspend fun subscribed(): List<Playlist> {
-        val own = ownPlaylistIds() ?: return emptyList()
-        return LibraryRepository.playlists().filter { isForeign(it.playlistId, own) }
+    suspend fun subscribed(): List<Playlist> = coroutineScope {
+        val ownDeferred = async { ownPlaylistIds() }
+        val allDeferred = async { LibraryRepository.playlists(maxAgeMs = LibraryRepository.PLAYLISTS_MAX_AGE_MS) }
+        val own = ownDeferred.await() ?: return@coroutineScope emptyList()
+        allDeferred.await().filter { isForeign(it.playlistId, own) }
     }
 
     sealed interface Status {
@@ -49,16 +51,19 @@ object PlaylistSubscriptions {
         data class Foreign(val subscribed: Boolean) : Status
     }
 
-    suspend fun status(playlistId: String?): Status {
-        val own = ownPlaylistIds() ?: return Status.NotApplicable
-        if (!isForeign(playlistId, own)) return Status.NotApplicable
-        val saved = LibraryRepository.playlists().any { it.playlistId == playlistId }
+    suspend fun status(playlistId: String?): Status = status(playlistId, ownPlaylistIds())
+
+    internal suspend fun status(playlistId: String?, own: Set<String>?): Status {
+        val ownIds = own ?: return Status.NotApplicable
+        if (!isForeign(playlistId, ownIds)) return Status.NotApplicable
+        val saved = LibraryRepository.playlists(maxAgeMs = LibraryRepository.PLAYLISTS_MAX_AGE_MS).any { it.playlistId == playlistId }
         return Status.Foreign(saved)
     }
 
     suspend fun subscribe(playlist: Playlist) {
         val id = requireNotNull(playlist.playlistId)
         Engine.mediaItems.savePlaylistObserve(id).complete()
+        LibraryRepository.forgetPlaylists()
         // O que já está na playlist agora não é "novo".
         fetchAll(playlist)?.let { videos -> ledger.record(id, videos.map { it.id }, System.currentTimeMillis()) }
     }
@@ -69,6 +74,7 @@ object PlaylistSubscriptions {
         val own = checkNotNull(ownPlaylistIds()) { "Couldn't check your playlists" }
         check(isForeign(playlistId, own)) { "This is your own playlist" }
         Engine.mediaItems.removePlaylistObserve(playlistId).complete()
+        LibraryRepository.forgetPlaylists()
     }
 
     /**

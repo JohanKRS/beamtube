@@ -1,6 +1,7 @@
 package ytslim.data
 
 import android.util.Base64
+import androidx.compose.runtime.Immutable
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
 import com.liskovsoft.youtubeapi.common.helpers.PostDataHelper
 import kotlinx.serialization.json.JsonPrimitive
@@ -49,6 +50,7 @@ enum class SortBy(val code: Int) { RELEVANCE(0), RATING(1), DATE(2), VIEWS(3) }
  * @param beforeYear só vídeos publicados antes de 1º de janeiro deste ano (ex.: 2022). Fica no
  * lugar do [date]: os dois não se combinam.
  */
+@Immutable
 data class SearchFilters(
     val date: UploadDate = UploadDate.ANY,
     val duration: SearchDuration = SearchDuration.ANY,
@@ -71,9 +73,9 @@ private const val DAY_MS = 24 * HOUR_MS
 object SearchParams {
     fun of(filters: SearchFilters): String? {
         val inner = ByteArrayOutputStream()
-        listOf(1 to filters.date.code, 2 to filters.type.code, 3 to filters.duration.code).forEach { (field, value) ->
-            if (value != 0) inner.varintField(field, value)
-        }
+        if (filters.date.code != 0) inner.varintField(1, filters.date.code)
+        if (filters.type.code != 0) inner.varintField(2, filters.type.code)
+        if (filters.duration.code != 0) inner.varintField(3, filters.duration.code)
         val outer = ByteArrayOutputStream()
         if (filters.sort.code != 0) outer.varintField(1, filters.sort.code)
         if (inner.size() > 0) {
@@ -120,16 +122,18 @@ object SearchRepository {
     suspend fun search(query: String, filters: SearchFilters): SearchPage {
         val params = SearchParams.of(filters)
         val fields = "\"query\":" + JsonPrimitive(SearchParams.query(query, filters)) + (params?.let { ",\"params\":\"$it\"" } ?: "")
-        val groups = io { EngineSearch.search(PostDataHelper.createQueryTV(fields)) }
-        // O primeiro grupo é o dos resultados (com continuação). Os outros são prateleiras
-        // ("People also watched", Shorts…), que ficam de fora.
-        val main = groups.orEmpty().firstOrNull { it.nextPageKey != null } ?: groups.orEmpty().firstOrNull { !it.isEmpty }
-        return main.toSearchPage()
+        return io {
+            val groups = EngineSearch.search(PostDataHelper.createQueryTV(fields))
+            // O primeiro grupo é o dos resultados (com continuação). Os outros são prateleiras
+            // ("People also watched", Shorts…), que ficam de fora.
+            val main = groups.orEmpty().firstOrNull { it.nextPageKey != null } ?: groups.orEmpty().firstOrNull { !it.isEmpty }
+            main.toSearchPage()
+        }
     }
 
     suspend fun more(page: SearchPage): SearchPage {
         val next = page.next ?: return SearchPage(emptyList(), null)
-        return io { Engine.content.continueGroup(next) }.toSearchPage()
+        return io { Engine.content.continueGroup(next).toSearchPage() }
     }
 
     suspend fun suggestions(text: String): List<String> =

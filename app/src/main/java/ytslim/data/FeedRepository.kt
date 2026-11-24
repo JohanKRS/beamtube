@@ -14,10 +14,11 @@ object FeedRepository {
     private const val SUBSCRIPTIONS = "\"browseId\":\"FEsubscriptions\""
 
     /** Primeira página do feed dos canais inscritos, do mais novo para o mais antigo. */
-    suspend fun subscriptions(): VideoPage = Engine.content.subscriptionsObserve.firstOrNull().toPage()
+    suspend fun subscriptions(): VideoPage = Engine.content.subscriptionsObserve.firstOrNullMapped { it.toPage() }
 
     /** IDs dos canais inscritos, para a regra de não duplicar vídeos de playlists (e as fotos, em [ChannelPhotos]). null se falhar. */
-    suspend fun subscribedChannelIds(): Set<String>? = subscribedChannels(maxAgeMs = 0)?.mapTo(HashSet()) { it.id }
+    suspend fun subscribedChannelIds(maxAgeMs: Long = 0): Set<String>? =
+        subscribedChannels(maxAgeMs = maxAgeMs)?.mapTo(HashSet()) { it.id }
 
     /**
      * Os canais inscritos (id, nome e foto). Uma lista lida há menos de [maxAgeMs] serve de novo
@@ -29,7 +30,8 @@ object FeedRepository {
     suspend fun subscribedChannels(maxAgeMs: Long = CHANNELS_MAX_AGE_MS): List<Channel>? {
         lastChannels?.let { (at, channels) -> if (System.currentTimeMillis() - at < maxAgeMs) return channels }
         return runCatching {
-            val channels = SubscribedChannels.parse(Innertube.post("browse", PostDataHelper.createQueryTV(SUBSCRIPTIONS), Innertube.TV_HEADERS))
+            val root = Innertube.post("browse", PostDataHelper.createQueryTV(SUBSCRIPTIONS), Innertube.TV_HEADERS)
+            val channels = io { SubscribedChannels.parse(root) }
             check(channels.isNotEmpty()) { "no channels in the subscriptions page" }
             // De quebra, a foto de cada canal, para o avatar nos cards dos vídeos.
             ChannelPhotos.putAll(channels.mapNotNull { c -> c.thumbnailUrl?.let { c.id to it } }.toMap())
@@ -46,7 +48,7 @@ object FeedRepository {
     @Volatile
     private var lastChannels: Pair<Long, List<Channel>>? = null
 
-    private const val CHANNELS_MAX_AGE_MS = 30 * 60 * 1000L
+    internal const val CHANNELS_MAX_AGE_MS = 30 * 60 * 1000L
 }
 
 /**
@@ -59,19 +61,28 @@ object SubscribedChannels {
     private val TAB_KEYS = listOf("tabRenderer", "expandableTabRenderer")
     private val CHANNEL_ID = Regex("UC[A-Za-z0-9_-]{22}")
     private val PERCENT = Regex("%([0-9A-Fa-f]{2})")
+    /** Os avatares nos cards têm 18 dp (72 px a 4x): 88 px já fica nítido sem baixar 176 px. */
+    private const val AVATAR_TARGET_PX = 88
 
     fun parse(root: JsonElement): List<Channel> {
         val channels = LinkedHashMap<String, Channel>()
         fun walk(element: JsonElement) {
             when (element) {
                 is JsonObject -> {
+                    var isTab = false
                     for (key in TAB_KEYS) {
                         val tab = element[key] as? JsonObject ?: continue
+                        isTab = true
                         val id = channelId((tab["endpoint"] as? JsonObject)?.get("browseEndpoint") as? JsonObject) ?: continue
                         val name = Handles.channelName(text(tab["title"])).orEmpty()
                         channels.putIfAbsent(id, Channel(id, name, null, ChannelPhotos.normalize(photo(tab["thumbnail"]))))
                     }
-                    element.values.forEach(::walk)
+                    // Não desce dentro da aba: evita percorrer todos os vídeos da aba "All".
+                    if (isTab) return
+                    for ((key, value) in element) {
+                        if (key == "responseContext" || key == "trackingParams") continue
+                        walk(value)
+                    }
                 }
                 is JsonArray -> element.forEach(::walk)
                 else -> Unit
@@ -100,11 +111,28 @@ object SubscribedChannels {
         else -> null
     }
 
-    /** A maior das fotos. */
-    private fun photo(element: JsonElement?): String? = ((element as? JsonObject)?.get("thumbnails") as? JsonArray)
-        ?.mapNotNull { it as? JsonObject }
-        ?.maxByOrNull { (it["width"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0 }
-        ?.string("url")
+    /** A menor foto com pelo menos [AVATAR_TARGET_PX] px (ou a maior disponível). */
+    private fun photo(element: JsonElement?): String? {
+        val list = (element as? JsonObject)?.get("thumbnails") as? JsonArray ?: return null
+        var bestUrl: String? = null
+        var bestWidth = Int.MAX_VALUE
+        var maxUrl: String? = null
+        var maxWidth = -1
+        for (item in list) {
+            val obj = item as? JsonObject ?: continue
+            val url = obj.string("url") ?: continue
+            val width = (obj["width"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
+            if (width >= AVATAR_TARGET_PX && width < bestWidth) {
+                bestWidth = width
+                bestUrl = url
+            }
+            if (width > maxWidth) {
+                maxWidth = width
+                maxUrl = url
+            }
+        }
+        return bestUrl ?: maxUrl
+    }
 
     private fun JsonObject.string(key: String) = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
 }

@@ -4,7 +4,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.Json
 import java.io.File
 
 /**
@@ -23,7 +22,7 @@ object WatchPositions {
     const val FILE = "positions.json"
 
     private val file: File get() = Users.file(FILE)
-    private val json = Json { ignoreUnknownKeys = true }
+    private val serializer = ListSerializer(Spot.serializer())
     private val mutex = Mutex()
 
     /** Do mais antigo para o mais novo; null até a primeira leitura do arquivo do usuário aberto. */
@@ -49,7 +48,8 @@ object WatchPositions {
         list.removeAll { it.videoId == videoId }
         list += Spot(videoId, positionMs, durationMs.coerceAtLeast(0))
         while (list.size > MAX_KEPT) list.removeAt(0)
-        runCatching { io { file.writeText(json.encodeToString(ListSerializer(Spot.serializer()), list)) } }
+        val snapshot = list.toList()
+        runCatching { io { file.writeJson(serializer, snapshot) } }
     }
 
     /** Apaga os pontos do usuário aberto. */
@@ -64,7 +64,8 @@ object WatchPositions {
     }
 
     private suspend fun loaded(): MutableList<Spot> = spots ?: io {
-        runCatching { json.decodeFromString(ListSerializer(Spot.serializer()), file.readText()) }.getOrDefault(emptyList())
+        val target = file
+        if (!target.exists()) emptyList() else runCatching { target.readJson(serializer) }.getOrDefault(emptyList())
     }.toMutableList().also { spots = it }
 }
 
