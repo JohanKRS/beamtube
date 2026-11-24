@@ -58,4 +58,21 @@ class ListCacheTest {
             assertNull(ListCache.read("history"))
         }
     }
+
+    @Test
+    fun cachedRecommendedWithoutChannelNameIsRepairedOnRead() {
+        runBlocking {
+            val cached = listOf(
+                video("r1").copy(channelName = null, info = "\u200EVeritasium\u200E • \u200E16.1M views\u200E • \u200E9 hours ago\u200E"),
+                video("r2").copy(channelName = "4K", info = "3Blue1Brown • 500K views • 1 day ago"),
+                video("ch1").copy(channelName = null, info = "16.1M views • 9 hours ago"),
+            )
+            ListCache.save("recommended", null, cached)
+            val loaded = ListCache.read("recommended")!!.videos
+            assertEquals("Veritasium", loaded[0].channelName)
+            assertEquals("Veritasium • 16.1M views • 9 hours ago", loaded[0].info)
+            assertEquals("3Blue1Brown", loaded[1].channelName)
+            assertNull(loaded[2].channelName)
+        }
+    }
 }

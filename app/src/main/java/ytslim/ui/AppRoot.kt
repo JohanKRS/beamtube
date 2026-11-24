@@ -71,7 +71,7 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                 val owner = remember { stores.owner(slot) }
                 // Girar a tela mantém o usuário (e os ViewModels dele); outro usuário apaga os deste.
                 DisposableEffect(Unit) { onDispose { if (Users.current.value?.slot != slot) stores.drop(slot) } }
-                CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
+                CompositionLocalProvider(LocalViewModelStoreOwner provides owner, LocalSession provides stores.session) {
                     UserScreens(ui, user, links)
                 }
             }
@@ -200,9 +200,14 @@ private fun UserScreens(ui: Screens, user: User?, links: MutableStateFlow<Link?>
                 }
                 // O botão dos filtros da Explore, na moldura, e a fileira deles, na Explore (1.0.8).
                 val exploreFilters = remember { ExploreFilterBar() }
+                val session = LocalSession.current
                 CompositionLocalProvider(LocalExploreFilterBar provides exploreFilters) {
                     ui.Home(tab = tab, onTab = { tab = it }, onReload = reload) { current ->
-                        tabStates.SaveableStateProvider(current.name) {
+                        // Com o processo vivo (trocar aba, girar a tela, mudar idioma), cada aba
+                        // mantém a rolagem; se o Android matou o processo enquanto o app ficou fora,
+                        // o [session] muda e a volta começa no topo (em vez de restaurar uma rolagem
+                        // velha em cima da lista recém-carregada).
+                        tabStates.SaveableStateProvider("$session:${current.name}") {
                             when (current) {
                                 HomeTab.SUBSCRIPTIONS -> ui.Feed(viewModel<FeedViewModel>(), onPlay = play, onOpenChannel = openChannel)
                                 HomeTab.RECOMMENDED -> ui.Recommended(viewModel<RecommendedViewModel>(), onPlay = play, onOpenChannel = openChannel)

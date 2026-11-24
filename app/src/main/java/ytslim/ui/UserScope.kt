@@ -13,11 +13,20 @@ import ytslim.data.Users
 val LocalAddAccount = staticCompositionLocalOf<() -> Unit> { {} }
 
 /**
+ * Identifica a vida atual dos ViewModels (muda quando o processo reinicia depois de morrer em
+ * segundo plano, mas sobrevive a girar a tela e a trocar o idioma).
+ */
+val LocalSession = staticCompositionLocalOf { 0L }
+
+/**
  * Um ViewModelStore por usuário ([Users]): os ViewModels das telas (as listas, a busca, os Ajustes)
  * são do usuário aberto. Sobrevive a girar a tela (fica num ViewModel da Activity) e some quando
  * outro usuário abre, junto com tudo o que ele carregou.
  */
 class UserStores : ViewModel() {
+    /** Muda quando o processo reinicia (os ViewModels das abas são novos, e as listas devem abrir no topo). */
+    val session: Long = System.nanoTime()
+
     private val stores = HashMap<String, ViewModelStore>()
 
     fun owner(slot: String?): ViewModelStoreOwner {

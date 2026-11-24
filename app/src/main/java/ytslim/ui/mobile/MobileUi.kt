@@ -220,6 +220,7 @@ import ytslim.ui.label
 import ytslim.ui.TypeScale
 import ytslim.ui.Wordmark
 import ytslim.ui.spacedDots
+import ytslim.ui.channelNameOf
 import ytslim.ui.Notice
 import ytslim.ui.NoticeAction
 import ytslim.ui.Notices
@@ -2247,9 +2248,9 @@ object MobileUi : Screens {
     /** "[avatar] Canal · 12K views · 2 hours ago". O avatar e o nome levam ao canal. */
     @Composable
     private fun MetaRow(video: Video, photo: String?, onOpenChannel: ((Channel) -> Unit)?, stacked: Boolean) {
+        val name = channelNameOf(video)
         val rest = video.fromPlaylist?.let { stringResource(R.string.from_playlist_short, it) }
-            ?: metaAfterChannel(video.info, video.channelName, video.published)
-        val name = video.channelName?.takeIf { it.isNotBlank() }
+            ?: metaAfterChannel(video.info, name, video.published)
         val scope = rememberCoroutineScope()
         val res = LocalContext.current.resources
         // O canal e o resto numa linha só quando cabem; senão o resto desce, inteiro (MetaLine).

@@ -92,13 +92,14 @@ class VideoPage(val videos: List<Video>, internal val next: MediaGroup?, val tit
 /** [home]: o item veio do Início, e o menu dele traz o "Don't recommend channel". */
 internal fun MediaItem.toVideo(home: Boolean = false): Video? {
     val id = videoId ?: return null
+    val info = Handles.strip(secondTitle?.toString())
     return Video(
         id = id,
         title = title.orEmpty(),
-        channelName = Handles.channelName(author),
+        channelName = Handles.resolveChannelName(author, info),
         channelId = channelId,
         thumbnailUrl = cardImageUrl,
-        info = Handles.strip(secondTitle?.toString()),
+        info = info,
         published = productionDate,
         durationMs = durationMs,
         isLive = isLive,
@@ -168,19 +169,84 @@ internal fun MediaItem.toSearchItem(): SearchItem? {
  * ("@veritasium • 21.4M subscribers").
  */
 object Handles {
+    /** Marcas invisíveis de direção que o motor põe em cada pedaço da linha (BidiFormatter). */
+    private val BIDI = Regex("[\u200E\u200F\u202A-\u202E\u2066-\u2069]")
+    private val AGO_MARKER = Regex("""(?<!\p{L})(ago|há|ha|hace)(?!\p{L})""")
+    private val WATCHING = Regex("""\d.*(watching|assistindo|espectadores|mirando|viendo)""")
+    private val SCHEDULED = listOf("scheduled", "premieres", "estreia", "programado", "agendado")
+    private val BADGES = setOf(
+        "4k", "8k", "hd", "sd", "hdr", "cc", "vr180", "360°",
+        "new", "novo", "nova", "nuevo", "nueva",
+        "live", "ao vivo", "en vivo", "en directo",
+        "fundraiser", "members only", "só para membros", "solo para miembros",
+    )
+
     /** "Veritasium • @veritasium" vira "Veritasium". Só com o @, o nome sem ele. */
     fun channelName(raw: String?): String? {
         val parts = parts(raw)
         return parts.firstOrNull { !it.startsWith("@") } ?: parts.firstOrNull()?.removePrefix("@")?.ifBlank { null }
     }
 
-    /** Tira as partes "@…" de uma linha do YouTube (sem elas, a linha fica como veio). */
+    /**
+     * Tira as partes "@…" e as marcas invisíveis de direção de uma linha do YouTube
+     * (sem elas, a linha fica como veio).
+     */
     fun strip(info: String?): String? {
-        val parts = parts(info)
-        if (parts.none { it.startsWith("@") }) return info
+        if (info == null) return null
+        val cleaned = clean(info)
+        val parts = parts(cleaned)
+        if (parts.isEmpty()) return null
+        if (parts.none { it.startsWith("@") }) return cleaned.trim('•', '·', ' ', '\t', '\n', '\r').ifEmpty { null }
         return parts.filterNot { it.startsWith("@") }.joinToString(" • ").ifEmpty { null }
     }
 
-    private fun parts(text: String?): List<String> =
-        text.orEmpty().split('•', '·').map { it.trim() }.filter { it.isNotEmpty() }
+    /**
+     * O nome do canal vindo da linha pronta do YouTube ("Canal • 16.1M views • 9 hours ago").
+     * Usado quando o motor não entrega o autor separado (nos Recomendados, onde o menu do card
+     * mudou para painel e o autor chega nulo ou com um selo como "4K"). Nas páginas de canal,
+     * onde a linha já começa nas visualizações ou na data, devolve null.
+     */
+    fun channelFromInfo(info: String?): String? {
+        val parts = parts(info)
+        val first = parts.firstOrNull() ?: return null
+        if (first.startsWith("@")) return null
+        val hasMetaAfter = parts.drop(1).any { ViewCount.parse(it) != null || isRelativeTime(it) }
+        if (isNonTimeMeta(first)) return null
+        if (!hasMetaAfter && isRelativeTime(first)) return null
+        return first
+    }
+
+    /**
+     * O nome do canal de um vídeo, combinando o [author] do motor com a linha [info]:
+     * - quando [author] falta ou traz um selo ("4K", "New"), usa o canal de [info];
+     * - quando ambos existem e [info] começa por [author] (colaboração: "A and B"), fica [author];
+     * - quando [info] não tem canal (página de canal), usa [author] (se não for selo ou detalhe).
+     */
+    fun resolveChannelName(author: String?, info: String?): String? {
+        val fromInfo = channelFromInfo(info)
+        val fromAuthor = channelName(author)?.takeUnless { isNonTimeMeta(it) || isRelativeTime(it) }
+        if (fromAuthor == null) return fromInfo
+        if (fromInfo == null) return fromAuthor
+        val a = TopicRules.normalize(fromAuthor)
+        val i = TopicRules.normalize(fromInfo)
+        val matches = if (a.isNotEmpty() && i.isNotEmpty()) a == i || i.startsWith("$a ")
+        else fromAuthor.equals(fromInfo, ignoreCase = true) || fromInfo.startsWith("$fromAuthor ", ignoreCase = true)
+        return if (matches) fromAuthor else fromInfo
+    }
+
+    internal fun clean(text: String): String = text.replace(BIDI, "").trim()
+
+    internal fun parts(text: String?): List<String> =
+        text.orEmpty().split('•', '·').map(::clean).filter { it.isNotEmpty() }
+
+    private fun isRelativeTime(part: String): Boolean =
+        RelativeTime.agoMs(part) != null && AGO_MARKER.containsMatchIn(part.lowercase())
+
+    private fun isNonTimeMeta(part: String): Boolean {
+        val lower = part.lowercase()
+        return lower in BADGES ||
+            ViewCount.parse(part) != null ||
+            WATCHING.containsMatchIn(lower) ||
+            SCHEDULED.any { lower.startsWith(it) }
+    }
 }
