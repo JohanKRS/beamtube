@@ -86,6 +86,61 @@ class PosterBlurTest {
         assertTrue(pixels.all { it == ORANGE })
     }
 
+    @Test
+    fun bitmapContentOfMatchesPixelArrayVersion() {
+        val cases = listOf(
+            Rect(0, 45, 480, 315),
+            Rect(139, 0, 341, 360),
+            Rect(40, 30, 280, 210),
+            Rect(0, 0, 320, 180),
+        )
+        for (rect in cases) {
+            val w = if (rect.right > 320) 480 else 320
+            val h = if (rect.bottom > 240) 360 else if (rect.bottom > 180) 240 else 180
+            val bmp = thumbnail(w, h, rect)
+            val pixels = IntArray(w * h).also { bmp.getPixels(it, 0, w, 0, 0, w, h) }
+            assertEquals(PosterBlur.contentOf(pixels, w, h), PosterBlur.contentOf(bmp))
+        }
+    }
+
+    @Test
+    fun lutBlurMatchesDirectDivisionReferenceBitForBit() {
+        val w = 37
+        val h = 29
+        val input = IntArray(w * h) { i ->
+            val x = i % w
+            val y = i / w
+            Color.rgb((x * 7 + y * 13) and 0xFF, (x * 19 + y * 3) and 0xFF, (x * 5 + y * 29) and 0xFF)
+        }
+        val actual = input.copyOf()
+        PosterBlur.blur(actual, w, h, PosterBlur.RADIUS)
+
+        // Referência direta com divisão inteira r/count, g/count, b/count.
+        val expected = input.copyOf()
+        val temp = IntArray(expected.size)
+        val radius = PosterBlur.RADIUS
+        val count = 2 * radius + 1
+        fun refPass(src: IntArray, dst: IntArray, lines: Int, length: Int, lineStep: Int, step: Int) {
+            val last = length - 1
+            for (line in 0 until lines) {
+                val start = line * lineStep
+                for (i in 0..last) {
+                    var r = 0; var g = 0; var b = 0
+                    for (k in -radius..radius) {
+                        val p = src[start + (i + k).coerceIn(0, last) * step]
+                        r += p shr 16 and 0xFF; g += p shr 8 and 0xFF; b += p and 0xFF
+                    }
+                    dst[start + i * step] = (0xFF shl 24) or (r / count shl 16) or (g / count shl 8) or (b / count)
+                }
+            }
+        }
+        repeat(3) {
+            refPass(expected, temp, h, w, w, 1)
+            refPass(temp, expected, w, h, 1, w)
+        }
+        assertTrue(expected.contentEquals(actual))
+    }
+
     private companion object {
         val ORANGE = Color.rgb(240, 140, 30)
         val BLUE = Color.rgb(30, 90, 230)

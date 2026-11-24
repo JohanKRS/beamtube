@@ -1,5 +1,6 @@
 package ytslim.data
 
+import androidx.compose.runtime.Immutable
 import com.liskovsoft.googlecommon.common.helpers.YouTubeHelper
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItem
@@ -7,6 +8,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
 /** Um vídeo, já convertido do modelo do motor. */
+@Immutable
 @Serializable
 data class Video(
     val id: String,
@@ -42,9 +44,10 @@ data class Video(
  * O pedido "Don't recommend channel" de um card do Início. O cliente de TV manda o token no menu
  * do card ([Token]) ou, desde 2026, só um painel que traz o menu quando é pedido ([Panel]).
  */
+@Immutable
 sealed interface NotRecommend {
-    data class Token(val value: String) : NotRecommend
-    data class Panel(val panelId: String, val params: String) : NotRecommend
+    @Immutable data class Token(val value: String) : NotRecommend
+    @Immutable data class Panel(val panelId: String, val params: String) : NotRecommend
 }
 
 /**
@@ -52,6 +55,7 @@ sealed interface NotRecommend {
  *
  * [browseId] e [params] são o que o motor precisa para abrir a playlist.
  */
+@Immutable
 data class Playlist(
     val browseId: String,
     val params: String?,
@@ -62,20 +66,25 @@ data class Playlist(
 )
 
 /** Um canal (resultado de busca, ou o canal de um vídeo). */
+@Immutable
 data class Channel(val id: String, val title: String, val info: String?, val thumbnailUrl: String?)
 
 /** Um resultado de busca: vídeo, canal ou playlist. */
+@Immutable
 sealed interface SearchItem {
     val key: String
 
+    @Immutable
     data class VideoItem(val video: Video) : SearchItem {
         override val key get() = "v:" + video.id
     }
 
+    @Immutable
     data class ChannelItem(val channel: Channel) : SearchItem {
         override val key get() = "c:" + channel.id
     }
 
+    @Immutable
     data class PlaylistItem(val playlist: Playlist) : SearchItem {
         override val key get() = "p:" + playlist.browseId
     }
@@ -169,8 +178,6 @@ internal fun MediaItem.toSearchItem(): SearchItem? {
  * ("@veritasium • 21.4M subscribers").
  */
 object Handles {
-    /** Marcas invisíveis de direção que o motor põe em cada pedaço da linha (BidiFormatter). */
-    private val BIDI = Regex("[\u200E\u200F\u202A-\u202E\u2066-\u2069]")
     private val AGO_MARKER = Regex("""(?<!\p{L})(ago|há|ha|hace)(?!\p{L})""")
     private val WATCHING = Regex("""\d.*(watching|assistindo|espectadores|mirando|viendo)""")
     private val SCHEDULED = listOf("scheduled", "premieres", "estreia", "programado", "agendado")
@@ -183,6 +190,7 @@ object Handles {
 
     /** "Veritasium • @veritasium" vira "Veritasium". Só com o @, o nome sem ele. */
     fun channelName(raw: String?): String? {
+        if (raw.isNullOrEmpty()) return null
         val parts = parts(raw)
         return parts.firstOrNull { !it.startsWith("@") } ?: parts.firstOrNull()?.removePrefix("@")?.ifBlank { null }
     }
@@ -194,6 +202,8 @@ object Handles {
     fun strip(info: String?): String? {
         if (info == null) return null
         val cleaned = clean(info)
+        if (cleaned.isEmpty()) return null
+        if ('@' !in cleaned) return cleaned.trim('•', '·', ' ', '\t', '\n', '\r').ifEmpty { null }
         val parts = parts(cleaned)
         if (parts.isEmpty()) return null
         if (parts.none { it.startsWith("@") }) return cleaned.trim('•', '·', ' ', '\t', '\n', '\r').ifEmpty { null }
@@ -207,12 +217,18 @@ object Handles {
      * onde a linha já começa nas visualizações ou na data, devolve null.
      */
     fun channelFromInfo(info: String?): String? {
+        if (info.isNullOrEmpty()) return null
         val parts = parts(info)
         val first = parts.firstOrNull() ?: return null
         if (first.startsWith("@")) return null
-        val hasMetaAfter = parts.drop(1).any { ViewCount.parse(it) != null || isRelativeTime(it) }
         if (isNonTimeMeta(first)) return null
-        if (!hasMetaAfter && isRelativeTime(first)) return null
+        if (isRelativeTime(first)) {
+            val hasMetaAfter = parts.size > 1 && (1 until parts.size).any {
+                val p = parts[it]
+                ViewCount.parse(p) != null || isRelativeTime(p)
+            }
+            if (!hasMetaAfter) return null
+        }
         return first
     }
 
@@ -227,17 +243,54 @@ object Handles {
         val fromAuthor = channelName(author)?.takeUnless { isNonTimeMeta(it) || isRelativeTime(it) }
         if (fromAuthor == null) return fromInfo
         if (fromInfo == null) return fromAuthor
+        if (fromAuthor.equals(fromInfo, ignoreCase = true) || fromInfo.startsWith("$fromAuthor ", ignoreCase = true)) {
+            return fromAuthor
+        }
         val a = TopicRules.normalize(fromAuthor)
         val i = TopicRules.normalize(fromInfo)
-        val matches = if (a.isNotEmpty() && i.isNotEmpty()) a == i || i.startsWith("$a ")
-        else fromAuthor.equals(fromInfo, ignoreCase = true) || fromInfo.startsWith("$fromAuthor ", ignoreCase = true)
+        val matches = a.isNotEmpty() && i.isNotEmpty() && (a == i || i.startsWith("$a "))
         return if (matches) fromAuthor else fromInfo
     }
 
-    internal fun clean(text: String): String = text.replace(BIDI, "").trim()
+    /** Remove marcas invisíveis de direção (BidiFormatter) e espaços nas pontas sem alocar quando já está limpo. */
+    internal fun clean(text: String): String {
+        val len = text.length
+        if (len == 0) return text
+        var hasBidi = false
+        for (i in 0 until len) {
+            if (isBidi(text[i])) {
+                hasBidi = true
+                break
+            }
+        }
+        if (!hasBidi) return text.trim()
+        val sb = StringBuilder(len)
+        for (i in 0 until len) {
+            val c = text[i]
+            if (!isBidi(c)) sb.append(c)
+        }
+        return sb.toString().trim()
+    }
 
-    internal fun parts(text: String?): List<String> =
-        text.orEmpty().split('•', '·').map(::clean).filter { it.isNotEmpty() }
+    private fun isBidi(c: Char): Boolean =
+        c == '\u200E' || c == '\u200F' || c in '\u202A'..'\u202E' || c in '\u2066'..'\u2069'
+
+    internal fun parts(text: String?): List<String> {
+        if (text.isNullOrEmpty()) return emptyList()
+        val out = ArrayList<String>(3)
+        var start = 0
+        val len = text.length
+        for (i in 0..len) {
+            if (i == len || text[i] == '•' || text[i] == '·') {
+                if (i > start) {
+                    val part = clean(text.substring(start, i))
+                    if (part.isNotEmpty()) out.add(part)
+                }
+                start = i + 1
+            }
+        }
+        return out
+    }
 
     private fun isRelativeTime(part: String): Boolean =
         RelativeTime.agoMs(part) != null && AGO_MARKER.containsMatchIn(part.lowercase())

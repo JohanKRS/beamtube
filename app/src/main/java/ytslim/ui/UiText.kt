@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.res.stringResource
 import androidx.core.os.ConfigurationCompat
 import java.util.Locale
@@ -50,7 +51,8 @@ val endActionOptions = listOf(
  * Uma linha de Settings > Captions: o idioma guardado ([CaptionLanguage]), o nome e a linha de baixo.
  * [selected] já leva em conta o inglês que coincide com o idioma do app.
  */
-class CaptionChoice(val value: CaptionLanguage, val title: String, val subtitle: String?, val selected: Boolean)
+@Immutable
+data class CaptionChoice(val value: CaptionLanguage, val title: String, val subtitle: String?, val selected: Boolean)
 
 /**
  * Settings > Captions (pedido do Johan depois da 1.0.9, que tinha a escolha num painel do player): a
@@ -81,9 +83,11 @@ fun captionChoices(context: Context, saved: CaptionLanguage): List<CaptionChoice
 }
 
 /** Um filtro na tela (busca e Explore): o nome e as opções, cada uma já com os filtros que ela aplica. */
-class SearchFilterChoice(@StringRes val label: Int, val options: List<Option>) {
+@Immutable
+data class SearchFilterChoice(@StringRes val label: Int, val options: List<Option>) {
     /** [arg] completa o texto da opção ("Before %1$d"). */
-    class Option(@StringRes val label: Int, val filters: SearchFilters, val selected: Boolean, val arg: Int? = null)
+    @Immutable
+    data class Option(@StringRes val label: Int, val filters: SearchFilters, val selected: Boolean, val arg: Int? = null)
 
     val selected: Option get() = options.first { it.selected }
 

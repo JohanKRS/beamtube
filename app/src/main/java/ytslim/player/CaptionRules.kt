@@ -27,16 +27,19 @@ internal object CaptionRules {
      * Centraliza cada linha na horizontal. A altura fica como veio (a automática do YouTube chega
      * em blocos de duas linhas, [CaptionBlocks]).
      */
-    fun centered(cues: List<Cue>): List<Cue> = cues.map { cue ->
-        if (cue.bitmap != null) {
-            cue
-        } else {
-            cue.buildUpon()
-                .setTextAlignment(Layout.Alignment.ALIGN_CENTER)
-                .setPosition(Cue.DIMEN_UNSET)
-                .setPositionAnchor(Cue.TYPE_UNSET)
-                .setSize(Cue.DIMEN_UNSET)
-                .build()
+    fun centered(cues: List<Cue>): List<Cue> {
+        if (cues.isEmpty()) return emptyList()
+        return cues.map { cue ->
+            if (cue.bitmap != null) {
+                cue
+            } else {
+                cue.buildUpon()
+                    .setTextAlignment(Layout.Alignment.ALIGN_CENTER)
+                    .setPosition(Cue.DIMEN_UNSET)
+                    .setPositionAnchor(Cue.TYPE_UNSET)
+                    .setSize(Cue.DIMEN_UNSET)
+                    .build()
+            }
         }
     }
 }

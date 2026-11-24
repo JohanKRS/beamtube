@@ -2,6 +2,7 @@ package ytslim.data
 
 import android.util.Log
 import com.liskovsoft.mediaserviceinterfaces.data.MediaGroup
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -10,8 +11,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.ln
@@ -60,16 +63,22 @@ object ExploreRules {
      * "Kurzgesagt – In a Nutshell", "Mentour Now!" de "Mentour Pilot". Vale só para o par: outro
      * canal inscrito que destaque o mesmo canal ainda conta.
      */
-    fun isSibling(sourceName: String, sourceHandle: String?, featured: FeaturedChannel): Boolean {
+    fun isSibling(sourceName: String, sourceHandle: String?, featured: FeaturedChannel): Boolean =
+        isSibling(
+            source = compact(sourceName),
+            sourceAt = compact(sourceHandle.orEmpty()),
+            sourceFirst = firstBrandWord(sourceName),
+            featured = featured,
+        )
+
+    private fun isSibling(source: String, sourceAt: String, sourceFirst: String?, featured: FeaturedChannel): Boolean {
         val name = compact(featured.name)
         val handle = compact(featured.handle.orEmpty())
-        val source = compact(sourceName)
-        val sourceAt = compact(sourceHandle.orEmpty())
         if (source.length >= 3 && (source in name || source in handle)) return true
         if (sourceAt.length >= 3 && (sourceAt in name || sourceAt in handle)) return true
         if (name.length >= 4 && name in source) return true
         // A primeira palavra do nome, se for marca ("Kurzgesagt", "Mentour"), e não um artigo.
-        val first = words(sourceName).firstOrNull()?.takeIf { it.length >= 4 } ?: return false
+        val first = sourceFirst ?: return false
         return first in words(featured.name)
     }
 
@@ -80,14 +89,21 @@ object ExploreRules {
     fun candidates(sources: Collection<FeaturedSource>, subscribed: Set<String>, blocked: Set<String>): List<Candidate> {
         val weights = LinkedHashMap<String, Int>()
         val channels = HashMap<String, FeaturedChannel>()
+        val seenInSource = HashSet<String>()
         for (source in sources) {
-            source.featured
-                .filter { it.id !in subscribed && it.id !in blocked && !isSibling(source.name, source.handle, it) }
-                .distinctBy { it.id }
-                .forEach {
-                    weights.merge(it.id, 1, Int::plus)
-                    channels.putIfAbsent(it.id, it)
-                }
+            if (source.featured.isEmpty()) continue
+            val sourceCompact = compact(source.name)
+            val sourceAt = compact(source.handle.orEmpty())
+            val sourceFirst = firstBrandWord(source.name)
+            seenInSource.clear()
+            for (featured in source.featured) {
+                val id = featured.id
+                if (id in subscribed || id in blocked) continue
+                if (!seenInSource.add(id)) continue
+                if (isSibling(sourceCompact, sourceAt, sourceFirst, featured)) continue
+                weights[id] = (weights[id] ?: 0) + 1
+                channels.putIfAbsent(id, featured)
+            }
         }
         return weights.map { (id, weight) -> Candidate(channels.getValue(id), weight) }
     }
@@ -113,7 +129,7 @@ object ExploreRules {
      */
     fun pick(videos: ChannelVideos, filters: ContentFilters, random: Random, keep: (Video) -> Boolean = { true }): List<Video> {
         fun usable(list: List<Video>) = list.filter {
-            !it.isShorts && !it.isLive && !it.isUpcoming && it.percentWatched < WATCHED && !TopicRules.isExcluded(it, filters) && keep(it)
+            !it.isShorts && !it.isLive && !it.isUpcoming && it.percentWatched < WATCHED && keep(it) && !TopicRules.isExcluded(it, filters)
         }
         val recentPool = usable(videos.recent.take(RECENT_WINDOW)).shuffled(random)
         val recentIds = videos.recent.mapTo(HashSet()) { it.id }
@@ -163,7 +179,10 @@ object ExploreRules {
     fun ownVideos(channel: FeaturedChannel, videos: List<Video>): List<Video> {
         val name = TopicRules.normalize(channel.name)
         return videos
-            .filter { v -> v.channelName.isNullOrBlank() || TopicRules.normalize(v.channelName).startsWith(name) }
+            .filter { v ->
+                val cn = v.channelName
+                cn.isNullOrBlank() || cn.equals(channel.name, ignoreCase = true) || TopicRules.normalize(cn).startsWith(name)
+            }
             .map { it.copy(channelId = it.channelId ?: channel.id, channelName = it.channelName ?: channel.name) }
     }
 
@@ -177,6 +196,8 @@ object ExploreRules {
     private fun compact(text: String) = TopicRules.normalize(text).replace(" ", "")
 
     private fun words(text: String) = TopicRules.normalize(text).split(' ').filter { it.isNotEmpty() }
+
+    private fun firstBrandWord(text: String): String? = words(text).firstOrNull()?.takeIf { it.length >= 4 }
 }
 
 /** O cache da Explore no aparelho: o que cada canal inscrito destaca e os canais dos últimos sorteios. */
@@ -211,69 +232,76 @@ object ExploreRepository {
     private const val FIRST_SCAN = 12
     private const val FIRST_BATCHES = 3
     private const val MIN_CANDIDATES = 30
-    private const val SAVE_EVERY = 8
+    private const val SAVE_EVERY = 24
     private const val PARALLEL = 4
     private const val BACKGROUND_PARALLEL = 2
 
     /** Na pasta de cada usuário ([Users]): os canais destacados vêm das inscrições da conta. */
     private val file: File get() = Users.file("explore.json")
-    private val json = Json { ignoreUnknownKeys = true }
+    /** Os últimos canais sorteados ficam num arquivo minúsculo para não regravar o explore.json inteiro a cada sorteio. */
+    private val recentFile: File get() = Users.file("explore-recent.json")
+    private val recentSerializer = ListSerializer(String.serializer())
     private val mutex = Mutex()
+    private val recentMutex = Mutex()
     private var cache: ExploreCache? = null
+    private var recentCache: List<String>? = null
     private val scanning = AtomicBoolean(false)
 
     /** Outro usuário abriu: o cache dele vem do arquivo dele. */
     fun forget() {
         cache = null
+        recentCache = null
     }
 
     /**
      * Um sorteio novo de canais, sem os que já estão na tela ([shown]), com os vídeos de cada um.
      * Lança um erro se não deu para ler as inscrições (sem login ou sem rede).
      */
-    suspend fun draw(shown: Set<String> = emptySet(), random: Random = Random.Default): ExploreDraw {
-        val subscribed = FeedRepository.subscribedChannels() ?: error("Couldn't read your subscriptions.")
-        val ids = subscribed.mapTo(HashSet()) { it.id }
-        val filters = SettingsRepository.current().filters
-        suspend fun candidates() = ExploreRules.candidates(load().sources.filterKeys { it in ids }.values, ids, filters.blockedIds)
+    suspend fun draw(shown: Set<String> = emptySet(), random: Random = Random.Default): ExploreDraw =
+        withContext(Dispatchers.Default) {
+            val subscribed = FeedRepository.subscribedChannels() ?: error("Couldn't read your subscriptions.")
+            val ids = subscribed.mapTo(HashSet()) { it.id }
+            val filters = SettingsRepository.current().filters
+            suspend fun candidates() = ExploreRules.candidates(load().sources.filterKeys { it in ids }.values, ids, filters.blockedIds)
 
-        // A primeira vez: lê alguns canais inscritos já, até ter o que sortear; o resto vai depois.
-        var candidates = candidates()
-        repeat(FIRST_BATCHES) {
-            if (candidates.size >= MIN_CANDIDATES) return@repeat
-            val unread = subscribed.filter { it.id !in load().sources }
-            if (unread.isEmpty()) return@repeat
-            scan(unread.shuffled(random).take(FIRST_SCAN), PARALLEL)
-            candidates = candidates()
-        }
-        scanRestLater(stale(subscribed))
+            // A primeira vez: lê alguns canais inscritos já, até ter o que sortear; o resto vai depois.
+            var candidates = candidates()
+            repeat(FIRST_BATCHES) {
+                if (candidates.size >= MIN_CANDIDATES) return@repeat
+                val sources = load().sources
+                val unread = subscribed.filter { it.id !in sources }
+                if (unread.isEmpty()) return@repeat
+                scan(unread.shuffled(random).take(FIRST_SCAN), PARALLEL)
+                candidates = candidates()
+            }
+            scanRestLater(stale(subscribed))
 
-        val chosen = ExploreRules.draw(candidates, ExploreRules.CHANNELS_PER_DRAW, load().recent.toSet() + shown, random)
-            .filter { it.id !in shown }
-        ChannelPhotos.putAll(chosen.mapNotNull { c -> c.photo?.let { c.id to it } }.toMap())
-        val gate = Semaphore(PARALLEL)
-        val videos = coroutineScope {
-            chosen.map { channel ->
-                async {
-                    gate.withPermit {
-                        runCatching { videosOf(channel) }.onFailure { Log.w(TAG, "explore: no videos from ${channel.id}", it) }.getOrNull()
+            val chosen = ExploreRules.draw(candidates, ExploreRules.CHANNELS_PER_DRAW, loadRecent().toSet() + shown, random)
+                .filter { it.id !in shown }
+            ChannelPhotos.putAll(chosen.mapNotNull { c -> c.photo?.let { c.id to it } }.toMap())
+            val gate = Semaphore(PARALLEL)
+            val videos = coroutineScope {
+                chosen.map { channel ->
+                    async {
+                        gate.withPermit {
+                            runCatching { videosOf(channel) }.onFailure { Log.w(TAG, "explore: no videos from ${channel.id}", it) }.getOrNull()
+                        }
                     }
-                }
-            }.awaitAll()
-        }.filterNotNull()
-        remember(chosen.map { it.id })
-        val hasMore = candidates.size > shown.size + chosen.size
-        Log.i(TAG, "explore: ${subscribed.size} subscriptions, ${load().sources.count { it.key in ids }} read, " +
-            "${candidates.size} candidates, ${chosen.size} drawn, ${videos.size} with videos, ${videos.sumOf { it.recent.size + it.older.size }} videos")
-        return ExploreDraw(videos, chosen.map { it.id }, hasMore, random.nextLong())
-    }
+                }.awaitAll()
+            }.filterNotNull()
+            remember(chosen.map { it.id })
+            val hasMore = candidates.size > shown.size + chosen.size
+            Log.i(TAG, "explore: ${subscribed.size} subscriptions, ${load().sources.count { it.key in ids }} read, " +
+                "${candidates.size} candidates, ${chosen.size} drawn, ${videos.size} with videos, ${videos.sumOf { it.recent.size + it.older.size }} videos")
+            ExploreDraw(videos, chosen.map { it.id }, hasMore, random.nextLong())
+        }
 
     /**
      * Lê em segundo plano as páginas dos canais inscritos que faltam ou ficaram velhas, para a
      * Explore abrir mais rápido. O feed chama depois de ler as inscrições.
      */
     fun prepare() {
-        AppScope.launch {
+        AppScope.launch(Dispatchers.Default) {
             val subscribed = FeedRepository.subscribedChannels() ?: return@launch
             scanRestLater(stale(subscribed))
         }
@@ -289,7 +317,7 @@ object ExploreRepository {
     private suspend fun page(channelId: String): List<MediaGroup> =
         Engine.content.getChannelObserve(channelId).firstOrNull().orEmpty()
 
-    internal suspend fun videosOf(channel: FeaturedChannel): ChannelVideos {
+    internal suspend fun videosOf(channel: FeaturedChannel): ChannelVideos = withContext(Dispatchers.Default) {
         val groups = page(channel.id)
         val videoGroups = groups.map { g -> g.mediaItems.orEmpty().mapNotNull { it.toVideo() }.filterNot { it.isShorts } to g }
             .filter { it.first.isNotEmpty() }
@@ -297,7 +325,7 @@ object ExploreRepository {
         val recentGroup = videoGroups.firstOrNull { it.second.nextPageKey != null } ?: videoGroups.firstOrNull()
         val recent = recentGroup?.first.orEmpty()
         val older = videoGroups.filter { it !== recentGroup }.flatMap { it.first }
-        return ChannelVideos(channel, ExploreRules.ownVideos(channel, recent), ExploreRules.ownVideos(channel, older))
+        ChannelVideos(channel, ExploreRules.ownVideos(channel, recent), ExploreRules.ownVideos(channel, older))
     }
 
     /** Lê a página de cada canal inscrito em [channels] e guarda o que ele destaca, de [SAVE_EVERY] em [SAVE_EVERY]. */
@@ -322,7 +350,7 @@ object ExploreRepository {
     /** Os canais inscritos que faltam ler (ou que ficaram velhos), sem segurar a tela; uma leitura por vez. */
     private fun scanRestLater(stale: List<Channel>) {
         if (stale.isEmpty() || !scanning.compareAndSet(false, true)) return
-        AppScope.launch {
+        AppScope.launch(Dispatchers.Default) {
             try {
                 scan(stale, BACKGROUND_PARALLEL)
             } finally {
@@ -331,7 +359,7 @@ object ExploreRepository {
         }
     }
 
-    internal suspend fun sourceOf(channel: Channel): FeaturedSource {
+    internal suspend fun sourceOf(channel: Channel): FeaturedSource = withContext(Dispatchers.Default) {
         val items = page(channel.id).flatMap { it.mediaItems.orEmpty() }
         val featured = items.mapNotNull { item ->
             if (item.videoId != null) return@mapNotNull null
@@ -341,12 +369,14 @@ object ExploreRepository {
             FeaturedChannel(found.id, found.title, ExploreRules.handleOf(listOf(item.secondTitle?.toString())), found.thumbnailUrl)
         }.distinctBy { it.id }
         val handle = ExploreRules.handleOf(items.filter { it.videoId != null }.map { it.author })
-        return FeaturedSource(channel.title, handle, System.currentTimeMillis(), featured)
+        FeaturedSource(channel.title, handle, System.currentTimeMillis(), featured)
     }
 
-    private suspend fun remember(channels: List<String>) = save { cache ->
-        val recent = (cache.recent - channels.toSet()) + channels
-        cache.copy(recent = recent.takeLast(ExploreRules.REMEMBER_CHANNELS))
+    private suspend fun remember(channels: List<String>) = recentMutex.withLock {
+        val current = loadRecentLocked()
+        val updated = ((current - channels.toSet()) + channels).takeLast(ExploreRules.REMEMBER_CHANNELS)
+        recentCache = updated
+        io { runCatching { recentFile.writeJson(recentSerializer, updated) } }
     }
 
     /** Mais velho que isso, o sorteio guardado não aparece (o mesmo prazo das listas guardadas). */
@@ -364,7 +394,7 @@ object ExploreRepository {
      * novo antes disso mostra o mesmo.
      */
     suspend fun next(nowMs: Long = System.currentTimeMillis()): ExploreDraw? = io {
-        runCatching { json.decodeFromString(SavedDraw.serializer(), nextFile().readText()) }.getOrNull()
+        runCatching { nextFile().readJson(SavedDraw.serializer()) }.getOrNull()
     }?.takeIf { nowMs - it.savedAt in 0..NEXT_MAX_AGE_MS && it.draw.channels.isNotEmpty() }?.draw
 
     /**
@@ -379,18 +409,24 @@ object ExploreRepository {
 
     internal suspend fun saveNext(draw: ExploreDraw, nowMs: Long = System.currentTimeMillis(), slot: String = Users.slot) {
         if (draw.channels.isEmpty()) return
-        io { runCatching { nextFile(slot).writeText(json.encodeToString(SavedDraw.serializer(), SavedDraw(nowMs, draw))) } }
+        io { runCatching { nextFile(slot).writeJson(SavedDraw.serializer(), SavedDraw(nowMs, draw)) } }
     }
 
     private suspend fun load(): ExploreCache = mutex.withLock { loadLocked() }
 
     private suspend fun loadLocked(): ExploreCache = cache ?: io {
-        runCatching { json.decodeFromString(ExploreCache.serializer(), file.readText()) }.getOrDefault(ExploreCache())
+        runCatching { file.readJson(ExploreCache.serializer()) }.getOrNull() ?: ExploreCache()
     }.also { cache = it }
+
+    private suspend fun loadRecent(): List<String> = recentMutex.withLock { loadRecentLocked() }
+
+    private suspend fun loadRecentLocked(): List<String> = recentCache ?: (io {
+        runCatching { recentFile.readJson(recentSerializer) }.getOrNull()
+    } ?: load().recent).also { recentCache = it }
 
     private suspend fun save(change: (ExploreCache) -> ExploreCache) = mutex.withLock {
         val updated = change(loadLocked())
         cache = updated
-        io { file.writeText(json.encodeToString(ExploreCache.serializer(), updated)) }
+        io { file.writeJson(ExploreCache.serializer(), updated) }
     }
 }

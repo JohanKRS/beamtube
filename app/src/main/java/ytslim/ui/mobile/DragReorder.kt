@@ -80,9 +80,10 @@ class DragReorderState internal constructor(
         val centerX = (left + item.size.width / 2f).toInt()
         val centerY = (top + item.size.height / 2f).toInt()
         val target = grid.layoutInfo.visibleItemsInfo.firstOrNull {
-            it.key != item.key && it.key in keys.value &&
+            it.key != item.key &&
                 centerX in it.offset.x..(it.offset.x + it.size.width) &&
-                centerY in it.offset.y..(it.offset.y + it.size.height)
+                centerY in it.offset.y..(it.offset.y + it.size.height) &&
+                it.key in keys.value
         }
         if (target != null) {
             // A grade fica presa ao primeiro item visível: sem isso, mover esse item rola a lista junto.

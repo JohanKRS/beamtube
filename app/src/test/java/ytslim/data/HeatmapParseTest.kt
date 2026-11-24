@@ -61,4 +61,23 @@ class HeatmapParseTest {
         """.trimIndent()
         assertTrue(HeatmapRepository.parse(json).chapters.isEmpty())
     }
+
+    @Test
+    fun chaptersBinarySearchHandlesBoundaries() {
+        val chapters = listOf(
+            Chapter(10_000, "Intro"),
+            Chapter(60_000, "Part 1"),
+            Chapter(60_000, "Part 1b"),
+            Chapter(180_000, "Outro"),
+        )
+        assertEquals(null, Chapters.at(emptyList(), 0))
+        assertEquals(null, Chapters.at(chapters, 0))
+        assertEquals(null, Chapters.at(chapters, 9_999))
+        assertEquals("Intro", Chapters.at(chapters, 10_000)?.title)
+        assertEquals("Intro", Chapters.at(chapters, 59_999)?.title)
+        assertEquals("Part 1b", Chapters.at(chapters, 60_000)?.title)
+        assertEquals("Part 1b", Chapters.at(chapters, 179_999)?.title)
+        assertEquals("Outro", Chapters.at(chapters, 180_000)?.title)
+        assertEquals("Outro", Chapters.at(chapters, 999_999)?.title)
+    }
 }

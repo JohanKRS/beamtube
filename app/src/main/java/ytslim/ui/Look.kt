@@ -3,6 +3,7 @@ package ytslim.ui
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.annotation.StringRes
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -92,6 +93,7 @@ fun monogramOf(name: String?): String =
  * O fundo e as superfícies, do mais escuro ao mais claro. O do celular é o cinza bem escuro da
  * etapa 6 (pedido do Johan, 2026-11-02: não é preto). A TV tem um mais escuro ([TV]).
  */
+@Immutable
 class Tones(
     val ground: Color,
     val surface: Color,

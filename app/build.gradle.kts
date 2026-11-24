@@ -32,7 +32,6 @@ android {
         versionName = appVersionName
 
         resValue("string", "app_name", appName)
-        multiDexEnabled = true
         ndk { abiFilters += appAbis }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -68,6 +67,7 @@ android {
             // R8: otimiza o Compose, o Media3 e o resto, e tira o que não é usado (ex.: os milhares de
             // ícones do material-icons-extended). O motor fica inteiro (proguard-rules.pro).
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Sem a chave das releases (ex.: build local de teste), assina com a de debug desta máquina:
             // instala num aparelho limpo, mas não atualiza por cima da versão das releases.
@@ -134,6 +134,11 @@ kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
+}
+
+composeCompiler {
+    // Tira os marcadores de Perfetto/trace de cada @Composable (não são usados em produção).
+    includeTraceMarkers = false
 }
 
 dependencies {

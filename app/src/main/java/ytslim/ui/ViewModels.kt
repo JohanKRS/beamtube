@@ -1,44 +1,47 @@
 package ytslim.ui
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import ytslim.AppVisibility
 import ytslim.data.AppIcon
-import ytslim.data.AppScope
 import ytslim.data.AppIcons
+import ytslim.data.AppScope
 import ytslim.data.AuthRepository
 import ytslim.data.AuthRepository.SignInEvent
-import ytslim.data.Engine
-import ytslim.data.User
-import ytslim.data.Users
-import ytslim.data.ExploreRepository
 import ytslim.data.CaptionLanguage
+import ytslim.data.ContentFilters
 import ytslim.data.EndAction
+import ytslim.data.Engine
+import ytslim.data.ExploreRepository
 import ytslim.data.ExternalLinks
 import ytslim.data.FeedCache
-import ytslim.data.ListCache
 import ytslim.data.FeedMerge
 import ytslim.data.FeedRepository
 import ytslim.data.FeedRules
 import ytslim.data.LibraryRepository
+import ytslim.data.ListCache
 import ytslim.data.OwnPlaylist
 import ytslim.data.PlayQueue
 import ytslim.data.Playlist
@@ -51,12 +54,17 @@ import ytslim.data.SettingsRepository
 import ytslim.data.Timed
 import ytslim.data.Topic
 import ytslim.data.TopicRules
+import ytslim.data.User
+import ytslim.data.Users
 import ytslim.data.Video
 import ytslim.data.VideoPage
 
+@Immutable
 sealed interface UiState<out T> {
     data object Loading : UiState<Nothing>
+    @Immutable
     data class Ready<T>(val data: T) : UiState<T>
+    @Immutable
     data class Error(val message: String) : UiState<Nothing>
 }
 
@@ -72,6 +80,7 @@ interface Refreshable {
 internal fun Throwable.toMessage(): String = message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
 
 class SignInViewModel : ViewModel() {
+    @Immutable
     sealed interface State {
         data object Requesting : State
         data class ShowCode(val code: String) : State
@@ -119,6 +128,7 @@ class SignInViewModel : ViewModel() {
  * @param jumpToTop muda quando a lista deve voltar ao começo (as Inscrições atualizadas sozinhas
  * depois de o app ficar um tempo fora): a grade sobe até o primeiro vídeo.
  */
+@Immutable
 data class VideoListContent(
     val videos: List<Video>,
     val hasMore: Boolean,
@@ -149,22 +159,27 @@ class FeedViewModel : ViewModel(), Refreshable {
         ) : Raw
     }
 
+    private data class FeedPrefs(val showLives: Boolean = false, val filters: ContentFilters = ContentFilters())
+
     private val raw = MutableStateFlow<Raw>(Raw.Loading)
     private val extras = MutableStateFlow<List<Timed>>(emptyList())
-    private val settings = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
+    private val prefs = SettingsRepository.settings
+        .map { FeedPrefs(it.showLives, it.filters) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, FeedPrefs())
 
     // Os filtros (canais bloqueados, tópicos) rodam fora da thread da tela, como nas Recomendações.
-    val state: StateFlow<UiState<VideoListContent>> = combine(raw, extras, settings, ::content)
+    val state: StateFlow<UiState<VideoListContent>> = combine(raw, extras, prefs, ::content)
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
 
-    private fun content(raw: Raw, extras: List<Timed>, settings: Settings): UiState<VideoListContent> = when (raw) {
+    private fun content(raw: Raw, extras: List<Timed>, prefs: FeedPrefs): UiState<VideoListContent> = when (raw) {
         Raw.Loading -> UiState.Loading
         is Raw.Error -> UiState.Error(raw.message)
         is Raw.Loaded -> {
-            val keep = { t: Timed -> FeedRules.keep(t.video, settings.showLives) && !TopicRules.isBlocked(t.video, settings.filters) }
+            val keep = { t: Timed -> FeedRules.keep(t.video, prefs.showLives) && !TopicRules.isBlocked(t.video, prefs.filters) }
             // Vídeos de playlists inscritas também respeitam os tópicos excluídos.
-            val keepExtra = { t: Timed -> keep(t) && !TopicRules.isExcluded(t.video, settings.filters) }
+            val keepExtra = { t: Timed -> keep(t) && !TopicRules.isExcluded(t.video, prefs.filters) }
             val complete = !raw.lastPage.hasMore && !raw.cached
             val videos = FeedMerge.merge(raw.feed.filter(keep), extras.filter(keepExtra), feedComplete = complete)
             UiState.Ready(VideoListContent(videos, raw.lastPage.hasMore, raw.loadingMore, jumpToTop = raw.jump))
@@ -183,8 +198,8 @@ class FeedViewModel : ViewModel(), Refreshable {
         // Abre com o feed guardado da última vez, se houver, e atualiza por trás.
         viewModelScope.launch {
             FeedCache.read()?.let { saved ->
-                raw.value = Raw.Loaded(saved.feed, VideoPage(emptyList(), null), loadingMore = false, cached = true)
                 extras.value = saved.extras
+                raw.value = Raw.Loaded(saved.feed, VideoPage(emptyList(), null), loadingMore = false, cached = true)
             }
             load(quiet = raw.value is Raw.Loaded)
         }
@@ -215,7 +230,7 @@ class FeedViewModel : ViewModel(), Refreshable {
         loadJob = viewModelScope.launch {
             raw.value = subscriptions(retries = if (afterAway) FeedRules.AWAY_RETRIES else 0).fold(
                 { page ->
-                    val feed = FeedMerge.estimate(page.videos, System.currentTimeMillis())
+                    val feed = withContext(Dispatchers.Default) { FeedMerge.estimate(page.videos, System.currentTimeMillis()) }
                     AppScope.launch { FeedCache.saveFeed(feed) }
                     if (afterAway) jumps++
                     Raw.Loaded(feed, page, loadingMore = false, jump = jumps)
@@ -255,19 +270,24 @@ class FeedViewModel : ViewModel(), Refreshable {
         raw.value = loaded.copy(loadingMore = true)
         loadJob = viewModelScope.launch {
             val next = runCatching { LibraryRepository.more(loaded.lastPage) }.getOrNull()
-            val known = loaded.feed.mapTo(HashSet()) { it.video.id }
-            val startAt = loaded.feed.lastOrNull()?.atMs ?: System.currentTimeMillis()
-            val added = FeedMerge.estimate(next?.videos.orEmpty().filter { known.add(it.id) }, System.currentTimeMillis(), startAt)
+            val added = withContext(Dispatchers.Default) {
+                val known = loaded.feed.mapTo(HashSet()) { it.video.id }
+                val startAt = loaded.feed.lastOrNull()?.atMs ?: System.currentTimeMillis()
+                FeedMerge.estimate(next?.videos.orEmpty().filter { known.add(it.id) }, System.currentTimeMillis(), startAt)
+            }
             raw.value = Raw.Loaded(loaded.feed + added, next ?: VideoPage(emptyList(), null), loadingMore = false, jump = loaded.jump)
             fillScreen()
         }
     }
 
     /** Se os filtros esvaziaram a página (ex.: muitos Shorts), busca mais sozinho. */
-    private fun fillScreen() {
+    private suspend fun fillScreen() {
         val loaded = raw.value as? Raw.Loaded ?: return
-        val shown = (content(loaded, extras.value, settings.value) as? UiState.Ready)?.data?.videos?.size ?: 0
-        if (shown < MIN_ON_SCREEN && loaded.lastPage.hasMore && autoPages < MAX_AUTO_PAGES) {
+        if (!loaded.lastPage.hasMore || autoPages >= MAX_AUTO_PAGES) return
+        val shown = withContext(Dispatchers.Default) {
+            (content(loaded, extras.value, prefs.value) as? UiState.Ready)?.data?.videos?.size ?: 0
+        }
+        if (shown < MIN_ON_SCREEN) {
             autoPages++
             loadMore()
         }
@@ -289,19 +309,19 @@ class PlaylistsViewModel : ViewModel(), Refreshable {
     private var job: Job? = null
 
     init {
-        reload()
+        load(quiet = false, maxAgeMs = LibraryRepository.PLAYLISTS_MAX_AGE_MS)
     }
 
-    fun reload() = load(quiet = false)
+    fun reload() = load(quiet = false, maxAgeMs = 0)
 
-    override fun refresh() = load(quiet = _state.value is UiState.Ready)
+    override fun refresh() = load(quiet = _state.value is UiState.Ready, maxAgeMs = 0)
 
-    private fun load(quiet: Boolean) {
+    private fun load(quiet: Boolean, maxAgeMs: Long) {
         job?.cancel()
         _refreshing.value = quiet
         if (!quiet) _state.value = UiState.Loading
         job = viewModelScope.launch {
-            _state.value = runCatching { LibraryRepository.playlists() }
+            _state.value = runCatching { LibraryRepository.playlists(maxAgeMs = maxAgeMs) }
                 .fold({ UiState.Ready(it) }, { UiState.Error(it.toMessage()) })
             _refreshing.value = false
         }
@@ -339,9 +359,11 @@ open class VideoListViewModel(
         if (cacheKey != null) {
             // Guarda a lista um segundo depois da última mudança (página nova, vídeo movido ou tirado).
             viewModelScope.launch {
-                state.mapNotNull { (it as? UiState.Ready)?.data?.takeUnless { content -> content.cached } }
+                state.mapNotNull { (it as? UiState.Ready)?.data?.takeUnless { content -> content.cached || content.loadingMore } }
+                    .map { it.title to it.videos }
+                    .distinctUntilChanged()
                     .debounce(1_000)
-                    .collect { AppScope.launch { ListCache.save(cacheKey, it.title, it.videos) } }
+                    .collect { (title, videos) -> AppScope.launch { ListCache.save(cacheKey, title, videos) } }
             }
         }
     }
@@ -450,8 +472,10 @@ open class VideoListViewModel(
 private fun Video.sameEntry(other: Video) = id == other.id && playlistIndex == other.playlistIndex
 
 /** O botão de inscrição, na playlist e no canal: escondido até saber (ou quando não se aplica). */
+@Immutable
 sealed interface Subscription {
     data object Hidden : Subscription
+    @Immutable
     data class Shown(val subscribed: Boolean, val busy: Boolean = false, val error: String? = null) : Subscription
 }
 
@@ -486,7 +510,7 @@ class PlaylistViewModel(private val playlist: Playlist) : VideoListViewModel(
         viewModelScope.launch {
             val own = PlaylistSubscriptions.ownPlaylistIds()
             if (own != null && playlist.playlistId in own) _editable.value = true
-            _subscription.value = when (val status = PlaylistSubscriptions.status(playlist.playlistId)) {
+            _subscription.value = when (val status = PlaylistSubscriptions.status(playlist.playlistId, own)) {
                 PlaylistSubscriptions.Status.NotApplicable -> Subscription.Hidden
                 is PlaylistSubscriptions.Status.Foreign -> Subscription.Shown(status.subscribed)
             }
@@ -685,6 +709,7 @@ class SettingsViewModel : ViewModel() {
  * aberta pelos Ajustes, como os tópicos; até a 1.0.8 a lista ficava no meio dos Ajustes).
  */
 class SubscribedPlaylistsViewModel : ViewModel() {
+    @Immutable
     data class SubscribedPlaylist(val playlist: Playlist, val busy: Boolean = false)
 
     private val _playlists = MutableStateFlow<UiState<List<SubscribedPlaylist>>>(UiState.Loading)

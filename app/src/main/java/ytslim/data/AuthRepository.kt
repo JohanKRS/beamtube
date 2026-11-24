@@ -37,6 +37,7 @@ object AuthRepository {
      * terminar de lê-las (leva milissegundos).
      */
     fun isSigned(): Boolean {
+        if (Users.isGuest) return false
         if (Engine.signIn.isSigned) return true
         awaitRestore(RESTORE_WAIT_MS)
         return Engine.signIn.isSigned

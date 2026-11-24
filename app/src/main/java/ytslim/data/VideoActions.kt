@@ -22,25 +22,27 @@ data class VideoState(
 /** Like/dislike e inscrever/cancelar inscrição no canal do vídeo. */
 object VideoActions {
     suspend fun state(videoId: String): VideoState? = runCatching {
-        io { Engine.mediaItems.getMetadata(videoId) }
-    }.getOrNull()?.let { m ->
-        VideoState(
-            title = m.title?.takeIf { it.isNotBlank() },
-            channelId = m.channelId,
-            channelName = Handles.channelName(m.author),
-            subscribed = m.isSubscribed,
-            rating = when (m.likeStatus) {
-                MediaItemMetadata.LIKE_STATUS_LIKE -> Rating.LIKED
-                MediaItemMetadata.LIKE_STATUS_DISLIKE -> Rating.DISLIKED
-                else -> Rating.NONE
-            },
-            published = m.publishedDate?.takeIf { it.isNotBlank() },
-            related = m.suggestions.orEmpty()
-                .flatMap { group -> group.mediaItems.orEmpty().mapNotNull { it.toVideo() } }
-                // Os mixes ("RD…") são listas sem fim, não um vídeo.
-                .filter { it.playlistId?.startsWith("RD") != true },
-        )
-    }
+        io {
+            Engine.mediaItems.getMetadata(videoId)?.let { m ->
+                VideoState(
+                    title = m.title?.takeIf { it.isNotBlank() },
+                    channelId = m.channelId,
+                    channelName = Handles.channelName(m.author),
+                    subscribed = m.isSubscribed,
+                    rating = when (m.likeStatus) {
+                        MediaItemMetadata.LIKE_STATUS_LIKE -> Rating.LIKED
+                        MediaItemMetadata.LIKE_STATUS_DISLIKE -> Rating.DISLIKED
+                        else -> Rating.NONE
+                    },
+                    published = m.publishedDate?.takeIf { it.isNotBlank() },
+                    related = m.suggestions.orEmpty()
+                        .flatMap { group -> group.mediaItems.orEmpty().mapNotNull { it.toVideo() } }
+                        // Os mixes ("RD…") são listas sem fim, não um vídeo.
+                        .filter { it.playlistId?.startsWith("RD") != true },
+                )
+            }
+        }
+    }.getOrNull()
 
     /** Os canais já achados pela página do vídeo ([channel]), por id do vídeo. */
     private val channels = object : LinkedHashMap<String, Channel>(CHANNELS_KEPT, 0.75f, true) {
@@ -53,9 +55,13 @@ object VideoActions {
      */
     suspend fun channel(videoId: String): Channel? {
         synchronized(channels) { channels[videoId] }?.let { return it }
-        val m = runCatching { io { Engine.mediaItems.getMetadata(videoId) } }.getOrNull() ?: return null
-        val id = m.channelId?.takeIf { it.isNotBlank() } ?: return null
-        val channel = Channel(id, Handles.channelName(m.author).orEmpty(), info = null, thumbnailUrl = null)
+        val channel = runCatching {
+            io {
+                val m = Engine.mediaItems.getMetadata(videoId) ?: return@io null
+                val id = m.channelId?.takeIf { it.isNotBlank() } ?: return@io null
+                Channel(id, Handles.channelName(m.author).orEmpty(), info = null, thumbnailUrl = null)
+            }
+        }.getOrNull() ?: return null
         synchronized(channels) { channels[videoId] = channel }
         return channel
     }

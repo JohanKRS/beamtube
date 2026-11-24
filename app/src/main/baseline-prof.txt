@@ -3,7 +3,17 @@
 # motor inteiros, que são pequenos perto das bibliotecas. O perfil vai no APK, o ProfileInstaller o
 # entrega ao sistema na primeira abertura, e o Android compila quando o aparelho fica parado (ou na
 # hora, com: adb shell cmd package compile -m speed-profile -f app.beamtube).
-HSPLytslim/**;->**(**)**
-Lytslim/**;
-HSPLcom/liskovsoft/**;->**(**)**
-Lcom/liskovsoft/**;
+# Abertura a frio (Startup + pré-carregamento): apenas o app principal, dados iniciais e telas do início.
+HSPLytslim/*;->**(**)**
+Lytslim/*;
+HSPLytslim/data/*;->**(**)**
+Lytslim/data/*;
+HSPLytslim/ui/*;->**(**)**
+Lytslim/ui/*;
+HSPLytslim/ui/tv/**;->**(**)**
+Lytslim/ui/tv/**;
+HSPLytslim/ui/mobile/**;->**(**)**
+Lytslim/ui/mobile/**;
+# Player e motor: compilados AOT (hot + post-startup) sem inflar a imagem .art de abertura na RAM.
+HPLytslim/player/**;->**(**)**
+HPLcom/liskovsoft/**;->**(**)**

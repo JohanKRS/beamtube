@@ -23,6 +23,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,6 +42,7 @@ import ytslim.data.SavedVideos
 import ytslim.data.User
 import ytslim.data.Users
 import ytslim.data.Video
+import ytslim.player.MediaHttp
 import ytslim.player.PlayerActivity
 import ytslim.ui.mobile.MobileUi
 import ytslim.ui.tv.TvUi
@@ -76,14 +78,19 @@ fun AppRoot(isTv: Boolean, links: MutableStateFlow<Link?>) {
                 }
             }
 
-            val notice by Notices.current.collectAsStateWithLifecycle()
-            ui.NoticePill(notice)
-            LaunchedEffect(notice?.id) {
-                val shown = notice ?: return@LaunchedEffect
-                delay(if (shown.action != null) Notices.UNDO_MS else if (shown.long) Notices.LONG_MS else Notices.SHOW_MS)
-                Notices.dismiss(shown.id)
-            }
+            NoticeOverlay(ui)
         }
+    }
+}
+
+@Composable
+private fun NoticeOverlay(ui: Screens) {
+    val notice by Notices.current.collectAsStateWithLifecycle()
+    ui.NoticePill(notice)
+    LaunchedEffect(notice?.id) {
+        val shown = notice ?: return@LaunchedEffect
+        delay(if (shown.action != null) Notices.UNDO_MS else if (shown.long) Notices.LONG_MS else Notices.SHOW_MS)
+        Notices.dismiss(shown.id)
     }
 }
 
@@ -179,9 +186,13 @@ private fun UserScreens(ui: Screens, user: User?, links: MutableStateFlow<Link?>
                             ),
                         )
                     }
-                    // Adianta o que o primeiro vídeo precisa (o token do YouTube, o player dele e a
-                    // decifragem), que numa TV fraca leva segundos ([EngineWarmup]).
+                    // Adianta o que o primeiro vídeo precisa (o token do YouTube, o player dele, a
+                    // decifragem e o cliente HTTP do player), que numa TV fraca leva segundos ([EngineWarmup], [MediaHttp]).
                     EngineWarmup.start(delayMs = EngineWarmup.AFTER_LISTS_MS)
+                    AppScope.launch(Dispatchers.IO) {
+                        delay(EngineWarmup.AFTER_LISTS_MS)
+                        MediaHttp.warmUp(appContext)
+                    }
                 }
                 // Os ViewModels das abas são os do início (os mesmos que viewModel() devolve abaixo).
                 // Na TV (OK na aba aberta), a lista sai na hora e os cartões vazios ficam até a nova

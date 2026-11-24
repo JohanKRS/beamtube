@@ -7,11 +7,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -20,14 +22,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import ytslim.data.AppScope
+import ytslim.data.ContentFilters
 import ytslim.data.ExploreDraw
 import ytslim.data.ExploreRepository
 import ytslim.data.ExploreRules
 import ytslim.data.FeedFilter
 import ytslim.data.SearchFilters
-import ytslim.data.Settings
 import ytslim.data.SettingsRepository
-import ytslim.data.TopicRules
 import ytslim.data.Video
 
 /**
@@ -48,24 +49,28 @@ class ExploreViewModel : ViewModel(), Refreshable {
     }
 
     private val raw = MutableStateFlow<Raw>(Raw.Loading)
-    private val settings = SettingsRepository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
+    private val contentFilters = SettingsRepository.settings
+        .map { it.filters }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ContentFilters())
 
     private val _filters = MutableStateFlow(SearchFilters())
     val filters: StateFlow<SearchFilters> = _filters.asStateFlow()
 
     // Um canal bloqueado ou um tópico excluído depois do sorteio sai da tela na hora. Fora da
     // thread da tela: os filtros olham cada vídeo.
-    val state: StateFlow<UiState<VideoListContent>> = combine(raw, settings, _filters) { raw, settings, filters ->
+    val state: StateFlow<UiState<VideoListContent>> = combine(raw, contentFilters, _filters) { raw, content, filters ->
         when (raw) {
             Raw.Loading -> UiState.Loading
             is Raw.Error -> UiState.Error(raw.message)
-            is Raw.Loaded -> UiState.Ready(VideoListContent(shown(raw.draws, settings, filters), raw.hasMore, raw.loadingMore))
+            is Raw.Loaded -> UiState.Ready(VideoListContent(shown(raw.draws, content, filters), raw.hasMore, raw.loadingMore))
         }
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
 
     private val _refreshing = MutableStateFlow(false)
     override val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
-    private var job: Job? = null
+    private var loadJob: Job? = null
+    private var fillJob: Job? = null
 
     /**
      * Mostrar o aviso que explica a Explore (pedido do Johan, 2026-11-03: só na primeira vez, em
@@ -129,18 +134,19 @@ class ExploreViewModel : ViewModel(), Refreshable {
         _filters.value = filters
         // Uma busca de canais em andamento recomeça com o alvo dos filtros novos.
         val loaded = raw.value as? Raw.Loaded
-        if (loaded != null && loaded.loadingMore && !_refreshing.value) {
-            job?.cancel()
-            raw.value = loaded.copy(loadingMore = false)
+        if (loaded != null && (loaded.loadingMore || fillJob?.isActive == true) && !_refreshing.value) {
+            fillJob?.cancel()
+            if (loaded.loadingMore) raw.value = loaded.copy(loadingMore = false)
         }
         fill(extra = 0)
     }
 
     private fun load(quiet: Boolean) {
-        job?.cancel()
+        loadJob?.cancel()
+        fillJob?.cancel()
         _refreshing.value = quiet
         if (!quiet) raw.value = Raw.Loading
-        job = viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             raw.value = try {
                 draw(emptySet()).let { Raw.Loaded(listOf(it), it.ids.toSet(), it.hasMore, loadingMore = false) }
             } catch (e: CancellationException) {
@@ -162,14 +168,18 @@ class ExploreViewModel : ViewModel(), Refreshable {
      */
     private fun fill(extra: Int) {
         val start = raw.value as? Raw.Loaded ?: return
-        if (start.loadingMore || _refreshing.value || !start.hasMore) return
-        raw.value = start.copy(loadingMore = true)
-        job = viewModelScope.launch {
+        if (start.loadingMore || _refreshing.value || !start.hasMore || fillJob?.isActive == true) return
+        fillJob = viewModelScope.launch {
             var current = start
+            var have = count(current)
+            val target = maxOf(MIN_ON_SCREEN, have + extra)
+            if (have >= target) return@launch
+            ensureActive()
+            current = current.copy(loadingMore = true)
+            raw.value = current
             var draws = 0
-            val target = maxOf(MIN_ON_SCREEN, count(current) + extra)
             val limit = if (_filters.value.isDefault) 1 else MAX_DRAWS_FILTERED
-            while (current.hasMore && draws < limit && count(current) < target) {
+            while (current.hasMore && draws < limit && have < target) {
                 val next = try {
                     draw(current.channels)
                 } catch (e: CancellationException) {
@@ -177,22 +187,25 @@ class ExploreViewModel : ViewModel(), Refreshable {
                 } catch (e: Exception) {
                     null
                 } ?: break
+                ensureActive()
                 current = Raw.Loaded(current.draws + next, current.channels + next.ids, next.hasMore, loadingMore = true)
                 raw.value = current
                 draws++
+                if (current.hasMore && draws < limit) have = count(current)
             }
             raw.value = current.copy(loadingMore = false)
         }
     }
 
-    private fun shown(draws: List<ExploreDraw>, settings: Settings, filters: SearchFilters): List<Video> {
+    private fun shown(draws: List<ExploreDraw>, content: ContentFilters, filters: SearchFilters): List<Video> {
         val keep = FeedFilter.matcher(filters, System.currentTimeMillis())
-        val videos = ExploreRules.screen(draws, settings.filters, keep).filterNot { TopicRules.isBlocked(it, settings.filters) }
+        // ExploreRules.pick já filtra canais bloqueados e tópicos excluídos via TopicRules.isExcluded.
+        val videos = ExploreRules.screen(draws, content, keep)
         return FeedFilter.sort(videos, filters.sort)
     }
 
     private suspend fun count(loaded: Raw.Loaded): Int =
-        withContext(Dispatchers.Default) { shown(loaded.draws, settings.value, _filters.value).size }
+        withContext(Dispatchers.Default) { shown(loaded.draws, contentFilters.value, _filters.value).size }
 
     // Em AppScope: a leitura das páginas dos canais (e o cache) termina mesmo saindo da aba.
     private suspend fun draw(shown: Set<String>): ExploreDraw = AppScope.async { ExploreRepository.draw(shown) }.await()

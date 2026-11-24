@@ -3,7 +3,8 @@ package ytslim.data
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import java.io.File
 
 /**
@@ -32,7 +33,6 @@ object Ledger {
 
 /** Guarda o [LedgerEntry] de cada playlist num arquivo JSON do app. */
 class LedgerStore(private val file: File) {
-    private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
     private var cache: MutableMap<String, LedgerEntry>? = null
 
@@ -44,12 +44,17 @@ class LedgerStore(private val file: File) {
         val updated = Ledger.update(all[playlistId], videoIds, nowMs)
         if (updated != all[playlistId]) {
             all[playlistId] = updated
-            io { file.writeText(json.encodeToString(all.toMap())) }
+            val snapshot = all.toMap()
+            io { file.writeJson(SERIALIZER, snapshot) }
         }
         updated
     }
 
     private suspend fun load(): MutableMap<String, LedgerEntry> = cache ?: io {
-        runCatching { json.decodeFromString<Map<String, LedgerEntry>>(file.readText()) }.getOrDefault(emptyMap())
+        if (!file.exists()) emptyMap() else runCatching { file.readJson(SERIALIZER) }.getOrDefault(emptyMap())
     }.toMutableMap().also { cache = it }
+
+    private companion object {
+        val SERIALIZER = MapSerializer(String.serializer(), LedgerEntry.serializer())
+    }
 }

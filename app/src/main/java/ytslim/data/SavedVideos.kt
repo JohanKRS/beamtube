@@ -1,10 +1,12 @@
 package ytslim.data
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Os vídeos que estão na playlist do botão Save (o Watch later, ou a escolhida nas Configurações).
@@ -48,12 +50,12 @@ object SavedVideos {
     private val written = HashMap<String, Pair<Boolean, Long>>()
 
     /** Lê a playlist do botão Save. Chamado ao abrir o app e quando a playlist escolhida muda. */
-    suspend fun refresh() {
-        if (!AuthRepository.isSigned()) return
+    suspend fun refresh() = withContext(Dispatchers.IO) {
+        if (!AuthRepository.isSigned()) return@withContext
         val target = SettingsRepository.current().saveTarget
         _target.value = target
         val started = System.nanoTime()
-        val found = runCatching { readIds(target.playlistId) }.getOrNull() ?: return
+        val found = runCatching { readIds(target.playlistId) }.getOrNull() ?: return@withContext
         synchronized(lock) {
             base = found
             // O que mudou antes desta leitura começar já está nela (menos o que ainda vai para a conta).
@@ -150,19 +152,10 @@ object SavedVideos {
 
     private suspend fun readIds(playlistId: String): Set<String> {
         // A playlist como a biblioteca da conta a entrega (o Watch later tem um jeito próprio de abrir).
-        val playlist = runCatching { LibraryRepository.playlists() }.getOrNull()
+        val playlist = runCatching { LibraryRepository.playlists(maxAgeMs = LibraryRepository.PLAYLISTS_MAX_AGE_MS) }.getOrNull()
             ?.firstOrNull { it.playlistId == playlistId }
             ?: Playlist("VL$playlistId", params = null, playlistId = playlistId, title = "", info = null, thumbnailUrl = null)
-        val ids = HashSet<String>()
-        var page = LibraryRepository.playlistVideos(playlist)
-        page.videos.mapTo(ids) { it.id }
-        var read = 1
-        while (page.hasMore && read < MAX_PAGES) {
-            page = LibraryRepository.more(page)
-            page.videos.mapTo(ids) { it.id }
-            read++
-        }
-        return ids
+        return LibraryRepository.playlistVideoIds(playlist, MAX_PAGES)
     }
 }
 
@@ -172,7 +165,10 @@ object ChannelPhotos {
     val photos: StateFlow<Map<String, String>> = _photos.asStateFlow()
 
     fun putAll(found: Map<String, String>) {
-        if (found.isNotEmpty()) _photos.value = _photos.value + found
+        if (found.isEmpty()) return
+        val current = _photos.value
+        if (found.all { (id, url) -> current[id] == url }) return
+        _photos.value = current + found
     }
 
     /** A foto às vezes vem sem o "https:" ("//yt3.ggpht.com/…"). */
