@@ -28,7 +28,10 @@ fun MetaLine(
     stacked: Boolean = false,
     lineGap: Dp = 0.dp,
 ) {
-    Layout(contents = listOf(channel ?: {}, separator, rest ?: {}), modifier = modifier) { (channelPart, separatorPart, restPart), constraints ->
+    Layout(
+        contents = listOf(channel ?: {}, if (stacked) ({}) else separator, rest ?: {}),
+        modifier = modifier,
+    ) { (channelPart, separatorPart, restPart), constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
         val max = constraints.maxWidth
         val ch = channelPart.firstOrNull()?.measure(loose)
@@ -37,23 +40,24 @@ fun MetaLine(
             val only = ch ?: restMeasurable?.measure(loose)
             return@Layout layout(constraints.constrainWidth(only?.width ?: 0), constraints.constrainHeight(only?.height ?: 0)) { only?.place(0, 0) }
         }
-        val sep = separatorPart.first().measure(Constraints())
-        val restWidth = if (stacked) 0 else restMeasurable.maxIntrinsicWidth(Constraints.Infinity)
-        if (!stacked && ch.width + sep.width + restWidth <= max) {
-            val r = restMeasurable.measure(loose.copy(maxWidth = (max - ch.width - sep.width).coerceAtLeast(0)))
-            val height = maxOf(ch.height, r.height, sep.height)
-            layout(constraints.constrainWidth(ch.width + sep.width + r.width), constraints.constrainHeight(height)) {
-                ch.place(0, (height - ch.height) / 2)
-                sep.place(ch.width, (height - sep.height) / 2)
-                r.place(ch.width + sep.width, (height - r.height) / 2)
+        if (!stacked) {
+            val sep = separatorPart.first().measure(Constraints())
+            val restWidth = restMeasurable.maxIntrinsicWidth(Constraints.Infinity)
+            if (ch.width + sep.width + restWidth <= max) {
+                val r = restMeasurable.measure(loose.copy(maxWidth = (max - ch.width - sep.width).coerceAtLeast(0)))
+                val height = maxOf(ch.height, r.height, sep.height)
+                return@Layout layout(constraints.constrainWidth(ch.width + sep.width + r.width), constraints.constrainHeight(height)) {
+                    ch.place(0, (height - ch.height) / 2)
+                    sep.place(ch.width, (height - sep.height) / 2)
+                    r.place(ch.width + sep.width, (height - r.height) / 2)
+                }
             }
-        } else {
-            val r = restMeasurable.measure(loose)
-            val y = (ch.height + lineGap.roundToPx()).coerceAtLeast(0)
-            layout(constraints.constrainWidth(maxOf(ch.width, r.width)), constraints.constrainHeight(maxOf(ch.height, y + r.height))) {
-                ch.place(0, 0)
-                r.place(0, y)
-            }
+        }
+        val r = restMeasurable.measure(loose)
+        val y = (ch.height + lineGap.roundToPx()).coerceAtLeast(0)
+        layout(constraints.constrainWidth(maxOf(ch.width, r.width)), constraints.constrainHeight(maxOf(ch.height, y + r.height))) {
+            ch.place(0, 0)
+            r.place(0, y)
         }
     }
 }

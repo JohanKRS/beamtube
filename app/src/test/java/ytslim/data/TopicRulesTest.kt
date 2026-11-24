@@ -74,4 +74,27 @@ class TopicRulesTest {
     fun keywordsAreSplitByCommas() {
         assertEquals(listOf("a", "b c", "d"), TopicRules.parseKeywords(" a, b c ,, d, a "))
     }
+
+    @Test
+    fun normalizeFastPathMatchesAccentedAndPunctuationEdgeCases() {
+        assertEquals("", TopicRules.normalize(""))
+        assertEquals("", TopicRules.normalize("   ---!!!   "))
+        assertEquals("kotlin 2 3", TopicRules.normalize("Kotlin 2.3"))
+        assertEquals("c plus plus e plus plus", TopicRules.normalize("C++ e ++"))
+        assertEquals("acao reacao", TopicRules.normalize("Ação & Reação"))
+        assertEquals("a plus b", TopicRules.normalize("a+b"))
+    }
+
+    @Test
+    fun needleIndexHandlesSharedFirstWordAndEmptyFilters() {
+        val multi = Topic("Multi", listOf("copa do mundo", "copa libertadores"))
+        val filters = ContentFilters(excluded = listOf(multi), preferred = emptyList(), blocked = emptyList())
+        assertTrue(TopicRules.isExcluded(video("1", "Final da Copa Libertadores hoje"), filters))
+        assertTrue(TopicRules.isExcluded(video("2", "Copa do Mundo 2026"), filters))
+        assertFalse(TopicRules.isExcluded(video("3", "Copa do Brasil"), filters))
+        assertFalse(TopicRules.isExcluded(video("4", "Copa"), filters))
+        val empty = ContentFilters(emptyList(), emptyList(), emptyList())
+        assertFalse(TopicRules.isExcluded(video("5", "Copa Libertadores"), empty))
+        assertFalse(TopicRules.isPreferred(video("6", "Copa do Mundo"), empty))
+    }
 }

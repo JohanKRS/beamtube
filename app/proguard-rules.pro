@@ -9,6 +9,12 @@
 # reflexão quebra. O ganho do R8 vem de otimizar e tirar o que não é usado, não de encurtar nomes.
 -dontobfuscate
 
+# Logs verbosos/debug das bibliotecas e do motor saem na release (Log.i/w/e da tag BeamTube ficam).
+-assumenosideeffects class android.util.Log {
+    public static int d(...);
+    public static int v(...);
+}
+
 -keepattributes Signature,InnerClasses,EnclosingMethod,Exceptions,SourceFile,LineNumberTable
 -keepattributes *Annotation*,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
 

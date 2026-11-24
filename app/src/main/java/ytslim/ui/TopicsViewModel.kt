@@ -1,5 +1,6 @@
 package ytslim.ui
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,7 @@ import ytslim.data.Topic
 class TopicsViewModel : ViewModel() {
     enum class Step { MORE, LESS }
 
+    @Immutable
     data class State(
         val step: Step = Step.MORE,
         val more: Set<SuggestedTopic> = emptySet(),

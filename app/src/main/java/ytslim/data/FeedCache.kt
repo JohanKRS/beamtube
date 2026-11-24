@@ -3,7 +3,6 @@ package ytslim.data
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import java.io.File
 
 /**
@@ -21,8 +20,9 @@ object FeedCache {
     const val FILE = "feed.json"
 
     private val file: File get() = Users.file(FILE)
-    private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
+    private var cachedPath: String? = null
+    private var cached: Saved? = null
 
     /** O feed guardado, se houver um com menos de [MAX_AGE_MS]. */
     suspend fun read(nowMs: Long = System.currentTimeMillis()): Saved? = mutex.withLock {
@@ -35,14 +35,37 @@ object FeedCache {
     suspend fun saveExtras(extras: List<Timed>) = update { it?.copy(extras = extras) }
 
     /** Apaga o feed guardado do usuário aberto. */
-    suspend fun clear() = mutex.withLock { io { file.delete() } }
-
-    private suspend fun update(change: (Saved?) -> Saved?) = mutex.withLock {
-        val updated = change(readLocked()) ?: return@withLock
-        runCatching { io { file.writeText(json.encodeToString(Saved.serializer(), updated)) } }
+    suspend fun clear() = mutex.withLock {
+        val target = file
+        if (cachedPath == target.absolutePath) {
+            cachedPath = null
+            cached = null
+        }
+        io { target.delete() }
     }
 
-    private suspend fun readLocked(): Saved? = io {
-        runCatching { json.decodeFromString(Saved.serializer(), file.readText()) }.getOrNull()
+    /** Esquece o feed na memória, quando o arquivo some por fora (o Sign out apaga a pasta do usuário). */
+    suspend fun forget() = mutex.withLock {
+        cachedPath = null
+        cached = null
+    }
+
+    private suspend fun update(change: (Saved?) -> Saved?) = mutex.withLock {
+        val target = file
+        val updated = change(readLocked(target)) ?: return@withLock
+        cachedPath = target.absolutePath
+        cached = updated
+        runCatching { io { target.writeJson(Saved.serializer(), updated) } }
+    }
+
+    private suspend fun readLocked(target: File = file): Saved? {
+        val path = target.absolutePath
+        if (cachedPath == path) return cached
+        val loaded = io {
+            if (!target.exists()) null else runCatching { target.readJson(Saved.serializer()) }.getOrNull()
+        }
+        cachedPath = path
+        cached = loaded
+        return loaded
     }
 }

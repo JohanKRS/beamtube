@@ -55,4 +55,13 @@ class FeedCacheTest {
         FeedCache.clear()
         assertNull(FeedCache.read())
     }
+
+    @Test
+    fun aFeedDeletedOutsideIsForgottenToo() = runBlocking {
+        // O Sign out apaga o arquivo direto na pasta do usuário; o que ficou na memória vai junto.
+        FeedCache.saveFeed(listOf(timed("a", 1)))
+        Users.file(FeedCache.FILE).delete()
+        FeedCache.forget()
+        assertNull(FeedCache.read())
+    }
 }

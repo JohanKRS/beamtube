@@ -97,9 +97,11 @@ object SubtitleRules {
         return source.copy(url = translatedUrl(source.url, language), language = language, translated = true)
     }
 
+    private val TLANG_PARAM = Regex("[?&]tlang=[^&]*")
+
     /** A URL da legenda com `tlang`: o YouTube devolve a tradução automática nesse idioma. */
     internal fun translatedUrl(url: String, language: String): String {
-        val clean = url.replace(Regex("[?&]tlang=[^&]*"), "")
+        val clean = url.replace(TLANG_PARAM, "")
         val separator = if ('?' in clean) '&' else '?'
         return "$clean${separator}tlang=$language"
     }

@@ -39,6 +39,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
@@ -68,7 +69,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -90,6 +93,7 @@ import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
@@ -151,6 +155,7 @@ import androidx.tv.material3.Text
 import androidx.tv.material3.Typography
 import androidx.tv.material3.darkColorScheme
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import ytslim.R
 import ytslim.data.AppIcon
@@ -328,9 +333,25 @@ private val Type: Typography = Typography(
 private val Floating: Color get() = Look.Floating
 
 private val CardShape = RoundedCornerShape(14.dp)
+private val PillShape = RoundedCornerShape(28.dp)
+private val DialogShape = RoundedCornerShape(16.dp)
+private val MenuShape = RoundedCornerShape(22.dp)
+private val BadgeShape = RoundedCornerShape(6.dp)
+private val FieldShape = RoundedCornerShape(8.dp)
 
 /** O canto dos cartões dos Ajustes (o mesmo do celular). */
 private val GroupCorner = 18.dp
+private val GroupShapeSingle = RoundedCornerShape(GroupCorner)
+private val GroupShapeTop = RoundedCornerShape(topStart = GroupCorner, topEnd = GroupCorner)
+private val GroupShapeBottom = RoundedCornerShape(bottomStart = GroupCorner, bottomEnd = GroupCorner)
+private val GroupShapeMiddle = RectangleShape
+
+private val GlowCardShape = CardDefaults.shape(CardShape)
+private val GlowCardScale = CardDefaults.scale(focusedScale = 1.06f)
+private val CircleCardShape = CardDefaults.shape(CircleShape)
+private val UserCardScale = CardDefaults.scale(focusedScale = 1.12f)
+private val TitleBarStyle = TypeScale.titleLarge.copy(fontSize = 22.sp, letterSpacing = (-0.2).sp)
+private val ChannelTabLabels = listOf(R.string.channel_videos, R.string.channel_playlists)
 
 /** Interface da Android TV: D-pad, foco visível e cards maiores (Compose for TV). */
 object TvUi : Screens {
@@ -353,7 +374,7 @@ object TvUi : Screens {
     @Composable
     override fun Theme(content: @Composable () -> Unit) {
         MaterialTheme(colorScheme = remember(Look.accent, Look.tones) { colors() }, typography = Type) {
-            Surface(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(0.dp)) { content() }
+            Surface(modifier = Modifier.fillMaxSize(), shape = RectangleShape) { content() }
         }
     }
 
@@ -371,8 +392,8 @@ object TvUi : Screens {
                     shown?.text.orEmpty(),
                     style = MaterialTheme.typography.titleMedium,
                     color = Look.Text,
-                    modifier = Modifier.background(Floating, RoundedCornerShape(28.dp))
-                        .border(1.dp, Look.Hairline, RoundedCornerShape(28.dp))
+                    modifier = Modifier.background(Floating, PillShape)
+                        .border(1.dp, Look.Hairline, PillShape)
                         .padding(horizontal = 28.dp, vertical = 14.dp),
                 )
             }
@@ -479,7 +500,9 @@ object TvUi : Screens {
         // O convidado só tem a busca ([homeTabs]), nos dois layouts.
         val allowed = remember { homeTabs() }
         val tabs = remember(allowed) { allTabs.filter { it.first in allowed } }
+        val tabIds = remember(tabs) { tabs.map { it.first } }
         val labels = tabs.map { stringResource(it.second) }
+        val selectedIndex = tabIds.indexOf(tab)
         // As abas em cima (o padrão) ou o menu lateral do tablet (pedido do Johan, 2026-11-14), à
         // escolha nos Ajustes. O conteúdo fica no mesmo lugar da composição nos dois, então trocar
         // nos Ajustes não perde a posição nem o foco da linha escolhida.
@@ -490,7 +513,7 @@ object TvUi : Screens {
                 SideMenu(
                     tab = tab,
                     onTab = onTab,
-                    tabs = tabs.map { it.first },
+                    tabs = tabIds,
                     labels = labels,
                     itemModifier = { item ->
                         (if (item == tab) Modifier.focusRequester(selectedTab) else Modifier).reloadsOnOk(item, pressedTab, onReload)
@@ -503,14 +526,13 @@ object TvUi : Screens {
                 // A foto do usuário abre o menu de troca (pedido do Johan, 2026-11-14): no fim da
                 // linha das abas, ou no canto direito da barra do título no menu lateral.
                 if (side) {
-                    TitleBar(labels[tabs.indexOfFirst { it.first == tab }], trailing = { UserButton(Modifier.photoFocus(selectedTab, side = true)) })
+                    TitleBar(labels[selectedIndex], trailing = { UserButton(Modifier.photoFocus(selectedTab, side = true)) })
                 } else {
                   // O logotipo inteiro (a fresta, o facho com a poeira e o nome), sem fundo, na mesma linha
                   // das abas (pedido do Johan, 2026-11-13), com a letra do tamanho da das abas (ele achou o de
                   // 22sp grande demais). O logotipo fica à esquerda e as abas, encostadas à direita (pedido dele
                   // do mesmo dia): o nome da última aba termina na linha da borda direita dos cards.
                   LogoAndTabs(labels, logo = { Wordmark(LogoSize.toFixedSp()) }, trailing = { UserButton(Modifier.photoFocus(selectedTab, side = false)) }) { labelSize ->
-                    val selectedIndex = tabs.indexOfFirst { it.first == tab }
                     TabRow(
                         selectedTabIndex = selectedIndex,
                         modifier = Modifier.onFocusChanged { tabsFocused = it.hasFocus }.entersAt(selectedTab)
@@ -518,7 +540,7 @@ object TvUi : Screens {
                         separator = { Spacer(Modifier.width(TabSeparator)) },
                         indicator = { positions, _ -> positions.getOrNull(selectedIndex)?.let { SlitIndicator(it) } },
                     ) {
-                        tabs.forEach { (item, label) ->
+                        tabs.forEachIndexed { index, (item, _) ->
                             Tab(
                                 selected = item == tab,
                                 onFocus = { onTab(item) },
@@ -533,7 +555,7 @@ object TvUi : Screens {
                                 modifier = (if (item == tab) Modifier.focusRequester(selectedTab) else Modifier)
                                     .reloadsOnOk(item, pressedTab, onReload),
                             ) {
-                                TabLabel(labels[tabs.indexOfFirst { it.first == item }], selected = item == tab, size = labelSize)
+                                TabLabel(labels[index], selected = item == tab, size = labelSize)
                             }
                         }
                     }
@@ -658,6 +680,7 @@ object TvUi : Screens {
         itemModifier: (HomeTab) -> Modifier,
         modifier: Modifier,
     ) {
+        val shownSideTabs = remember(tabs) { sideTabs.filter { it.first in tabs } }
         Box(Modifier.fillMaxHeight().width(SideMenuWidth)) {
             Column(
                 modifier.fillMaxSize().padding(top = SideTop, bottom = SideTop),
@@ -665,7 +688,7 @@ object TvUi : Screens {
             ) {
                 BeamGlyph(Modifier.size(width = 40.dp, height = SideTitleHeight))
                 Spacer(Modifier.height(SideFirstItemGap))
-                sideTabs.filter { it.first in tabs }.forEach { (item, icon) ->
+                shownSideTabs.forEach { (item, icon) ->
                     SideItem(item, icon, labels[tabs.indexOf(item)], item == tab, onTab, itemModifier(item))
                 }
                 Spacer(Modifier.weight(1f))
@@ -709,7 +732,7 @@ object TvUi : Screens {
         Row(Modifier.fillMaxWidth().height(SideTitleHeight), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 title,
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp, letterSpacing = (-0.2).sp),
+                style = TitleBarStyle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -725,10 +748,11 @@ object TvUi : Screens {
      */
     @Composable
     private fun TabLabel(text: String, selected: Boolean, size: TextUnit) {
-        val style = MaterialTheme.typography.titleMedium.copy(fontSize = size)
+        val bold = remember(size) { TypeScale.titleMedium.copy(fontSize = size, fontWeight = FontWeight.Bold) }
+        val light = remember(size) { TypeScale.titleMedium.copy(fontSize = size, fontWeight = FontWeight.Light) }
         Box(Modifier.padding(horizontal = TabLabelPadding, vertical = 6.dp), contentAlignment = Alignment.Center) {
-            Text(text, style = style.copy(fontWeight = FontWeight.Bold), color = Color.Transparent, maxLines = 1, modifier = Modifier.clearAndSetSemantics {})
-            Text(text, style = style.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Light), maxLines = 1)
+            Text(text, style = bold, color = Color.Transparent, maxLines = 1, modifier = Modifier.clearAndSetSemantics {})
+            Text(text, style = if (selected) bold else light, maxLines = 1)
         }
     }
 
@@ -769,7 +793,7 @@ object TvUi : Screens {
     ) {
         val measurer = rememberTextMeasurer(cacheSize = 16)
         // O nome escolhido fica em bold, e cada aba já tem a largura do bold ([TabLabel]).
-        val style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+        val style = remember { TypeScale.titleMedium.copy(fontWeight = FontWeight.Bold) }
         // O tamanho que coube em cada largura, para não medir os nomes de novo a cada foco.
         val fitted = remember(labels, style, LocalDensity.current) { HashMap<Int, TextUnit>() }
         SubcomposeLayout { constraints ->
@@ -823,13 +847,14 @@ object TvUi : Screens {
         val user by Users.current.collectAsStateWithLifecycle()
         var open by remember { mutableStateOf(false) }
         val label = stringResource(R.string.user_menu)
+        val focusedBorder = remember(Look.accent) { Border(BorderStroke(2.dp, Look.GlowSoft), shape = CircleShape) }
         Box(modifier) {
             Card(
                 onClick = { open = true },
-                shape = CardDefaults.shape(CircleShape),
+                shape = CircleCardShape,
                 colors = CardDefaults.colors(containerColor = Look.Surface),
-                scale = CardDefaults.scale(focusedScale = 1.12f),
-                border = CardDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Look.GlowSoft), shape = CircleShape)),
+                scale = UserCardScale,
+                border = CardDefaults.border(focusedBorder = focusedBorder),
                 // Do tamanho dela mesmo na barra do título do menu lateral, um pouco mais baixa.
                 modifier = Modifier.requiredSize(UserPhotoSize).semantics { contentDescription = label },
             ) {
@@ -850,11 +875,13 @@ object TvUi : Screens {
     private fun UserMenu(user: User?, onDismiss: () -> Unit) {
         val accounts by Users.accounts.collectAsStateWithLifecycle()
         val addAccount = LocalAddAccount.current
-        val others = accounts.filter { it.slot != user?.slot } + listOfNotNull(Users.guestUser.takeIf { user?.guest != true })
+        val others = remember(accounts, user?.slot, user?.guest) {
+            accounts.filter { it.slot != user?.slot } + listOfNotNull(Users.guestUser.takeIf { user?.guest != true })
+        }
         val first = remember { FocusRequester() }
         val dim = sleepDim()
         Dialog(onDismissRequest = onDismiss) {
-            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(440.dp).sleepDim(dim, RoundedCornerShape(16.dp))) {
+            Surface(shape = DialogShape, modifier = Modifier.width(440.dp).sleepDim(dim, DialogShape)) {
                 Column(Modifier.padding(vertical = 20.dp, horizontal = 16.dp)) {
                     Row(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                         UserPhoto(user, 48.dp)
@@ -915,9 +942,11 @@ object TvUi : Screens {
     @Composable
     private fun SlitIndicator(position: androidx.compose.ui.unit.DpRect) {
         val width = 14.dp
-        val left by animateDpAsState(position.left + (position.right - position.left - width) / 2, label = "slit")
+        val left = animateDpAsState(position.left + (position.right - position.left - width) / 2, label = "slit")
         LightSlit(
-            Modifier.fillMaxWidth().wrapContentSize(Alignment.BottomStart).offset(x = left).size(width, 3.dp),
+            Modifier.fillMaxWidth().wrapContentSize(Alignment.BottomStart)
+                .offset { IntOffset(left.value.roundToPx(), 0) }
+                .size(width, 3.dp),
         )
     }
 
@@ -956,10 +985,11 @@ object TvUi : Screens {
         val state by vm.state.collectAsStateWithLifecycle()
         val filters by vm.filters.collectAsStateWithLifecycle()
         val showIntro by vm.showIntro.collectAsStateWithLifecycle()
+        val choices = remember(filters) { exploreFilterChoices(filters) }
         // A aba abriu de verdade (ela carrega por trás antes disso): o próximo sorteio pode ser preparado.
         LaunchedEffect(Unit) { vm.seen() }
         Column(Modifier.fillMaxSize()) {
-            FilterButtons(exploreFilterChoices(filters), onChange = vm::setFilters)
+            FilterButtons(choices, onChange = vm::setFilters)
             Spacer(Modifier.height(16.dp))
             Loadable(state, onRetry = vm::reload) { content ->
                 val empty = stringResource(if (filters.isDefault) R.string.explore_empty else R.string.explore_filtered_empty)
@@ -975,7 +1005,7 @@ object TvUi : Screens {
         val button = remember { FocusRequester() }
         val dim = sleepDim()
         Dialog(onDismissRequest = onDismiss) {
-            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(560.dp).sleepDim(dim, RoundedCornerShape(16.dp))) {
+            Surface(shape = DialogShape, modifier = Modifier.width(560.dp).sleepDim(dim, DialogShape)) {
                 Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(stringResource(R.string.tab_explore), style = MaterialTheme.typography.headlineSmall)
                     Text(stringResource(R.string.explore_intro_tv), style = MaterialTheme.typography.bodyLarge)
@@ -1019,6 +1049,7 @@ object TvUi : Screens {
         val filters by vm.filters.collectAsStateWithLifecycle()
         val results by vm.results.collectAsStateWithLifecycle()
         val suggestions by vm.suggestions.collectAsStateWithLifecycle()
+        val choices = remember(filters) { searchFilterChoices(filters) }
         var text by rememberSaveable { mutableStateOf(vm.query.value) }
         val searched = (results as? UiState.Ready)?.data?.query
         val submit = { query: String ->
@@ -1041,7 +1072,7 @@ object TvUi : Screens {
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(12.dp))
-            FilterButtons(searchFilterChoices(filters), onChange = vm::setFilters)
+            FilterButtons(choices, onChange = vm::setFilters)
             if (suggestions.isNotEmpty() && text.trim() != searched) {
                 Spacer(Modifier.height(12.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1108,9 +1139,9 @@ object TvUi : Screens {
             LazyColumn(
                 state = list,
                 modifier = Modifier.width(300.dp).heightIn(max = 420.dp)
-                    .sleepDim(dim, RoundedCornerShape(22.dp))
-                    .background(Floating, RoundedCornerShape(22.dp))
-                    .border(1.dp, Look.Hairline, RoundedCornerShape(22.dp)),
+                    .sleepDim(dim, MenuShape)
+                    .background(Floating, MenuShape)
+                    .border(1.dp, Look.Hairline, MenuShape),
                 contentPadding = PaddingValues(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -1149,8 +1180,12 @@ object TvUi : Screens {
         onOpenChannel: (Channel) -> Unit,
         onOpenPlaylist: (Playlist) -> Unit,
     ) {
-        val saved by SavedVideos.ids.collectAsStateWithLifecycle()
+        val grid = rememberLazyGridState()
+        NearEnd(grid, data.items.size, onNearEnd)
+        val savedIds = SavedVideos.ids.collectAsStateWithLifecycle()
+        val scope = rememberCoroutineScope()
         LazyVerticalGrid(
+            state = grid,
             columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(GridGapX),
             verticalArrangement = Arrangement.spacedBy(GridGapY),
@@ -1158,14 +1193,23 @@ object TvUi : Screens {
             modifier = Modifier.focusRestorer(),
         ) {
             if (data.items.isEmpty() && !data.hasMore) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item(span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
                     Text(stringResource(R.string.search_empty), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(24.dp))
                 }
             }
-            itemsIndexed(data.items, key = { _, item -> item.key }) { index, item ->
-                if (index >= data.items.size - 8) LaunchedEffect(Unit) { onNearEnd() }
+            itemsIndexed(
+                data.items,
+                key = { _, item -> item.key },
+                contentType = { _, item ->
+                    when (item) {
+                        is SearchItem.VideoItem -> "video"
+                        is SearchItem.ChannelItem -> "channel"
+                        is SearchItem.PlaylistItem -> "playlist"
+                    }
+                },
+            ) { _, item ->
                 when (item) {
-                    is SearchItem.VideoItem -> VideoCard(item.video, saved = item.video.id in saved, onOpenChannel = onOpenChannel) { onPlay(item.video) }
+                    is SearchItem.VideoItem -> VideoCard(item.video, savedIds = savedIds, scope = scope, onOpenChannel = onOpenChannel) { onPlay(item.video) }
                     is SearchItem.ChannelItem -> ChannelCard(item.channel) { onOpenChannel(item.channel) }
                     is SearchItem.PlaylistItem -> MediaCard(
                         title = item.playlist.title,
@@ -1223,6 +1267,8 @@ object TvUi : Screens {
         val context = LocalContext.current
         val activity = context.findActivity()
         val currentLanguage = remember { activity?.let(AppLanguage::current) ?: Language.SYSTEM }
+        val otherUsers = remember(accounts, user?.slot) { accounts.filter { it.slot != user?.slot } + Users.guestUser }
+        val captions = remember(context, settings.captionLanguage) { captionChoices(context, settings.captionLanguage) }
         // Lido de novo a cada volta para o app: a pessoa liga o serviço nos ajustes do Android e o
         // botão é aprendido com o BeamTube fora da tela.
         var remoteButton by remember { mutableStateOf(RemoteButtonState.of(context)) }
@@ -1260,7 +1306,7 @@ object TvUi : Screens {
                             )
                         },
                     )
-                    (accounts.filter { it.slot != user?.slot } + Users.guestUser).forEach { other ->
+                    otherUsers.forEach { other ->
                         add(
                             row("user:${other.slot}") {
                                 SettingsRow(
@@ -1365,7 +1411,7 @@ object TvUi : Screens {
                 "captions",
                 R.string.settings_captions,
                 hint = R.string.settings_captions_hint,
-                rows = captionChoices(context, settings.captionLanguage).map { choice ->
+                rows = captions.map { choice ->
                     row(choice.value) {
                         SettingsRow(
                             onClick = { vm.setCaptionLanguage(choice.value) },
@@ -1761,11 +1807,11 @@ object TvUi : Screens {
      * desenhado em pedaços, um por linha da lista (cantos arredondados só no primeiro e no último).
      */
     private fun LazyListScope.group(key: String, title: Int?, hint: Int? = null, rows: List<Pair<Any, @Composable () -> Unit>>) {
-        if (title != null) item(key = "$key:title") { SectionTitle(stringResource(title)) }
+        if (title != null) item(key = "$key:title", contentType = "title") { SectionTitle(stringResource(title)) }
         rows.forEachIndexed { index, (rowKey, content) ->
-            item(key = "$key:row:$rowKey") { Box(Modifier.groupPiece(index, rows.size)) { content() } }
+            item(key = "$key:row:$rowKey", contentType = "row") { Box(Modifier.groupPiece(index, rows.size)) { content() } }
         }
-        if (hint != null) item(key = "$key:hint") { Hint(stringResource(hint)) }
+        if (hint != null) item(key = "$key:hint", contentType = "hint") { Hint(stringResource(hint)) }
     }
 
     /**
@@ -1798,11 +1844,17 @@ object TvUi : Screens {
     private fun row(key: Any, content: @Composable () -> Unit): Pair<Any, @Composable () -> Unit> = key to content
 
     private fun Modifier.groupPiece(index: Int, count: Int): Modifier {
-        val top = if (index == 0) GroupCorner else 0.dp
-        val bottom = if (index == count - 1) GroupCorner else 0.dp
+        val first = index == 0
+        val last = index == count - 1
+        val shape = when {
+            first && last -> GroupShapeSingle
+            first -> GroupShapeTop
+            last -> GroupShapeBottom
+            else -> GroupShapeMiddle
+        }
         return fillMaxWidth()
-            .background(Look.Surface, RoundedCornerShape(top, top, bottom, bottom))
-            .padding(start = 8.dp, end = 8.dp, top = if (index == 0) 8.dp else 0.dp, bottom = if (index == count - 1) 8.dp else 0.dp)
+            .background(Look.Surface, shape)
+            .padding(start = 8.dp, end = 8.dp, top = if (first) 8.dp else 0.dp, bottom = if (last) 8.dp else 0.dp)
     }
 
     /** Uma linha só de texto num grupo (vazio, carregando, erro). */
@@ -1819,7 +1871,7 @@ object TvUi : Screens {
         val first = remember { FocusRequester() }
         val dim = sleepDim()
         Dialog(onDismissRequest = onDismiss) {
-            Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.width(640.dp).sleepDim(dim, RoundedCornerShape(16.dp))) {
+            Surface(shape = DialogShape, modifier = Modifier.width(640.dp).sleepDim(dim, DialogShape)) {
                 Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(
                         stringResource(if (initial == null) R.string.topic_add else R.string.topic_edit),
@@ -1975,6 +2027,7 @@ object TvUi : Screens {
         ) {
             itemsIndexed(videos, key = { _, video -> video.id + video.playlistIndex }) { index, video ->
                 val isHeld = held == index
+                val channel = remember(video) { channelNameOf(video) }
                 if (index >= videos.size - 5) LaunchedEffect(videos.size) { onNearEnd() }
                 ListItem(
                     selected = isHeld,
@@ -1984,7 +2037,7 @@ object TvUi : Screens {
                         if (!isHeld) onHold(index)
                     },
                     headlineContent = { Text(video.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    supportingContent = channelNameOf(video)?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                    supportingContent = channel?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
                     leadingContent = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("${index + 1}", textAlign = TextAlign.End, modifier = Modifier.width(36.dp))
@@ -1993,7 +2046,7 @@ object TvUi : Screens {
                                 model = video.thumbnailUrl,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.width(112.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp))
+                                modifier = Modifier.width(112.dp).aspectRatio(16f / 9f).clip(BadgeShape)
                                     .background(MaterialTheme.colorScheme.surfaceVariant),
                             )
                         }
@@ -2145,7 +2198,7 @@ object TvUi : Screens {
     internal fun ChannelTabs(tab: Int, onTab: (Int) -> Unit) {
         val selected = remember { FocusRequester() }
         TabRow(selectedTabIndex = tab, modifier = Modifier.entersAt(selected)) {
-            listOf(R.string.channel_videos, R.string.channel_playlists).forEachIndexed { i, label ->
+            ChannelTabLabels.forEachIndexed { i, label ->
                 Tab(
                     selected = tab == i,
                     onFocus = { onTab(i) },
@@ -2189,6 +2242,20 @@ object TvUi : Screens {
         }
     }
 
+    /** Pede a próxima página quando faltam [ahead] itens para o fim, num único observador da grade. */
+    @Composable
+    private fun NearEnd(grid: LazyGridState, count: Int, onNearEnd: () -> Unit, ahead: Int = 8) {
+        val currentOnNearEnd by rememberUpdatedState(onNearEnd)
+        val nearEnd by remember(grid, ahead) {
+            derivedStateOf {
+                val info = grid.layoutInfo
+                val last = info.visibleItemsInfo.lastOrNull()?.index ?: return@derivedStateOf false
+                info.totalItemsCount > 0 && last >= info.totalItemsCount - ahead
+            }
+        }
+        LaunchedEffect(nearEnd, count) { if (nearEnd && count > 0) currentOnNearEnd() }
+    }
+
     @Composable
     internal fun VideoGrid(
         content: VideoListContent,
@@ -2204,11 +2271,17 @@ object TvUi : Screens {
         onSeen: ((Int) -> Unit)? = null,
     ) {
         val firstFocus = remember { FocusRequester() }
-        val saved by SavedVideos.ids.collectAsStateWithLifecycle()
+        val savedIds = SavedVideos.ids.collectAsStateWithLifecycle()
         val grid = rememberLazyGridState()
-        var inGrid by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+        val inGrid = remember { booleanArrayOf(false) }
         val hadFocus = remember { booleanArrayOf(false) }
         var resetFocus by remember { mutableStateOf(false) }
+        val currentVideos by rememberUpdatedState(content.videos)
+        val removeAction = remember(onRemove, removeLabel) {
+            onRemove?.let { remove -> removeLabel?.let { it to remove } }
+        }
+        NearEnd(grid, content.videos.size, onNearEnd)
         PrefetchThumbnails(content.videos, grid)
         if (onSeen != null) SeenRows(grid, onSeen)
         // De volta ao começo com vídeos novos: o foco que estava na grade vai para o primeiro deles.
@@ -2218,9 +2291,9 @@ object TvUi : Screens {
         ListTop(
             grid = grid,
             content = content,
-            onStartTop = { hadFocus[0] = inGrid },
+            onStartTop = { hadFocus[0] = inGrid[0] },
         ) {
-            val focused = hadFocus[0] || inGrid
+            val focused = hadFocus[0] || inGrid[0]
             hadFocus[0] = false
             if (!focused) {
                 resetFocus = true
@@ -2243,13 +2316,13 @@ object TvUi : Screens {
             // depois de subir ao topo com o foco fora, [resetFocus] ignora o card antigo.
             modifier = Modifier
                 .onFocusChanged {
-                    inGrid = it.hasFocus
+                    inGrid[0] = it.hasFocus
                     if (it.hasFocus) resetFocus = false
                 }
                 .then(
                     if (resetFocus) {
                         Modifier.focusProperties {
-                            onEnter = { if (content.videos.isNotEmpty()) runCatching { firstFocus.requestFocus() } }
+                            onEnter = { if (currentVideos.isNotEmpty()) runCatching { firstFocus.requestFocus() } }
                         }
                     } else {
                         Modifier.focusRestorer()
@@ -2257,24 +2330,28 @@ object TvUi : Screens {
                 ),
         ) {
             if (content.videos.isEmpty() && !content.loadingMore) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item(span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
                     Text(emptyText, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(24.dp))
                 }
             }
-            itemsIndexed(content.videos, key = { _, v -> v.id + v.playlistIndex }) { index, video ->
-                if (index >= content.videos.size - 8) LaunchedEffect(Unit) { onNearEnd() }
+            itemsIndexed(
+                content.videos,
+                key = { _, v -> v.id + v.playlistIndex },
+                contentType = { _, _ -> "video" },
+            ) { index, video ->
                 VideoCard(
                     video,
-                    saved = video.id in saved,
+                    savedIds = savedIds,
+                    scope = scope,
                     showSaved = showSaved,
                     onOpenChannel = onOpenChannel,
-                    onRemove = onRemove?.let { remove -> removeLabel?.let { it to remove } },
+                    onRemove = removeAction,
                     modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
-                ) { UpNext.opened(content.videos, video); onPlay(video) }
+                ) { UpNext.opened(currentVideos, video); onPlay(video) }
             }
             // Parou com mais páginas (os filtros esvaziaram várias seguidas): um botão para continuar.
             if (content.hasMore && !content.loadingMore) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item(span = { GridItemSpan(maxLineSpan) }, contentType = "load_more") {
                     Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
                         OutlinedButton(onClick = onNearEnd) { Text(stringResource(R.string.load_more)) }
                     }
@@ -2300,7 +2377,8 @@ object TvUi : Screens {
     @Composable
     private fun VideoCard(
         video: Video,
-        saved: Boolean,
+        savedIds: State<Set<String>>,
+        scope: CoroutineScope,
         onOpenChannel: ((Channel) -> Unit)?,
         modifier: Modifier = Modifier,
         showSaved: Boolean = true,
@@ -2310,17 +2388,20 @@ object TvUi : Screens {
         // O convidado não tem conta: nem playlist do Save, nem marcador.
         @Suppress("NAME_SHADOWING")
         val showSaved = showSaved && !Users.isGuest
+        val saved by remember(video.id, savedIds, showSaved) {
+            derivedStateOf { showSaved && video.id in savedIds.value }
+        }
         var menu by remember { mutableStateOf(false) }
         // O menu aparece no toque longo, com o OK ainda apertado (pedido do Johan), mas só pega o
         // foco quando o OK é solto: se pegasse antes, o "soltar" iria para o menu (e escolheria a
         // primeira opção) e o card ficaria esperando um soltar que não vem.
         var menuFocusable by remember { mutableStateOf(false) }
         val res = LocalContext.current.resources
-        val scope = rememberCoroutineScope()
         // Com o foco parado no card, o vídeo é pedido ao YouTube antes do OK ([PlaybackRepository.focused]).
         // Uma live ou uma estreia marcada, não: o que o YouTube entrega para elas muda a cada instante.
         val ahead = !video.isLive && !video.isUpcoming
         if (ahead) DisposableEffect(video.id) { onDispose { PlaybackRepository.unfocused(video.id) } }
+        val duration = remember(video.durationMs) { video.durationMs.takeIf { it > 0 }?.let(::formatDuration) }
         Column(modifier) {
             Box(
                 Modifier.onFocusChanged { focus ->
@@ -2347,7 +2428,7 @@ object TvUi : Screens {
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize().background(Look.Surface),
                         )
-                        val badge = if (video.isLive) stringResource(R.string.search_live) else video.durationMs.takeIf { it > 0 }?.let(::formatDuration)
+                        val badge = if (video.isLive) stringResource(R.string.search_live) else duration
                         if (badge != null) Badge(badge, if (video.isLive) Look.Live else Look.Badge, Modifier.align(Alignment.BottomEnd))
                         if (video.percentWatched > 0) {
                             Box(
@@ -2355,7 +2436,7 @@ object TvUi : Screens {
                                     .height(3.dp).background(Look.Glow),
                             )
                         }
-                        if (saved && showSaved) {
+                        if (saved) {
                             Box(
                                 Modifier.align(Alignment.TopEnd).padding(7.dp).size(20.dp).background(Look.BadgeSoft, CircleShape),
                                 contentAlignment = Alignment.Center,
@@ -2371,9 +2452,10 @@ object TvUi : Screens {
                     }
                 }
                 if (menu) {
+                    val channelName = remember(video) { channelNameOf(video) }
                     VideoMenu(
                         saved = saved,
-                        channelName = channelNameOf(video),
+                        channelName = channelName,
                         focusable = menuFocusable,
                         onDismiss = { menu = false },
                         onSave = if (showSaved) {
@@ -2414,9 +2496,9 @@ object TvUi : Screens {
         ) {
             Column(
                 Modifier.width(320.dp)
-                    .sleepDim(dim, RoundedCornerShape(22.dp))
-                    .background(Floating, RoundedCornerShape(22.dp))
-                    .border(1.dp, Look.Hairline, RoundedCornerShape(22.dp))
+                    .sleepDim(dim, MenuShape)
+                    .background(Floating, MenuShape)
+                    .border(1.dp, Look.Hairline, MenuShape)
                     .padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -2482,14 +2564,14 @@ object TvUi : Screens {
         modifier: Modifier = Modifier,
         onClick: () -> Unit,
     ) {
-        val shape = RoundedCornerShape(14.dp)
+        val focusedBorder = remember(Look.accent) { Border(BorderStroke(2.dp, Look.GlowSoft), shape = CardShape) }
         ListItem(
             selected = false,
             onClick = onClick,
             headlineContent = { Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             supportingContent = supporting?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Look.Sub) } },
             leadingContent = { leading() },
-            shape = ListItemDefaults.shape(shape),
+            shape = ListItemDefaults.shape(CardShape),
             colors = ListItemDefaults.colors(
                 containerColor = Color.Transparent,
                 contentColor = Look.Text,
@@ -2498,7 +2580,7 @@ object TvUi : Screens {
                 pressedContainerColor = Look.GlowSoft.copy(alpha = 0.22f),
                 pressedContentColor = Look.Text,
             ),
-            border = ListItemDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Look.GlowSoft), shape = shape)),
+            border = ListItemDefaults.border(focusedBorder = focusedBorder),
             scale = ListItemDefaults.scale(focusedScale = 1f),
             modifier = modifier,
         )
@@ -2524,13 +2606,15 @@ object TvUi : Screens {
     private fun GlowCard(onClick: () -> Unit, onLongClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
         val interaction = remember { MutableInteractionSource() }
         val hold = onLongClick?.let { rememberOkHold(interaction, onClick, it) }
+        val focusedBorder = remember(Look.accent) { Border(BorderStroke(3.dp, Look.GlowSoft), shape = CardShape) }
+        val holdModifier = remember(hold) { if (hold != null) Modifier.okHold(hold) else Modifier }
         Card(
             onClick = onClick,
-            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).then(if (hold != null) Modifier.okHold(hold) else Modifier),
-            shape = CardDefaults.shape(CardShape),
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).then(holdModifier),
+            shape = GlowCardShape,
             colors = CardDefaults.colors(containerColor = Look.Surface),
-            scale = CardDefaults.scale(focusedScale = 1.06f),
-            border = CardDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Look.GlowSoft), shape = CardShape)),
+            scale = GlowCardScale,
+            border = CardDefaults.border(focusedBorder = focusedBorder),
             interactionSource = interaction,
         ) { content() }
     }
@@ -2575,7 +2659,7 @@ object TvUi : Screens {
             color = Look.Text,
             style = MaterialTheme.typography.labelMedium,
             modifier = modifier.padding(8.dp)
-                .background(color, RoundedCornerShape(6.dp))
+                .background(color, BadgeShape)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         )
     }
@@ -2586,13 +2670,15 @@ object TvUi : Screens {
      */
     @Composable
     private fun VideoText(video: Video) {
-        val name = channelNameOf(video)
+        val name = remember(video) { channelNameOf(video) }
         if (video.fromPlaylist != null || name == null) return CardText(video.title, subtitleOf(video))
         CardText(video.title, null)
-        val rest = metaAfterChannel(video.info, name, video.published)
+        val rest = remember(video.info, name, video.published) {
+            metaAfterChannel(video.info, name, video.published)?.let(::spacedDots)
+        }
         MetaLine(
             channel = { Text(name, style = CardMeta, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            rest = rest?.let { { Text(spacedDots(rest), style = CardMeta, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            rest = rest?.let { { Text(it, style = CardMeta, color = Look.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             separator = { Text(" · ", style = CardMeta, color = Look.Sub) },
             modifier = Modifier.padding(top = CardMetaGap, start = 2.dp, end = 2.dp),
             stacked = true,
@@ -2605,11 +2691,9 @@ object TvUi : Screens {
      * titleSmall (14 sp, linhas de 20 sp), com o canal colado, e as linhas do título ficavam tão
      * longe uma da outra quanto do canal.
      */
-    private val CardTitle: TextStyle
-        @Composable get() = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 17.sp)
+    private val CardTitle: TextStyle = TypeScale.titleSmall.copy(fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 17.sp)
 
-    private val CardMeta: TextStyle
-        @Composable get() = MaterialTheme.typography.bodySmall.copy(lineHeight = 15.sp)
+    private val CardMeta: TextStyle = TypeScale.bodySmall.copy(lineHeight = 15.sp)
 
     private val CardMetaGap = 5.dp
 
@@ -2623,8 +2707,9 @@ object TvUi : Screens {
             modifier = Modifier.padding(top = 11.dp, start = 2.dp, end = 2.dp),
         )
         if (subtitle != null) {
+            val formatted = remember(subtitle) { spacedDots(subtitle) }
             Text(
-                spacedDots(subtitle),
+                formatted,
                 style = CardMeta,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -2665,7 +2750,7 @@ object TvUi : Screens {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Card(
                 onClick = onClick,
-                shape = CardDefaults.shape(CircleShape),
+                shape = CircleCardShape,
                 modifier = Modifier.size(128.dp),
             ) {
                 AsyncImage(
@@ -2682,9 +2767,10 @@ object TvUi : Screens {
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 10.dp),
             )
-            channel.info?.let {
+            channel.info?.let { info ->
+                val formatted = remember(info) { spacedDots(info) }
                 Text(
-                    spacedDots(it),
+                    formatted,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -2709,21 +2795,22 @@ object TvUi : Screens {
     ) {
         var focused by remember { mutableStateOf(false) }
         val colors = MaterialTheme.colorScheme
-        val shape = RoundedCornerShape(8.dp)
+        val textStyle = remember(colors.onSurface) { TypeScale.titleMedium.copy(color = colors.onSurface) }
+        val cursorBrush = remember(colors.onSurface) { SolidColor(colors.onSurface) }
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
-            textStyle = MaterialTheme.typography.titleMedium.copy(color = colors.onSurface),
-            cursorBrush = SolidColor(colors.onSurface),
+            textStyle = textStyle,
+            cursorBrush = cursorBrush,
             keyboardOptions = KeyboardOptions(imeAction = imeAction, showKeyboardOnFocus = false),
             keyboardActions = KeyboardActions(onAny = { onAction() }),
             modifier = modifier.onFocusChanged { focused = it.isFocused },
             decorationBox = { inner ->
                 Box(
                     Modifier.fillMaxWidth()
-                        .background(if (focused) colors.surfaceVariant else colors.surface, shape)
-                        .border(2.dp, if (focused) colors.border else colors.surfaceVariant, shape)
+                        .background(if (focused) colors.surfaceVariant else colors.surface, FieldShape)
+                        .border(2.dp, if (focused) colors.border else colors.surfaceVariant, FieldShape)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                 ) {
                     if (value.isEmpty()) Text(placeholder, style = MaterialTheme.typography.titleMedium, color = colors.onSurfaceVariant)
@@ -2765,8 +2852,8 @@ object TvUi : Screens {
             items(8) {
                 Column {
                     Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Look.Surface, CardShape))
-                    Box(Modifier.padding(top = 14.dp).fillMaxWidth(0.85f).height(16.dp).background(Look.Surface, RoundedCornerShape(6.dp)))
-                    Box(Modifier.padding(top = 10.dp).fillMaxWidth(0.5f).height(12.dp).background(Look.Surface, RoundedCornerShape(6.dp)))
+                    Box(Modifier.padding(top = 14.dp).fillMaxWidth(0.85f).height(16.dp).background(Look.Surface, BadgeShape))
+                    Box(Modifier.padding(top = 10.dp).fillMaxWidth(0.5f).height(12.dp).background(Look.Surface, BadgeShape))
                 }
             }
         }

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -117,17 +118,19 @@ fun SwipeToRemove(
                 }
             },
     ) {
-        if (offset.value < 0f) {
+        val direction by remember { derivedStateOf { offset.value.compareTo(0f) } }
+        val shape = remember(corner) { RoundedCornerShape(corner) }
+        if (direction < 0) {
             Box(
-                Modifier.matchParentSize().clip(RoundedCornerShape(corner)).background(Look.Live),
+                Modifier.matchParentSize().clip(shape).background(Look.Live),
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Icon(Icons.Outlined.Delete, contentDescription = null, tint = Look.Text, modifier = Modifier.padding(end = 24.dp).size(24.dp))
             }
         }
-        if (offset.value > 0f) {
+        if (direction > 0) {
             Box(
-                Modifier.matchParentSize().clip(RoundedCornerShape(corner)).background(Look.Glow),
+                Modifier.matchParentSize().clip(shape).background(Look.Glow),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Icon(Icons.Filled.VerticalAlignTop, contentDescription = null, tint = Look.OnGlow, modifier = Modifier.padding(start = 24.dp).size(24.dp))

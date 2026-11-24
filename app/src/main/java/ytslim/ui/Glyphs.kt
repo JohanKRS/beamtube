@@ -11,7 +11,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -39,13 +39,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import kotlin.random.Random
 
+private val SlitShape = RoundedCornerShape(2.dp)
+
 /**
  * A "fresta" que marca a aba ativa: uma barrinha na cor de destaque, sem brilho em volta (pedido
  * do Johan, 2026-11-03: o brilho fica só na marca do canto).
  */
 @Composable
 fun LightSlit(modifier: Modifier) {
-    Box(modifier.background(Look.Glow, RoundedCornerShape(2.dp)))
+    Box(modifier.background(Look.Glow, SlitShape))
 }
 
 /** O miolo da fresta e os grãos de poeira: a luz misturada com branco, como no ícone. */
@@ -99,13 +101,61 @@ private fun dust(count: Int, seed: Int): List<Speck> {
     return specks
 }
 
+private class BeamLayer(val path: Path, val paint: Paint)
+
+private class CachedSpeck(val center: Offset, val radius: Float, val brush: Brush?, val color: Color)
+
 /**
- * A marca, sem fundo: a fresta com o brilho em volta e o facho de luz saindo para a direita, com a
- * poeira dentro dele. Desenhada a partir da fresta: [slitLeft] e [centerY] dizem onde ela fica,
- * [slitHeight] é a altura dela (a largura é 13,6% disso), e o facho vai até [length] depois dela,
- * abrindo [spread] da altura da fresta em cada lado. As proporções são as do logotipo aprovado.
+ * Peças pré-calculadas da marca ([beamMarkPlan]): paths, pinceis e degradês criados uma vez só por
+ * tamanho e cor (via `drawWithCache`), sem realocar dezenas de shaders a cada redesenho.
  */
-private fun DrawScope.beamMark(
+private class BeamMarkPlan(
+    val bloomCenter: Offset,
+    val bloomRadius: Float,
+    val bloomBrush: Brush,
+    val layers: List<BeamLayer>,
+    val specks: List<CachedSpeck>,
+    val slitLight: Color,
+    val slitOffset: Offset,
+    val slitSize: Size,
+    val slitCorner: CornerRadius,
+    val coreBrush: Brush,
+    val coreOffset: Offset,
+    val coreSize: Size,
+    val coreCorner: CornerRadius,
+) {
+    fun draw(scope: DrawScope) = with(scope) {
+        withTransform({ scale(1f, 1.5f, bloomCenter) }) {
+            drawCircle(bloomBrush, radius = bloomRadius, center = bloomCenter)
+        }
+        drawIntoCanvas { canvas ->
+            for (i in 0 until layers.size) {
+                val layer = layers[i]
+                canvas.drawPath(layer.path, layer.paint)
+            }
+        }
+        for (i in 0 until specks.size) {
+            val speck = specks[i]
+            val brush = speck.brush
+            if (brush != null) {
+                drawCircle(brush, radius = speck.radius, center = speck.center)
+            } else {
+                drawCircle(speck.color, radius = speck.radius, center = speck.center)
+            }
+        }
+        drawRoundRect(slitLight, slitOffset, slitSize, slitCorner)
+        drawRoundRect(coreBrush, coreOffset, coreSize, coreCorner)
+    }
+}
+
+/**
+ * Monta as peças da marca sem fundo: a fresta com o brilho em volta e o facho de luz saindo para a
+ * direita, com a poeira dentro dele. Desenhada a partir da fresta: [slitLeft] e [centerY] dizem onde
+ * ela fica, [slitHeight] é a altura dela (a largura é 13,6% disso), e o facho vai até [length] depois
+ * dela, abrindo [spread] da altura da fresta em cada lado. As proporções são as do logotipo aprovado.
+ */
+private fun beamMarkPlan(
+    size: Size,
     slitLeft: Float,
     centerY: Float,
     slitHeight: Float,
@@ -115,43 +165,36 @@ private fun DrawScope.beamMark(
     specks: List<Speck>,
     light: Color,
     glow: Color,
-) {
+): BeamMarkPlan {
     val slitWidth = slitHeight * 0.136f
     val slitCenter = slitLeft + slitWidth / 2
     // O brilho em volta da fresta: uma elipse em pé.
     val bloom = slitHeight * 0.41f
     val center = Offset(slitCenter, centerY)
-    withTransform({ scale(1f, 1.5f, center) }) {
-        drawCircle(
-            Brush.radialGradient(
-                0f to glow.copy(alpha = 0.55f),
-                0.45f to glow.copy(alpha = 0.18f),
-                1f to Color.Transparent,
-                center = center,
-                radius = bloom,
-            ),
-            radius = bloom,
-            center = center,
-        )
-    }
+    val bloomBrush = Brush.radialGradient(
+        0f to glow.copy(alpha = 0.55f),
+        0.45f to glow.copy(alpha = 0.18f),
+        1f to Color.Transparent,
+        center = center,
+        radius = bloom,
+    )
     // O facho: forte junto da fresta, sumindo até o fim, com a borda de cima e a de baixo suaves.
     val startHalf = slitHeight * 0.496f
     val endHalf = startHalf + slitHeight * spread
     val edge = slitHeight * 0.09f
     // Cada camada leva uma parte diferente da luz, e o degradê sai pontilhado (dither): camadas
     // fracas e iguais mudariam de tom todas no mesmo lugar, e o facho apareceria em faixas.
-    val paint = Paint().apply { asFrameworkPaint().isDither = true }
-    val layers = (Math.round(edge / 2.5f) + 1).coerceIn(2, BEAM_LAYERS)
-    repeat(layers) { i ->
-        val step = i / (layers - 1f)
-        val share = (0.7f + 0.6f * step) / layers
-        fun layer(alpha: Float) = 1f - Math.pow(1.0 - alpha * strength, share.toDouble()).toFloat()
+    val layerCount = (Math.round(edge / 2.5f) + 1).coerceIn(2, BEAM_LAYERS)
+    val layers = List(layerCount) { i ->
+        val step = i / (layerCount - 1f)
+        val share = (0.7f + 0.6f * step) / layerCount
+        fun layerAlpha(alpha: Float) = 1f - Math.pow(1.0 - alpha * strength, share.toDouble()).toFloat()
         val brush = Brush.horizontalGradient(
-            0f to glow.copy(alpha = layer(0.38f)),
-            0.25f to glow.copy(alpha = layer(0.26f)),
-            0.5f to glow.copy(alpha = layer(0.15f)),
-            0.75f to glow.copy(alpha = layer(0.06f)),
-            0.9f to glow.copy(alpha = layer(0.018f)),
+            0f to glow.copy(alpha = layerAlpha(0.38f)),
+            0.25f to glow.copy(alpha = layerAlpha(0.26f)),
+            0.5f to glow.copy(alpha = layerAlpha(0.15f)),
+            0.75f to glow.copy(alpha = layerAlpha(0.06f)),
+            0.9f to glow.copy(alpha = layerAlpha(0.018f)),
             1f to Color.Transparent,
             startX = slitCenter,
             endX = slitCenter + length * (1f - 0.06f * step),
@@ -164,47 +207,58 @@ private fun DrawScope.beamMark(
             lineTo(slitCenter, centerY + startHalf - inset)
             close()
         }
+        val paint = Paint().apply { asFrameworkPaint().isDither = true }
         brush.applyTo(size, paint, 1f)
-        drawIntoCanvas { it.drawPath(path, paint) }
+        BeamLayer(path, paint)
     }
     // A poeira, só dentro do facho.
     val grain = lerp(light, Color.White, 0.5f)
-    specks.forEach { speck ->
+    val cachedSpecks = specks.map { speck ->
         val x = slitCenter + slitWidth + speck.along * (length - slitWidth)
         val half = startHalf + (endHalf - startHalf) * (x - slitCenter) / length
         val spot = Offset(x, centerY + speck.across * half * 0.9f)
         val radius = speck.radius * slitHeight
         if (speck.soft) {
-            drawCircle(
-                Brush.radialGradient(
+            CachedSpeck(
+                center = spot,
+                radius = radius,
+                brush = Brush.radialGradient(
                     0f to grain.copy(alpha = speck.alpha),
                     0.35f to grain.copy(alpha = speck.alpha * 0.6f),
                     1f to Color.Transparent,
                     center = spot,
                     radius = radius,
                 ),
-                radius = radius,
-                center = spot,
+                color = Color.Transparent,
             )
         } else {
-            drawCircle(grain.copy(alpha = speck.alpha), radius = radius.coerceAtLeast(0.6f), center = spot)
+            CachedSpeck(spot, radius.coerceAtLeast(0.6f), brush = null, color = grain.copy(alpha = speck.alpha))
         }
     }
     // A fresta, com o miolo mais claro.
     val top = centerY - slitHeight / 2
-    drawRoundRect(light, Offset(slitLeft, top), Size(slitWidth, slitHeight), CornerRadius(slitWidth / 6))
-    drawRoundRect(
-        Brush.verticalGradient(
-            0f to Color.Transparent,
-            0.25f to SlitCore.copy(alpha = 0.8f),
-            0.75f to SlitCore.copy(alpha = 0.8f),
-            1f to Color.Transparent,
-            startY = top + slitHeight * 0.07f,
-            endY = top + slitHeight * 0.93f,
-        ),
-        Offset(slitLeft + slitWidth * 0.4f, top + slitHeight * 0.07f),
-        Size(slitWidth * 0.2f, slitHeight * 0.86f),
-        CornerRadius(slitWidth * 0.1f),
+    val coreBrush = Brush.verticalGradient(
+        0f to Color.Transparent,
+        0.25f to SlitCore.copy(alpha = 0.8f),
+        0.75f to SlitCore.copy(alpha = 0.8f),
+        1f to Color.Transparent,
+        startY = top + slitHeight * 0.07f,
+        endY = top + slitHeight * 0.93f,
+    )
+    return BeamMarkPlan(
+        bloomCenter = center,
+        bloomRadius = bloom,
+        bloomBrush = bloomBrush,
+        layers = layers,
+        specks = cachedSpecks,
+        slitLight = light,
+        slitOffset = Offset(slitLeft, top),
+        slitSize = Size(slitWidth, slitHeight),
+        slitCorner = CornerRadius(slitWidth / 6),
+        coreBrush = coreBrush,
+        coreOffset = Offset(slitLeft + slitWidth * 0.4f, top + slitHeight * 0.07f),
+        coreSize = Size(slitWidth * 0.2f, slitHeight * 0.86f),
+        coreCorner = CornerRadius(slitWidth * 0.1f),
     )
 }
 
@@ -218,19 +272,25 @@ fun BeamGlyph(modifier: Modifier, slit: Float = 0.62f) {
     val light = Look.GlowSoft
     val glow = Look.Glow
     Box(
-        modifier.drawBehind {
+        modifier.drawWithCache {
             val slitHeight = size.height * slit
-            beamMark(
-                slitLeft = slitHeight * 0.3f,
-                centerY = size.height / 2,
-                slitHeight = slitHeight,
-                length = size.width - slitHeight * 0.3f,
-                spread = 0.2f * (size.width / slitHeight - 0.3f),
-                strength = 1f,
-                specks = specks,
-                light = light,
-                glow = glow,
-            )
+            val plan = if (slitHeight > 0f && size.width > 0f) {
+                beamMarkPlan(
+                    size = size,
+                    slitLeft = slitHeight * 0.3f,
+                    centerY = size.height / 2,
+                    slitHeight = slitHeight,
+                    length = size.width - slitHeight * 0.3f,
+                    spread = 0.2f * (size.width / slitHeight - 0.3f),
+                    strength = 1f,
+                    specks = specks,
+                    light = light,
+                    glow = glow,
+                )
+            } else {
+                null
+            }
+            onDrawBehind { plan?.draw(this) }
         },
     )
 }
@@ -244,7 +304,8 @@ fun BeamGlyph(modifier: Modifier, slit: Float = 0.62f) {
  */
 @Composable
 fun Wordmark(size: TextUnit, modifier: Modifier = Modifier) {
-    val em = with(LocalDensity.current) { size.toPx() }
+    val density = LocalDensity.current
+    val em = with(density) { size.toPx() }
     val light = Look.GlowSoft
     val glow = Look.Glow
     val specks = remember { dust(count = 34, seed = 41) }
@@ -263,11 +324,8 @@ fun Wordmark(size: TextUnit, modifier: Modifier = Modifier) {
             withStyle(SpanStyle(fontWeight = FontWeight.Light)) { append("tube") }
         }
     }
-    val lead: Dp = with(LocalDensity.current) { (em * WORDMARK_LEAD).toDp() }
-    val tail: Dp = with(LocalDensity.current) { (em * WORDMARK_TAIL).toDp() }
-    Text(
-        text,
-        style = TextStyle(
+    val style = remember(letters, size) {
+        TextStyle(
             brush = letters,
             fontFamily = Look.Outfit,
             fontSize = size,
@@ -275,27 +333,39 @@ fun Wordmark(size: TextUnit, modifier: Modifier = Modifier) {
             letterSpacing = (-0.02).em,
             lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
             platformStyle = PlatformTextStyle(includeFontPadding = false),
-        ),
+        )
+    }
+    val lead: Dp = with(density) { (em * WORDMARK_LEAD).toDp() }
+    val tail: Dp = with(density) { (em * WORDMARK_TAIL).toDp() }
+    Text(
+        text,
+        style = style,
         maxLines = 1,
         softWrap = false,
         onTextLayout = { baseline = it.firstBaseline },
         modifier = modifier
             .clearAndSetSemantics { contentDescription = "BeamTube" }
-            .drawBehind {
+            .drawWithCache {
                 // No logotipo a fresta tem 1,39 da altura da letra e fica centrada 0,38 acima da linha de base.
                 val line = if (baseline.isNaN()) this.size.height * 0.87f else baseline
                 val slitHeight = em * 1.389f
-                beamMark(
-                    slitLeft = em * (WORDMARK_LEAD - 0.497f - 0.189f),
-                    centerY = line - em * 0.377f,
-                    slitHeight = slitHeight,
-                    length = em * 6.14f,
-                    spread = 0.412f,
-                    strength = 1f,
-                    specks = specks,
-                    light = light,
-                    glow = glow,
-                )
+                val plan = if (slitHeight > 0f) {
+                    beamMarkPlan(
+                        size = this.size,
+                        slitLeft = em * (WORDMARK_LEAD - 0.497f - 0.189f),
+                        centerY = line - em * 0.377f,
+                        slitHeight = slitHeight,
+                        length = em * 6.14f,
+                        spread = 0.412f,
+                        strength = 1f,
+                        specks = specks,
+                        light = light,
+                        glow = glow,
+                    )
+                } else {
+                    null
+                }
+                onDrawBehind { plan?.draw(this) }
             }
             .padding(start = lead, end = tail),
     )

@@ -85,20 +85,43 @@ internal object CaptionBlocks {
 
     /** As linhas de texto de um trecho, de cima para baixo, sem as vazias. null = nada a mostrar. */
     private fun span(timing: CuesWithTiming): Span? {
-        val texts = timing.cues.filter { it.text != null }
-        val lines = texts.flatMap { it.text.toString().split('\n') }
-            .map { it.replace(SPACES, " ").trim() }
-            .filter { it.isNotEmpty() }
-        if (lines.isEmpty()) return null
-        return Span(timing, lines, texts.first())
+        var template: Cue? = null
+        val lines = ArrayList<String>(2)
+        val buf = StringBuilder()
+        for (cue in timing.cues) {
+            val text = cue.text ?: continue
+            if (template == null) template = cue
+            val len = text.length
+            var pos = 0
+            while (pos <= len) {
+                var end = pos
+                while (end < len && text[end] != '\n') end++
+                buf.setLength(0)
+                var inSpace = false
+                for (i in pos until end) {
+                    val c = text[i]
+                    if (c.isWhitespace()) {
+                        if (buf.isNotEmpty()) inSpace = true
+                    } else {
+                        if (inSpace) {
+                            buf.append(' ')
+                            inSpace = false
+                        }
+                        buf.append(c)
+                    }
+                }
+                if (buf.isNotEmpty()) lines.add(buf.toString())
+                pos = end + 1
+            }
+        }
+        if (lines.isEmpty() || template == null) return null
+        return Span(timing, lines, template)
     }
 
     private fun pairs(a: Line, b: Line, spans: List<Span>): Boolean =
         b.startUs - a.startUs <= PAIR_US && (a.span until b.span).all { touches(spans[it], spans[it + 1]) }
 
     private fun touches(a: Span, b: Span) = b.timing.startTimeUs - a.timing.endTimeUs <= GAP_US
-
-    private val SPACES = Regex("\\s+")
 }
 
 /** Entrega a legenda de [inner] em blocos ([CaptionBlocks]). */

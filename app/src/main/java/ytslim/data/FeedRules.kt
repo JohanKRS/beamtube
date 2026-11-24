@@ -107,8 +107,8 @@ object FeedFilter {
 
     /** Mais novos ou mais vistos primeiro; as outras ordens deixam a lista como veio. */
     fun sort(videos: List<Video>, sort: SortBy): List<Video> = when (sort) {
-        SortBy.DATE -> videos.sortedBy { agoMs(it) ?: Long.MAX_VALUE }
-        SortBy.VIEWS -> videos.sortedByDescending { ViewCount.parse(it.info) ?: -1L }
+        SortBy.DATE -> videos.map { it to (agoMs(it) ?: Long.MAX_VALUE) }.sortedBy { it.second }.map { it.first }
+        SortBy.VIEWS -> videos.map { it to (ViewCount.parse(it.info) ?: -1L) }.sortedByDescending { it.second }.map { it.first }
         SortBy.RELEVANCE, SortBy.RATING -> videos
     }
 

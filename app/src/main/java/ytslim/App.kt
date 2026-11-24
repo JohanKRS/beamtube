@@ -9,6 +9,7 @@ import androidx.profileinstaller.ProfileVerifier
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ytslim.data.AppIcons
@@ -45,7 +46,7 @@ class App : Application(), SingletonImageLoader.Factory {
         AppScope.launch { AppVisibility.returns.collect { if (Users.current.value != null) EngineWarmup.start() } }
         val tv = isTv()
         Backgrounds.init(this, tv)
-        if (tv) keepScreenOffServiceBound() else removeScreenOffService()
+        if (tv) keepScreenOffServiceBound() else AppScope.launch(Dispatchers.IO) { removeScreenOffService() }
         logCompilation()
     }
 

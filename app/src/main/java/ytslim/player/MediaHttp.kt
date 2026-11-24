@@ -38,6 +38,11 @@ internal object MediaHttp {
             .setReadTimeoutMs(READ_TIMEOUT_MS)
     }
 
+    /** Inicializa o HttpEngine fora da thread da tela, para o primeiro vídeo não esperar por ele. */
+    fun warmUp(context: Context) {
+        if (modern) runCatching { Modern.warmUp(context.applicationContext) }
+    }
+
     /** O HttpEngine chegou no Android 14 e, pelo módulo de rede atualizável, no 12 e no 13. */
     private val modern: Boolean by lazy {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
@@ -49,6 +54,10 @@ internal object MediaHttp {
     private object Modern {
         @Volatile private var engine: HttpEngine? = null
         private val executor = Executors.newSingleThreadExecutor { Thread(it, "beamtube-http") }
+
+        fun warmUp(context: Context) {
+            engine(context)
+        }
 
         fun factory(context: Context, userAgent: String): HttpDataSource.Factory =
             HttpEngineDataSource.Factory(engine(context), executor)

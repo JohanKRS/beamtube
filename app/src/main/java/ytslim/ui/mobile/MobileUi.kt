@@ -2,6 +2,7 @@ package ytslim.ui.mobile
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -109,8 +110,11 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -179,6 +183,7 @@ import ytslim.data.AppScope
 import ytslim.data.AuthRepository
 import ytslim.data.User
 import ytslim.data.Users
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import ytslim.ui.LocalAddAccount
 import ytslim.ui.homeTabs
@@ -303,36 +308,42 @@ private val LocalBars = compositionLocalOf { PaddingValues(0.dp) }
  */
 internal val LocalTabShown = compositionLocalOf { true }
 
+/** No Android 12+ há desfoque real (RenderEffect); antes, um degradê quase opaco sem gravar a tela toda. */
+private val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
 /** De que borda da tela a barra de vidro sai: ali ela é mais opaca, e menos junto da lista. */
 private enum class GlassEdge { Top, Bottom, Start }
 
-/** Vidro fosco com o desfoque do que passa por baixo (Android 12+; antes, quase opaco), em degradê (ver [Look.GlassEdge]). */
-private fun glassStyle(edge: GlassEdge): HazeStyle {
-    fun fade(outer: Color, inner: Color): HazeTint = HazeTint(
-        when (edge) {
-            GlassEdge.Top -> Brush.verticalGradient(listOf(outer, inner))
-            GlassEdge.Bottom -> Brush.verticalGradient(listOf(inner, outer))
-            GlassEdge.Start -> Brush.horizontalGradient(listOf(outer, inner))
-        },
-    )
-    return HazeStyle(
-        backgroundColor = Look.Ground,
-        tints = listOf(fade(Look.GlassEdge, Look.GlassInner)),
-        blurRadius = 24.dp,
-        noiseFactor = 0f,
-        fallbackTint = fade(Look.GlassFallbackEdge, Look.GlassFallbackInner),
-    )
+private fun glassBrush(edge: GlassEdge, outer: Color, inner: Color): Brush = when (edge) {
+    GlassEdge.Top -> Brush.verticalGradient(listOf(outer, inner))
+    GlassEdge.Bottom -> Brush.verticalGradient(listOf(inner, outer))
+    GlassEdge.Start -> Brush.horizontalGradient(listOf(outer, inner))
 }
+
+/** Vidro fosco com o desfoque do que passa por baixo (Android 12+; antes, quase opaco), em degradê (ver [Look.GlassEdge]). */
+private fun glassStyle(edge: GlassEdge): HazeStyle = HazeStyle(
+    backgroundColor = Look.Ground,
+    tints = listOf(HazeTint(glassBrush(edge, Look.GlassEdge, Look.GlassInner))),
+    blurRadius = 24.dp,
+    noiseFactor = 0f,
+    fallbackTint = HazeTint(glassBrush(edge, Look.GlassFallbackEdge, Look.GlassFallbackInner)),
+)
+
+@Composable
+private fun rememberGlassState(): HazeState? = if (supportsBlur) rememberHazeState() else null
+
+private fun Modifier.glassSource(haze: HazeState?): Modifier = if (haze != null) hazeSource(haze) else this
 
 /** O vidro segue o tom do fundo escolhido nos Ajustes ([Look.tones]): refeito quando ele muda. */
 @Composable
-private fun topGlass(): HazeStyle = remember(Look.tones) { glassStyle(GlassEdge.Top) }
-
-@Composable
-private fun bottomGlass(): HazeStyle = remember(Look.tones) { glassStyle(GlassEdge.Bottom) }
-
-@Composable
-private fun startGlass(): HazeStyle = remember(Look.tones) { glassStyle(GlassEdge.Start) }
+private fun Modifier.glassEffect(haze: HazeState?, edge: GlassEdge): Modifier =
+    if (haze != null) {
+        val style = remember(Look.tones, edge) { glassStyle(edge) }
+        hazeEffect(haze, style, block = LightGlass)
+    } else {
+        val brush = remember(Look.tones, edge) { glassBrush(edge, Look.GlassFallbackEdge, Look.GlassFallbackInner) }
+        background(brush)
+    }
 
 /**
  * O desfoque calculado numa cópia menor do que passa por baixo e ampliado (o Haze escolhe a
@@ -402,6 +413,28 @@ private val Type: Typography = Typography(
 private val CardTitle = TextStyle(fontFamily = Look.Outfit, fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 21.sp)
 private val RowTitle = TextStyle(fontFamily = Look.Outfit, fontWeight = FontWeight.Medium, fontSize = 15.sp, lineHeight = 20.sp)
 private val Meta = TextStyle(fontFamily = Look.Outfit, fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.01.em, color = Look.Sub)
+private val PillLabelStyle = TypeScale.labelLarge.copy(fontSize = 14.sp)
+private val TopBarTitleStyle = TypeScale.titleLarge.copy(fontSize = 20.sp, letterSpacing = (-0.2).sp)
+private val DetailTitleStyle = TypeScale.titleMedium.copy(fontSize = 17.sp)
+private val MenuUserTitleStyle = RowTitle.copy(fontSize = 16.sp)
+private val SettingsUserStyle = TypeScale.bodyLarge.copy(fontSize = 15.sp)
+private val SettingsActionStyle = TypeScale.labelLarge.copy(fontSize = 15.sp)
+private val SettingsTitleStyle = TypeScale.labelLarge.copy(letterSpacing = 0.2.sp)
+private val SettingsHintStyle = TypeScale.bodySmall.copy(lineHeight = 17.sp)
+private val SettingsRowTitleStyle = TypeScale.bodyLarge.copy(fontSize = 15.sp, lineHeight = 20.sp)
+private val SettingsValueStyle = Meta.copy(fontSize = 14.sp)
+private val BadgeStyleNormal = TextStyle(fontFamily = Look.Outfit, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, lineHeight = 16.sp)
+private val BadgeStyleCompact = TextStyle(fontFamily = Look.Outfit, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, lineHeight = 16.sp)
+
+private val PillShape = RoundedCornerShape(22.dp)
+private val MenuShape = RoundedCornerShape(18.dp)
+private val SearchFieldShape = RoundedCornerShape(26.dp)
+private val CardShape = RoundedCornerShape(14.dp)
+private val RowShape = RoundedCornerShape(10.dp)
+private val PlaylistShape = RoundedCornerShape(12.dp)
+private val AvatarChipShape = RoundedCornerShape(8.dp)
+private val BadgeShape = RoundedCornerShape(6.dp)
+private val ChannelTabLabels = listOf(R.string.channel_videos, R.string.channel_playlists)
 
 /** Interface de toque, para celular e tablet. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -432,15 +465,15 @@ object MobileUi : Screens {
                 val action = shown?.action
                 Row(
                     Modifier.padding(horizontal = 24.dp)
-                        .shadow(16.dp, RoundedCornerShape(22.dp), ambientColor = Color.Black, spotColor = Color.Black)
-                        .background(Look.Pill, RoundedCornerShape(22.dp))
-                        .border(1.dp, Look.Outline, RoundedCornerShape(22.dp))
+                        .shadow(16.dp, PillShape, ambientColor = Color.Black, spotColor = Color.Black)
+                        .background(Look.Pill, PillShape)
+                        .border(1.dp, Look.Outline, PillShape)
                         .padding(start = 18.dp, end = if (action != null) 6.dp else 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         shown?.text.orEmpty(),
-                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
+                        style = PillLabelStyle,
                         color = Look.Text,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(vertical = 12.dp).weight(1f, fill = false),
@@ -451,7 +484,7 @@ object MobileUi : Screens {
                             action.run()
                             shown?.let { Notices.dismiss(it.id) }
                         }) {
-                            Text(action.label, style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp), color = Look.Glow)
+                            Text(action.label, style = PillLabelStyle, color = Look.Glow)
                         }
                     }
                 }
@@ -540,6 +573,7 @@ object MobileUi : Screens {
     override fun Home(tab: HomeTab, onTab: (HomeTab) -> Unit, onReload: (HomeTab) -> Unit, content: @Composable (HomeTab) -> Unit) {
         val allowed = remember { homeTabs() }
         val barTabs = remember(allowed) { tabs.filter { it.tab in allowed } }
+        val shownRailTabs = remember(allowed) { railTabs.filter { it.tab in allowed } }
         val swipe = remember(barTabs) { barTabs.map { it.tab } }
         // O convidado só tem a busca (1.0.8): ela é o início dele, sem abas nem "voltar".
         val searchOnly = swipe.isEmpty()
@@ -549,7 +583,7 @@ object MobileUi : Screens {
         val aside = tab !in swipe && !searchOnly
         BackHandler(enabled = aside) { onTab(lastTab) }
 
-        val haze = rememberHazeState()
+        val haze = rememberGlassState()
         val config = LocalConfiguration.current
         // Tela deitada (tablet, ou celular de lado): trilho de ícones à esquerda em vez da barra de baixo.
         val rail = config.screenWidthDp > config.screenHeightDp && config.screenWidthDp >= 600 && !searchOnly
@@ -560,6 +594,7 @@ object MobileUi : Screens {
         // Os filtros da Explore, abertos pelo botão ao lado do nome (1.0.8): a barra de cima cresce
         // para mostrá-los, e só a lista da Explore desce junto. As outras abas ficam no lugar.
         val exploreFilters = LocalExploreFilterBar.current
+        val exploreChoices = remember(exploreFilters.filters) { exploreFilterChoices(exploreFilters.filters) }
         val filtersHeight by animateDpAsState(
             if (exploreFilters.open) FilterBarHeight else 0.dp,
             tween(FILTER_BAR_MS),
@@ -576,7 +611,7 @@ object MobileUi : Screens {
         val exploreBars = bars(filtersHeight)
 
         Box(Modifier.fillMaxSize().background(Look.Ground)) {
-            Box(Modifier.fillMaxSize().hazeSource(haze)) {
+            Box(Modifier.fillMaxSize().glassSource(haze)) {
                 if (aside || searchOnly) {
                     CompositionLocalProvider(LocalBars provides bars) { content(tab) }
                 } else {
@@ -592,7 +627,7 @@ object MobileUi : Screens {
                 below = {
                     Box(Modifier.padding(start = if (rail) 0.dp else system.start, end = system.end)) {
                         FilterRow(
-                            exploreFilterChoices(exploreFilters.filters),
+                            exploreChoices,
                             onChange = { exploreFilters.onChange(it) },
                             padding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp),
                         )
@@ -604,7 +639,7 @@ object MobileUi : Screens {
                 Row(Modifier.weight(1f).padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         title,
-                        style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, letterSpacing = (-0.2).sp),
+                        style = TopBarTitleStyle,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
@@ -619,7 +654,7 @@ object MobileUi : Screens {
                 if (tab != HomeTab.SETTINGS) UserButton(onSettings = if (HomeTab.SETTINGS in allowed) ({ onTab(HomeTab.SETTINGS) }) else null)
             }
             if (rail) {
-                Rail(haze, system, railTabs.filter { it.tab in allowed }, tab, onTab, Modifier.align(Alignment.CenterStart))
+                Rail(haze, system, shownRailTabs, tab, onTab, Modifier.align(Alignment.CenterStart))
             } else if (showBottom) {
                 BottomNav(haze, system, barTabs, tab, onTab, Modifier.align(Alignment.BottomCenter))
             }
@@ -687,6 +722,9 @@ object MobileUi : Screens {
         val accounts by Users.accounts.collectAsStateWithLifecycle()
         val addAccount = LocalAddAccount.current
         var open by remember { mutableStateOf(false) }
+        val others = remember(accounts, user?.slot, user?.guest) {
+            accounts.filter { it.slot != user?.slot } + listOfNotNull(Users.guestUser.takeIf { user?.guest != true })
+        }
         Box {
             IconButton(onClick = { open = true }) {
                 UserPhoto(user, 30.dp, contentDescription = stringResource(R.string.user_menu))
@@ -694,7 +732,7 @@ object MobileUi : Screens {
             DropdownMenu(
                 expanded = open,
                 onDismissRequest = { open = false },
-                shape = RoundedCornerShape(18.dp),
+                shape = MenuShape,
                 containerColor = Look.SurfaceHigh,
                 modifier = Modifier.widthIn(min = 248.dp),
             ) {
@@ -703,14 +741,13 @@ object MobileUi : Screens {
                     UserPhoto(user, 40.dp)
                     Text(
                         userName(user),
-                        style = RowTitle.copy(fontSize = 16.sp),
+                        style = MenuUserTitleStyle,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(start = 12.dp),
                     )
                 }
                 Hairline(Modifier.fillMaxWidth().height(1.dp))
-                val others = accounts.filter { it.slot != user?.slot } + listOfNotNull(Users.guestUser.takeIf { user?.guest != true })
                 others.forEach { other ->
                     DropdownMenuItem(
                         text = { Text(userName(other), maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -765,7 +802,8 @@ object MobileUi : Screens {
     }
 
     /** As barras do sistema (status, navegação). O recorte da câmera fica de fora de propósito. */
-    private class SystemInsets(val start: Dp, val top: Dp, val end: Dp, val bottom: Dp)
+    @Immutable
+    private data class SystemInsets(val start: Dp, val top: Dp, val end: Dp, val bottom: Dp)
 
     @Composable
     private fun systemInsets(): SystemInsets {
@@ -785,15 +823,14 @@ object MobileUi : Screens {
      */
     @Composable
     private fun TopBar(
-        haze: HazeState,
+        haze: HazeState?,
         system: SystemInsets,
         modifier: Modifier = Modifier,
         extra: Dp = 0.dp,
         below: @Composable () -> Unit = {},
         content: @Composable RowScope.() -> Unit,
     ) {
-        val glass = topGlass()
-        Box(modifier.fillMaxWidth().height(system.top + TopBarHeight + extra).hazeEffect(haze, glass, block = LightGlass)) {
+        Box(modifier.fillMaxWidth().height(system.top + TopBarHeight + extra).glassEffect(haze, GlassEdge.Top)) {
             Column(Modifier.fillMaxSize().padding(top = system.top)) {
                 Row(
                     Modifier.fillMaxWidth().height(TopBarHeight).padding(start = 4.dp, end = system.end + 6.dp),
@@ -808,8 +845,8 @@ object MobileUi : Screens {
 
     /** Barra de abas de vidro, só com ícones: vai até o fim da tela, por trás da barra de gestos. */
     @Composable
-    private fun BottomNav(haze: HazeState, system: SystemInsets, tabs: List<TabInfo>, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
-        Box(modifier.fillMaxWidth().height(system.bottom + BottomBarHeight).hazeEffect(haze, bottomGlass(), block = LightGlass)) {
+    private fun BottomNav(haze: HazeState?, system: SystemInsets, tabs: List<TabInfo>, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
+        Box(modifier.fillMaxWidth().height(system.bottom + BottomBarHeight).glassEffect(haze, GlassEdge.Bottom)) {
             Hairline(Modifier.align(Alignment.TopStart).fillMaxWidth().height(1.dp))
             Row(
                 Modifier.align(Alignment.TopCenter).widthIn(max = 520.dp).fillMaxWidth().height(BottomBarHeight)
@@ -833,8 +870,8 @@ object MobileUi : Screens {
 
     /** Trilho de vidro à esquerda, na tela deitada: vai de cima a baixo, por trás das barras do sistema. */
     @Composable
-    private fun Rail(haze: HazeState, system: SystemInsets, items: List<TabInfo>, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
-        Box(modifier.fillMaxHeight().width(RailWidth + system.start).hazeEffect(haze, startGlass(), block = LightGlass)) {
+    private fun Rail(haze: HazeState?, system: SystemInsets, items: List<TabInfo>, tab: HomeTab, onTab: (HomeTab) -> Unit, modifier: Modifier) {
+        Box(modifier.fillMaxHeight().width(RailWidth + system.start).glassEffect(haze, GlassEdge.Start)) {
             Column(
                 Modifier.fillMaxHeight().padding(start = system.start, top = system.top + RailTop, bottom = system.bottom + 16.dp).width(RailWidth),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -870,18 +907,18 @@ object MobileUi : Screens {
         actions: @Composable RowScope.() -> Unit = {},
         content: @Composable () -> Unit,
     ) {
-        val haze = rememberHazeState()
+        val haze = rememberGlassState()
         val system = systemInsets()
         val bars = PaddingValues(start = system.start, top = system.top + TopBarHeight, end = system.end, bottom = system.bottom)
         Box(Modifier.fillMaxSize().background(Look.Ground)) {
-            Box(Modifier.fillMaxSize().hazeSource(haze)) {
+            Box(Modifier.fillMaxSize().glassSource(haze)) {
                 CompositionLocalProvider(LocalBars provides bars) { content() }
             }
             TopBar(haze, system) {
                 navigation()
                 Text(
                     title,
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
+                    style = DetailTitleStyle,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).padding(start = 4.dp),
@@ -996,6 +1033,7 @@ object MobileUi : Screens {
         val filters by vm.filters.collectAsStateWithLifecycle()
         val results by vm.results.collectAsStateWithLifecycle()
         val suggestions by vm.suggestions.collectAsStateWithLifecycle()
+        val choices = remember(filters) { searchFilterChoices(filters) }
         // O texto do campo fica aqui (um StateFlow no campo faz o cursor pular).
         var text by rememberSaveable { mutableStateOf(vm.query.value) }
         var fieldFocused by remember { mutableStateOf(false) }
@@ -1040,7 +1078,7 @@ object MobileUi : Screens {
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(26.dp),
+                shape = SearchFieldShape,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = Look.Surface,
                     unfocusedContainerColor = Look.Surface,
@@ -1051,7 +1089,7 @@ object MobileUi : Screens {
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { submit(text) }),
             )
-            FilterRow(searchFilterChoices(filters), onChange = vm::setFilters)
+            FilterRow(choices, onChange = vm::setFilters)
             if (fieldFocused && suggestions.isNotEmpty()) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bars.calculateBottomPadding() + 16.dp)) {
                     items(suggestions) { suggestion ->
@@ -1094,7 +1132,7 @@ object MobileUi : Screens {
                             onClick = { open = true },
                             label = { Text(if (choice.isDefault) stringResource(choice.label) else choice.selected.text()) },
                             trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
-                            shape = RoundedCornerShape(18.dp),
+                            shape = MenuShape,
                             colors = FilterChipDefaults.filterChipColors(
                                 containerColor = Color.Transparent,
                                 labelColor = Look.Text,
@@ -1139,6 +1177,7 @@ object MobileUi : Screens {
         val grid = rememberLazyGridState()
         NearEnd(grid, data.items.size, onNearEnd)
         val cards = rememberCardState()
+        val stacked = LocalConfiguration.current.screenWidthDp >= 560
         LazyVerticalGrid(
             state = grid,
             columns = videoColumns(),
@@ -1147,7 +1186,7 @@ object MobileUi : Screens {
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             if (data.items.isEmpty() && !data.hasMore) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item(span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
                     Text(stringResource(R.string.search_empty), textAlign = TextAlign.Center, color = Look.Sub, modifier = Modifier.fillMaxWidth().padding(32.dp))
                 }
             }
@@ -1155,15 +1194,22 @@ object MobileUi : Screens {
                 data.items,
                 key = { it.key },
                 span = { if (it is SearchItem.ChannelItem) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+                contentType = {
+                    when (it) {
+                        is SearchItem.VideoItem -> "video"
+                        is SearchItem.ChannelItem -> "channel"
+                        is SearchItem.PlaylistItem -> "playlist"
+                    }
+                },
             ) { item ->
                 when (item) {
-                    is SearchItem.VideoItem -> VideoCard(item.video, cards, onPlay, onOpenChannel)
+                    is SearchItem.VideoItem -> VideoCard(item.video, cards, onPlay, onOpenChannel, stacked = stacked)
                     is SearchItem.ChannelItem -> ChannelRow(item.channel, onClick = { onOpenChannel(item.channel) })
                     is SearchItem.PlaylistItem -> PlaylistRow(item.playlist, onClick = { onOpenPlaylist(item.playlist) })
                 }
             }
             if (data.loadingMore) {
-                item(span = { GridItemSpan(maxLineSpan) }) { Progress() }
+                item(span = { GridItemSpan(maxLineSpan) }, contentType = "progress") { Progress() }
             }
         }
     }
@@ -1203,6 +1249,7 @@ object MobileUi : Screens {
         val ownPlaylists by vm.ownPlaylists.collectAsStateWithLifecycle()
         val appIcon by vm.appIcon.collectAsStateWithLifecycle()
         var choosingTarget by rememberSaveable { mutableStateOf(false) }
+        val otherUsers = remember(accounts, user?.slot) { accounts.filter { it.slot != user?.slot } + Users.guestUser }
 
         // Em grupos (cartões arredondados com as linhas dentro), com a explicação embaixo de cada
         // um, em letra pequena. Os usuários ficam em cima: as Configurações abrem pelo menu da foto.
@@ -1224,7 +1271,7 @@ object MobileUi : Screens {
                         }
                         TextButton(onClick = vm::signOut) { Text(stringResource(R.string.sign_out)) }
                     }
-                    (accounts.filter { it.slot != current?.slot } + Users.guestUser).forEach { other ->
+                    otherUsers.forEach { other ->
                         RowDivider()
                         Row(
                             Modifier.fillMaxWidth().clickable { vm.switchTo(other) }
@@ -1233,7 +1280,7 @@ object MobileUi : Screens {
                         ) {
                             UserPhoto(other, 36.dp)
                             Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
-                                Text(userName(other), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(userName(other), style = SettingsUserStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 if (other.guest) Text(stringResource(R.string.user_guest_desc), style = Meta, maxLines = 2)
                             }
                         }
@@ -1245,7 +1292,7 @@ object MobileUi : Screens {
                     ) {
                         Icon(Icons.Filled.Add, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text(stringResource(R.string.user_add), style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp), color = Look.Glow)
+                        Text(stringResource(R.string.user_add), style = SettingsActionStyle, color = Look.Glow)
                     }
                 }
             }
@@ -1341,8 +1388,9 @@ object MobileUi : Screens {
             // O idioma da legenda (pedido do Johan depois da 1.0.9): o botão do player só liga e desliga.
             item(key = "captions") {
                 val context = LocalContext.current
+                val captions = remember(context, settings.captionLanguage) { captionChoices(context, settings.captionLanguage) }
                 SettingsGroup(stringResource(R.string.settings_captions), hint = stringResource(R.string.settings_captions_hint)) {
-                    captionChoices(context, settings.captionLanguage).forEachIndexed { i, choice ->
+                    captions.forEachIndexed { i, choice ->
                         if (i > 0) RowDivider()
                         SettingsRow(
                             title = choice.title,
@@ -1457,7 +1505,7 @@ object MobileUi : Screens {
                         Background.entries.forEach { option ->
                             val selected = current == option
                             Column(
-                                Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                                Modifier.weight(1f).clip(PlaylistShape)
                                     .selectable(selected = selected, role = Role.RadioButton) { Backgrounds.select(option) }
                                     .padding(vertical = 4.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1468,7 +1516,8 @@ object MobileUi : Screens {
                                 ) { BackgroundSwatch(option, 32.dp) }
                                 Text(
                                     stringResource(option.label),
-                                    style = Meta.copy(color = if (selected) Look.Text else Look.Sub),
+                                    style = Meta,
+                                    color = if (selected) Look.Text else Look.Sub,
                                     textAlign = TextAlign.Center,
                                     maxLines = 2,
                                     modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
@@ -1560,10 +1609,13 @@ object MobileUi : Screens {
                                             .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Thumbnail(item.playlist.thumbnailUrl, Modifier.width(80.dp), corner = 8.dp)
+                                        Thumbnail(item.playlist.thumbnailUrl, Modifier.width(80.dp), shape = AvatarChipShape)
                                         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                                             Text(item.playlist.title, style = RowTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                            item.playlist.info?.let { Text(spacedDots(it), style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                            item.playlist.info?.let { info ->
+                                                val formatted = remember(info) { spacedDots(info) }
+                                                Text(formatted, style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            }
                                         }
                                         if (item.busy) {
                                             CircularProgressIndicator(Modifier.padding(horizontal = 12.dp).size(22.dp), strokeWidth = 2.dp)
@@ -1587,16 +1639,16 @@ object MobileUi : Screens {
             if (title != null) {
                 Text(
                     title,
-                    style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.2.sp),
+                    style = SettingsTitleStyle,
                     color = Look.Sub,
                     modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 8.dp),
                 )
             }
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Look.Surface)) { content() }
+            Column(Modifier.fillMaxWidth().clip(MenuShape).background(Look.Surface)) { content() }
             if (hint != null) {
                 Text(
                     hint,
-                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 17.sp),
+                    style = SettingsHintStyle,
                     color = Look.Sub.copy(alpha = 0.8f),
                     modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp),
                 )
@@ -1618,8 +1670,11 @@ object MobileUi : Screens {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 20.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (subtitle != null) Text(spacedDots(subtitle), style = Meta, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                Text(title, style = SettingsRowTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (subtitle != null) {
+                    val formatted = remember(subtitle) { spacedDots(subtitle) }
+                    Text(formatted, style = Meta, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                }
             }
             trailing?.invoke()
         }
@@ -1629,7 +1684,7 @@ object MobileUi : Screens {
     @Composable
     private fun Value(text: String, open: Boolean) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text, style = Meta.copy(fontSize = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp))
+            Text(text, style = SettingsValueStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp))
             Icon(
                 Icons.Filled.ArrowDropDown,
                 contentDescription = null,
@@ -1663,7 +1718,7 @@ object MobileUi : Screens {
 
     @Composable
     private fun EmptyRow(text: String) {
-        Text(text, style = Meta.copy(fontSize = 14.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp))
+        Text(text, style = SettingsValueStyle, modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp))
     }
 
     @Composable
@@ -1688,7 +1743,7 @@ object MobileUi : Screens {
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null, tint = Look.Glow, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
-                Text(stringResource(R.string.topic_add), style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp), color = Look.Glow)
+                Text(stringResource(R.string.topic_add), style = SettingsActionStyle, color = Look.Glow)
             }
         }
     }
@@ -1847,7 +1902,7 @@ object MobileUi : Screens {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (hasPlaylists) {
-                                    listOf(R.string.channel_videos, R.string.channel_playlists).forEachIndexed { i, label ->
+                                    ChannelTabLabels.forEachIndexed { i, label ->
                                         Segment(stringResource(label), selected = tab == i) { tab = i }
                                     }
                                 }
@@ -1880,7 +1935,7 @@ object MobileUi : Screens {
             selected = selected,
             onClick = onClick,
             label = { Text(label) },
-            shape = RoundedCornerShape(18.dp),
+            shape = MenuShape,
             colors = FilterChipDefaults.filterChipColors(
                 containerColor = Color.Transparent,
                 labelColor = Look.Sub,
@@ -1910,7 +1965,7 @@ object MobileUi : Screens {
                     Icon(if (subscribed) Icons.Filled.Check else Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
             },
-            shape = RoundedCornerShape(18.dp),
+            shape = MenuShape,
             colors = FilterChipDefaults.filterChipColors(
                 containerColor = if (subscribed) Color.Transparent else Look.Glow,
                 labelColor = content,
@@ -1979,20 +2034,30 @@ object MobileUi : Screens {
      */
     @Composable
     private fun NearEnd(grid: LazyGridState, count: Int, onNearEnd: () -> Unit, ahead: Int = 6, ready: Boolean = true) {
-        val nearEnd by remember(ahead) {
+        val currentOnNearEnd by rememberUpdatedState(onNearEnd)
+        val nearEnd by remember(grid, ahead) {
             derivedStateOf {
                 val last = grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
                 last >= grid.layoutInfo.totalItemsCount - ahead
             }
         }
-        LaunchedEffect(nearEnd, count, ready) { if (nearEnd) onNearEnd() }
+        LaunchedEffect(nearEnd, count, ready) { if (nearEnd) currentOnNearEnd() }
     }
 
     /**
-     * O que os cards precisam além do vídeo: quais estão no Watch later, as fotos dos canais e o
-     * toque longo (salvar). [onLongPress] é null dentro da própria playlist do botão Save.
+     * O que os cards precisam além do vídeo: quais estão no Watch later, as fotos dos canais, o
+     * escopo compartilhado da grade (para abrir canal) e o toque longo (salvar). [onLongPress] é
+     * null dentro da própria playlist do botão Save. [saved] e [photos] ficam como State para que
+     * cada card leia só o seu vídeo/canal sem recompor a grade inteira.
      */
-    private class CardState(val saved: Set<String>, val photos: Map<String, String>, val showSaved: Boolean, val onLongPress: ((Video) -> Unit)?)
+    @Stable
+    private class CardState(
+        val saved: State<Set<String>>,
+        val photos: State<Map<String, String>>,
+        val showSaved: Boolean,
+        val scope: CoroutineScope,
+        val onLongPress: ((Video) -> Unit)?,
+    )
 
     /**
      * @param showSaved false na própria playlist do botão Save: lá o marcador estaria em todos os
@@ -2001,12 +2066,15 @@ object MobileUi : Screens {
      */
     @Composable
     private fun rememberCardState(showSaved: Boolean = true): CardState {
-        val saved by SavedVideos.ids.collectAsStateWithLifecycle()
-        val photos by ChannelPhotos.photos.collectAsStateWithLifecycle()
+        val saved = SavedVideos.ids.collectAsStateWithLifecycle()
+        val photos = ChannelPhotos.photos.collectAsStateWithLifecycle()
+        val scope = rememberCoroutineScope()
         val res = LocalContext.current.resources
         // O convidado não tem conta: nem playlist do Save, nem marcador.
         val save = showSaved && !Users.isGuest
-        return CardState(saved, photos, save, if (save) { video -> toggleSaved(res, video) } else null)
+        return remember(saved, photos, save, scope, res) {
+            CardState(saved, photos, save, scope, if (save) { video -> toggleSaved(res, video) } else null)
+        }
     }
 
     @Composable
@@ -2025,7 +2093,11 @@ object MobileUi : Screens {
         if (onSeen != null) SeenRows(grid, onSeen)
         ListTop(grid, content)
         val cards = rememberCardState()
-        val motion = rememberListMotion(content.videos)
+        val keys = remember(content.videos) { content.videos.map { it.rowKey } }
+        val motion = rememberListMotion(keys)
+        val currentVideos by rememberUpdatedState(content.videos)
+        val playVideo = remember(onPlay) { { video: Video -> UpNext.opened(currentVideos, video); onPlay(video) } }
+        val stacked = LocalConfiguration.current.screenWidthDp >= 560
         LazyVerticalGrid(
             state = grid,
             columns = videoColumns(),
@@ -2033,14 +2105,14 @@ object MobileUi : Screens {
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(26.dp),
         ) {
-            if (header != null) item(span = { GridItemSpan(maxLineSpan) }) { header() }
+            if (header != null) item(span = { GridItemSpan(maxLineSpan) }, contentType = "header") { header() }
             if (content.videos.isEmpty() && !content.loadingMore) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item(span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
                     Text(emptyText, textAlign = TextAlign.Center, color = Look.Sub, modifier = Modifier.fillMaxWidth().padding(32.dp))
                 }
             }
-            items(content.videos, key = { it.rowKey }) { video ->
-                VideoCard(video, cards, { UpNext.opened(content.videos, it); onPlay(it) }, onOpenChannel, listMotion(motion))
+            items(content.videos, key = { it.rowKey }, contentType = { "video" }) { video ->
+                VideoCard(video, cards, playVideo, onOpenChannel, listMotion(motion), stacked = stacked)
             }
             listEnd(content, onNearEnd)
         }
@@ -2052,9 +2124,9 @@ object MobileUi : Screens {
      */
     private fun LazyGridScope.listEnd(content: VideoListContent, onMore: () -> Unit) {
         if (content.loadingMore) {
-            item(span = { GridItemSpan(maxLineSpan) }) { Progress() }
+            item(span = { GridItemSpan(maxLineSpan) }, contentType = "progress") { Progress() }
         } else if (content.hasMore) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
+            item(span = { GridItemSpan(maxLineSpan) }, contentType = "load_more") {
                 Box(Modifier.fillMaxWidth(), Alignment.Center) { TextButton(onClick = onMore) { Text(stringResource(R.string.load_more)) } }
             }
         }
@@ -2087,10 +2159,10 @@ object MobileUi : Screens {
         val cards = rememberCardState(showSaved)
         val keys = remember(content.videos) { content.videos.map { it.rowKey } }
         val drag = if (onMove != null) rememberDragReorderState(grid, keys, onMove, onDrop) else null
-        val moveCards = remember(cards) { CardState(cards.saved, cards.photos, cards.showSaved, onLongPress = null) }
+        val moveCards = remember(cards) { CardState(cards.saved, cards.photos, cards.showSaved, cards.scope, onLongPress = null) }
         val haptics = LocalHapticFeedback.current
         // Enquanto um vídeo é arrastado, os outros deslizam para abrir espaço.
-        val motion = rememberListMotion(content.videos) || drag?.draggingKey != null
+        val motion = rememberListMotion(keys) || drag?.draggingKey != null
         LazyVerticalGrid(
             state = grid,
             columns = GridCells.Adaptive(minSize = 520.dp),
@@ -2098,13 +2170,13 @@ object MobileUi : Screens {
             horizontalArrangement = Arrangement.spacedBy(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            if (header != null) item(span = { GridItemSpan(maxLineSpan) }) { header() }
+            if (header != null) item(span = { GridItemSpan(maxLineSpan) }, contentType = "header") { header() }
             if (content.videos.isEmpty() && !content.loadingMore) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item(span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
                     Text(emptyText, textAlign = TextAlign.Center, color = Look.Sub, modifier = Modifier.fillMaxWidth().padding(32.dp))
                 }
             }
-            items(content.videos, key = { it.rowKey }) { video ->
+            items(content.videos, key = { it.rowKey }, contentType = { "video" }) { video ->
                 val key = video.rowKey
                 val lifted = drag != null && drag.draggingKey == key
                 SwipeToRemove(
@@ -2128,7 +2200,7 @@ object MobileUi : Screens {
                                 scaleX = LIFT_SCALE
                                 scaleY = LIFT_SCALE
                             }
-                            .shadow(12.dp, RoundedCornerShape(10.dp))
+                            .shadow(12.dp, RowShape)
                     } else {
                         listMotion(motion)
                     },
@@ -2159,20 +2231,27 @@ object MobileUi : Screens {
         onPlay: (Video) -> Unit,
         onOpenChannel: ((Channel) -> Unit)?,
         modifier: Modifier = Modifier,
+        stacked: Boolean = false,
     ) {
+        val saved by remember(video.id, cards) {
+            derivedStateOf { cards.showSaved && video.id in cards.saved.value }
+        }
+        val photo by remember(video.channelId, cards) {
+            derivedStateOf { video.channelId?.let { cards.photos.value[it] } }
+        }
         Column(
-            modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Look.Ground).combinedClickable(
+            modifier.fillMaxWidth().clip(CardShape).background(Look.Ground).combinedClickable(
                 onClickLabel = video.title,
                 onLongClickLabel = cards.onLongPress?.let { stringResource(R.string.video_toggle_save) },
                 onLongClick = cards.onLongPress?.let { press -> { press(video) } },
                 onClick = { onPlay(video) },
             ),
         ) {
-            VideoThumb(video, saved = cards.showSaved && video.id in cards.saved, corner = 14.dp, modifier = Modifier.fillMaxWidth())
+            VideoThumb(video, saved = saved, shape = CardShape, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             Text(video.title, style = CardTitle, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp))
             // Em várias colunas, o canal e o resto sempre em duas linhas (os cartões lado a lado ficam iguais).
-            MetaRow(video, cards.photos[video.channelId], onOpenChannel, stacked = LocalConfiguration.current.screenWidthDp >= 560)
+            MetaRow(video, photo, cards.scope, onOpenChannel, stacked = stacked)
         }
     }
 
@@ -2184,8 +2263,14 @@ object MobileUi : Screens {
         onOpenChannel: (Channel) -> Unit,
         reorder: Modifier = Modifier,
     ) {
+        val saved by remember(video.id, cards) {
+            derivedStateOf { cards.showSaved && video.id in cards.saved.value }
+        }
+        val photo by remember(video.channelId, cards) {
+            derivedStateOf { video.channelId?.let { cards.photos.value[it] } }
+        }
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Look.Ground).combinedClickable(
+            Modifier.fillMaxWidth().clip(RowShape).background(Look.Ground).combinedClickable(
                 onClickLabel = video.title,
                 onLongClickLabel = cards.onLongPress?.let { stringResource(R.string.video_toggle_save) },
                 onLongClick = cards.onLongPress?.let { press -> { press(video) } },
@@ -2193,32 +2278,33 @@ object MobileUi : Screens {
             ).then(reorder),
             verticalAlignment = Alignment.Top,
         ) {
-            VideoThumb(video, saved = cards.showSaved && video.id in cards.saved, corner = 10.dp, modifier = Modifier.width(152.dp), compact = true)
+            VideoThumb(video, saved = saved, shape = RowShape, modifier = Modifier.width(152.dp), compact = true)
             Column(Modifier.weight(1f).padding(start = 14.dp, top = 1.dp)) {
                 Text(video.title, style = RowTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                MetaRow(video, cards.photos[video.channelId], onOpenChannel, stacked = true)
+                MetaRow(video, photo, cards.scope, onOpenChannel, stacked = true)
             }
         }
     }
 
     /** Miniatura com a duração, o progresso em âmbar e, se o vídeo estiver no Watch later, o marcador discreto. */
     @Composable
-    private fun VideoThumb(video: Video, saved: Boolean, corner: Dp, modifier: Modifier, compact: Boolean = false) {
-        Box(modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(corner)).background(Look.Surface)) {
+    private fun VideoThumb(video: Video, saved: Boolean, shape: RoundedCornerShape, modifier: Modifier, compact: Boolean = false) {
+        val duration = remember(video.durationMs) { video.durationMs.takeIf { it > 0 }?.let(::formatDuration) }
+        Box(modifier.aspectRatio(16f / 9f).clip(shape).background(Look.Surface)) {
             AsyncImage(
                 model = video.thumbnailUrl,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-            val badge = if (video.isLive) stringResource(R.string.search_live) else video.durationMs.takeIf { it > 0 }?.let(::formatDuration)
+            val badge = if (video.isLive) stringResource(R.string.search_live) else duration
             if (badge != null) {
                 Text(
                     badge,
                     color = Look.Text,
-                    style = TextStyle(fontFamily = Look.Outfit, fontWeight = FontWeight.SemiBold, fontSize = if (compact) 11.sp else 12.sp, lineHeight = 16.sp),
+                    style = if (compact) BadgeStyleCompact else BadgeStyleNormal,
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = 7.dp, bottom = 8.dp)
-                        .background(if (video.isLive) Look.Live else Look.Badge, RoundedCornerShape(6.dp))
+                        .background(if (video.isLive) Look.Live else Look.Badge, BadgeShape)
                         .padding(horizontal = 6.dp, vertical = 1.dp),
                 )
             }
@@ -2247,11 +2333,12 @@ object MobileUi : Screens {
 
     /** "[avatar] Canal · 12K views · 2 hours ago". O avatar e o nome levam ao canal. */
     @Composable
-    private fun MetaRow(video: Video, photo: String?, onOpenChannel: ((Channel) -> Unit)?, stacked: Boolean) {
-        val name = channelNameOf(video)
-        val rest = video.fromPlaylist?.let { stringResource(R.string.from_playlist_short, it) }
-            ?: metaAfterChannel(video.info, name, video.published)
-        val scope = rememberCoroutineScope()
+    private fun MetaRow(video: Video, photo: String?, scope: CoroutineScope, onOpenChannel: ((Channel) -> Unit)?, stacked: Boolean) {
+        val name = remember(video) { channelNameOf(video) }
+        val fromPlaylist = video.fromPlaylist?.let { stringResource(R.string.from_playlist_short, it) }
+        val metaRest = remember(video.info, name, video.published) { metaAfterChannel(video.info, name, video.published) }
+        val rest = fromPlaylist ?: metaRest
+        val formattedRest = remember(rest) { rest?.let(::spacedDots) }
         val res = LocalContext.current.resources
         // O canal e o resto numa linha só quando cabem; senão o resto desce, inteiro (MetaLine).
         MetaLine(
@@ -2260,7 +2347,7 @@ object MobileUi : Screens {
                     // Sempre, também sem o ID do canal no card (as Recomendações): ele é procurado na hora.
                     val open = if (onOpenChannel != null) {
                         val label = stringResource(R.string.video_open_channel, name)
-                        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = label) { scope.openChannelOf(video, res, onOpenChannel) }
+                        Modifier.clip(AvatarChipShape).clickable(onClickLabel = label) { scope.openChannelOf(video, res, onOpenChannel) }
                     } else {
                         Modifier
                     }
@@ -2271,8 +2358,8 @@ object MobileUi : Screens {
                     }
                 }
             },
-            rest = rest?.let {
-                { Text(spacedDots(rest), style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp, vertical = 7.dp)) }
+            rest = formattedRest?.let {
+                { Text(it, style = Meta, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp, vertical = 7.dp)) }
             },
             separator = { Text("·", style = Meta, modifier = Modifier.padding(horizontal = 2.dp)) },
             modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
@@ -2285,20 +2372,21 @@ object MobileUi : Screens {
     /** Foto redonda do canal; sem foto (canal em que não está inscrito), a primeira letra. */
     @Composable
     private fun Avatar(name: String, photo: String?, size: Dp) {
+        val tone = remember(name) { Look.monogramTone(name) }
         if (photo != null) {
             AsyncImage(
                 model = photo,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(size).clip(CircleShape).background(Look.monogramTone(name)),
+                modifier = Modifier.size(size).clip(CircleShape).background(tone),
             )
         } else {
-            Box(Modifier.size(size).background(Look.monogramTone(name), CircleShape), contentAlignment = Alignment.Center) {
-                Text(
-                    monogramOf(name),
-                    color = Look.Text,
-                    style = TextStyle(fontFamily = Look.Outfit, fontWeight = FontWeight.SemiBold, fontSize = (size.value * 0.5f).sp, lineHeight = (size.value * 0.6f).sp),
-                )
+            val letter = remember(name) { monogramOf(name) }
+            val textStyle = remember(size) {
+                TextStyle(fontFamily = Look.Outfit, fontWeight = FontWeight.SemiBold, fontSize = (size.value * 0.5f).sp, lineHeight = (size.value * 0.6f).sp)
+            }
+            Box(Modifier.size(size).background(tone, CircleShape), contentAlignment = Alignment.Center) {
+                Text(letter, color = Look.Text, style = textStyle)
             }
         }
     }
@@ -2306,13 +2394,16 @@ object MobileUi : Screens {
     @Composable
     private fun PlaylistRow(playlist: Playlist, onClick: () -> Unit) {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
+            Modifier.fillMaxWidth().clip(PlaylistShape).clickable(onClick = onClick),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Thumbnail(playlist.thumbnailUrl, Modifier.width(152.dp), corner = 12.dp)
+            Thumbnail(playlist.thumbnailUrl, Modifier.width(152.dp), shape = PlaylistShape)
             Column(Modifier.padding(horizontal = 14.dp)) {
-                Text(playlist.title, style = RowTitle.copy(fontSize = 16.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                playlist.info?.let { Text(spacedDots(it), style = Meta, maxLines = 2, modifier = Modifier.padding(top = 3.dp)) }
+                Text(playlist.title, style = MenuUserTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                playlist.info?.let { info ->
+                    val formatted = remember(info) { spacedDots(info) }
+                    Text(formatted, style = Meta, maxLines = 2, modifier = Modifier.padding(top = 3.dp))
+                }
             }
         }
     }
@@ -2320,7 +2411,7 @@ object MobileUi : Screens {
     @Composable
     private fun ChannelRow(channel: Channel, onClick: () -> Unit) {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(8.dp),
+            Modifier.fillMaxWidth().clip(PlaylistShape).clickable(onClick = onClick).padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (channel.thumbnailUrl != null) {
@@ -2335,7 +2426,10 @@ object MobileUi : Screens {
             }
             Column(Modifier.padding(start = 16.dp)) {
                 Text(channel.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                channel.info?.let { Text(spacedDots(it), style = Meta, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                channel.info?.let { info ->
+                    val formatted = remember(info) { spacedDots(info) }
+                    Text(formatted, style = Meta, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }
@@ -2369,7 +2463,7 @@ object MobileUi : Screens {
     @Composable
     private fun SkeletonCard() {
         Column(Modifier.fillMaxWidth()) {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Look.Surface, RoundedCornerShape(14.dp)))
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Look.Surface, CardShape))
             Spacer(Modifier.height(14.dp))
             Bone(Modifier.fillMaxWidth(0.88f).height(13.dp))
             Spacer(Modifier.height(8.dp))
@@ -2385,7 +2479,7 @@ object MobileUi : Screens {
 
     @Composable
     private fun Bone(modifier: Modifier) {
-        Box(modifier.background(Look.Surface, RoundedCornerShape(6.dp)))
+        Box(modifier.background(Look.Surface, BadgeShape))
     }
 
     @Composable
@@ -2402,11 +2496,11 @@ object MobileUi : Screens {
     }
 
     @Composable
-    private fun Thumbnail(url: String?, modifier: Modifier, corner: Dp) {
+    private fun Thumbnail(url: String?, modifier: Modifier, shape: RoundedCornerShape) {
         AsyncImage(
             model = url,
             contentDescription = null,
-            modifier = modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(corner)).background(Look.Surface),
+            modifier = modifier.aspectRatio(16f / 9f).clip(shape).background(Look.Surface),
             contentScale = ContentScale.Crop,
         )
     }
@@ -2456,10 +2550,9 @@ object MobileUi : Screens {
 
 /** Se os cartões podem deslizar nesta troca da lista ([ListMotion]): só quando vídeos saem ou chegam no fim. */
 @Composable
-private fun rememberListMotion(videos: List<Video>): Boolean {
-    val keys = remember(videos) { videos.map { it.rowKey } }
+private fun rememberListMotion(keys: List<String>): Boolean {
     val shown = remember { arrayOf(keys) }
-    val motion = ListMotion.animates(shown[0], keys)
+    val motion = if (shown[0] === keys) true else ListMotion.animates(shown[0], keys)
     SideEffect { shown[0] = keys }
     return motion
 }
@@ -2472,10 +2565,13 @@ private fun rememberListMotion(videos: List<Video>): Boolean {
 private fun LazyGridItemScope.listMotion(motion: Boolean): Modifier =
     if (motion) Modifier.animateItem() else Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null)
 
+private val PortraitColumns = VideoColumns(portrait = true)
+private val LandscapeColumns = VideoColumns(portrait = false)
+
 @Composable
 private fun videoColumns(): GridCells {
     val config = LocalConfiguration.current
-    return VideoColumns(portrait = config.screenHeightDp > config.screenWidthDp)
+    return if (config.screenHeightDp > config.screenWidthDp) PortraitColumns else LandscapeColumns
 }
 
 /**

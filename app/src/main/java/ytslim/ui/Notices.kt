@@ -1,6 +1,12 @@
 package ytslim.ui
 
 import android.content.res.Resources
+import androidx.compose.runtime.Immutable
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.TextUnitType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,9 +25,11 @@ import ytslim.data.VideoActions
  * pílula ganha um botão (o "Undo") e fica [Notices.UNDO_MS] na tela. [long]: um texto mais
  * comprido, que fica [Notices.LONG_MS].
  */
+@Immutable
 data class Notice(val text: String, val id: Long, val action: NoticeAction? = null, val long: Boolean = false)
 
 /** O botão da pílula: [label] e o que ele faz. */
+@Immutable
 class NoticeAction(val label: String, val run: () -> Unit)
 
 object Notices {
@@ -129,18 +137,19 @@ fun metaAfterChannel(info: String?, channelName: String?, published: String?): S
  * entre as palavras. Aqui o ponto e os espaços em volta dele ganham um pouco de ar. Vale para toda
  * linha de detalhes das listas (vídeos, playlists e canais).
  */
-fun spacedDots(raw: String): androidx.compose.ui.text.AnnotatedString = androidx.compose.ui.text.buildAnnotatedString {
+fun spacedDots(raw: String): AnnotatedString = buildAnnotatedString {
     // O YouTube separa com "•" (as playlists chegam assim), às vezes cercado por marcas bidi: um ponto só no app inteiro.
     val text = Handles.clean(raw).replace(" • ", DOT)
     append(text)
     var at = text.indexOf(DOT)
     while (at >= 0) {
-        addStyle(androidx.compose.ui.text.SpanStyle(letterSpacing = androidx.compose.ui.unit.TextUnit(0.1f, androidx.compose.ui.unit.TextUnitType.Em)), at, at + DOT.length)
+        addStyle(DOT_SPAN, at, at + DOT.length)
         at = text.indexOf(DOT, at + DOT.length)
     }
 }
 
 private const val DOT = " · "
+private val DOT_SPAN = SpanStyle(letterSpacing = TextUnit(0.1f, TextUnitType.Em))
 
 /**
  * O mesmo respiro do [spacedDots] para um TextView (o player): os espaços em volta de cada "·"

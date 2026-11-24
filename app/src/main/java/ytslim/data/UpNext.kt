@@ -63,13 +63,23 @@ object UpNext {
             (channelId != null && video.channelId == channelId) ||
                 (channel != null && TopicRules.normalize(Handles.channelName(video.channelName).orEmpty()) == channel)
 
-        val picked = LinkedHashMap<String, Video>()
+        val picked = LinkedHashMap<String, Video>(max + 1)
         after.firstOrNull(::ok)?.let { picked[it.id] = it }
-        related.firstOrNull { ok(it) && sameChannel(it) }?.let { picked.putIfAbsent(it.id, it) }
         val others = related.filter(::ok)
-        for (video in others.filter { TopicRules.isPreferred(it, filters) } + others) {
-            if (picked.size >= max) break
-            picked.putIfAbsent(video.id, video)
+        others.firstOrNull(::sameChannel)?.let { picked.putIfAbsent(it.id, it) }
+        if (picked.size < max && filters.preferred.isNotEmpty()) {
+            for (video in others) {
+                if (TopicRules.isPreferred(video, filters)) {
+                    picked.putIfAbsent(video.id, video)
+                    if (picked.size >= max) break
+                }
+            }
+        }
+        if (picked.size < max) {
+            for (video in others) {
+                picked.putIfAbsent(video.id, video)
+                if (picked.size >= max) break
+            }
         }
         return picked.values.take(max)
     }

@@ -4,6 +4,7 @@ import android.util.Log
 import com.liskovsoft.mediaserviceinterfaces.data.FeedbackEndpoint
 import com.liskovsoft.youtubeapi.common.helpers.PostDataHelper
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -47,9 +48,9 @@ object ChannelFeedback {
      * convidado não tem conta para receber o pedido (nem canais bloqueados).
      */
     fun note(videos: List<Video>) {
-        if (Users.isGuest) return
-        if (!known.note(videos)) return
-        AppScope.launch {
+        if (Users.isGuest || videos.isEmpty()) return
+        AppScope.launch(Dispatchers.Default) {
+            if (!known.note(videos)) return@launch
             val blocked = runCatching { SettingsRepository.current().filters.blocked }.getOrElse { return@launch }
             for (channel in blocked) {
                 if (channel.onAccount) continue

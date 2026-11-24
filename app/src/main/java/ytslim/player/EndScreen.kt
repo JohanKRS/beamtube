@@ -143,18 +143,6 @@ internal class EndScreen(
         val backFocus = remember { FocusRequester() }
         val firstFocus = remember { FocusRequester() }
         val next = playsNext
-        val wait = if (next) UpNext.NEXT_AFTER_MS else UpNext.BACK_AFTER_MS
-        // Recomeça junto com a contagem, para o texto não mostrar o número antigo por um quadro.
-        var secondsLeft by remember(interactions, next) { mutableIntStateOf(((wait + 999) / 1000).toInt()) }
-        LaunchedEffect(interactions, next) {
-            var left = wait
-            while (left > 0) {
-                secondsLeft = ((left + 999) / 1000).toInt()
-                delay(minOf(1000L, left))
-                left -= 1000L
-            }
-            if (next) videos.firstOrNull()?.let(onPlay) ?: onBack() else onBack()
-        }
         LaunchedEffect(videos) {
             // Na TV, o foco começa no "Back" (ou na primeira sugestão, quando é ela que vai tocar).
             runCatching { if (next) firstFocus.requestFocus() else backFocus.requestFocus() }
@@ -162,7 +150,7 @@ internal class EndScreen(
         val side = if (tv) 48.dp else 20.dp
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             Poster()
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = SCRIM_TOP), Color.Black.copy(alpha = SCRIM_BOTTOM)))))
+            Box(Modifier.fillMaxSize().background(SCRIM))
             Column(
                 Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(vertical = if (tv) 40.dp else 20.dp),
                 verticalArrangement = Arrangement.Center,
@@ -172,14 +160,11 @@ internal class EndScreen(
                         if (videos.isNotEmpty()) {
                             BasicText(
                                 stringResource(R.string.end_title),
-                                style = (if (tv) TypeScale.headlineSmall else TypeScale.titleLarge).copy(color = Look.Text),
+                                style = if (tv) TITLE_TV else TITLE_TOUCH,
                             )
                             Spacer(Modifier.height(4.dp))
                         }
-                        BasicText(
-                            stringResource(if (next) R.string.end_next_in else R.string.end_back_in, secondsLeft),
-                            style = TypeScale.bodyMedium.copy(color = Look.Sub),
-                        )
+                        Countdown(next = next, interactions = interactions)
                     }
                     Spacer(Modifier.width(16.dp))
                     BackButton(Modifier.focusRequester(backFocus))
@@ -200,6 +185,27 @@ internal class EndScreen(
         }
     }
 
+    /** A contagem isolada: cada tique de 1 s recompõe só este texto, sem refazer o pôster nem a fileira. */
+    @Composable
+    private fun Countdown(next: Boolean, interactions: Int) {
+        val wait = if (next) UpNext.NEXT_AFTER_MS else UpNext.BACK_AFTER_MS
+        // Recomeça junto com a contagem, para o texto não mostrar o número antigo por um quadro.
+        var secondsLeft by remember(interactions, next) { mutableIntStateOf(((wait + 999) / 1000).toInt()) }
+        LaunchedEffect(interactions, next) {
+            var left = wait
+            while (left > 0) {
+                secondsLeft = ((left + 999) / 1000).toInt()
+                delay(minOf(1000L, left))
+                left -= 1000L
+            }
+            if (next) videos.firstOrNull()?.let(onPlay) ?: onBack() else onBack()
+        }
+        BasicText(
+            stringResource(if (next) R.string.end_next_in else R.string.end_back_in, secondsLeft),
+            style = COUNTDOWN_STYLE,
+        )
+    }
+
     /** A miniatura do vídeo que acabou, desfocada e no tom da tela de carregando ([PosterBlur]). */
     @Composable
     private fun Poster() {
@@ -207,7 +213,8 @@ internal class EndScreen(
         val still = posterBitmap
         val url = posterUrl
         if (still != null) {
-            Image(still.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, colorFilter = tone, modifier = Modifier.fillMaxSize())
+            val image = remember(still) { still.asImageBitmap() }
+            Image(image, contentDescription = null, contentScale = ContentScale.Crop, colorFilter = tone, modifier = Modifier.fillMaxSize())
         } else if (url != null) {
             val context = LocalContext.current
             // O mesmo pedido da tela de carregando: a imagem desfocada já está no cache do carregador.
@@ -226,25 +233,29 @@ internal class EndScreen(
     @Composable
     private fun BackButton(modifier: Modifier) {
         var focused by remember { mutableStateOf(false) }
+        val style = when {
+            tv && focused -> BACK_TV_FOCUSED
+            tv -> BACK_TV
+            focused -> BACK_TOUCH_FOCUSED
+            else -> BACK_TOUCH
+        }
         Box(
             modifier
                 .onFocusChanged { focused = it.isFocused }
-                .clip(RoundedCornerShape(50))
+                .clip(BACK_SHAPE)
                 .background(if (focused) Look.Text else Look.Pill)
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onBack)
                 .padding(horizontal = if (tv) 28.dp else 22.dp, vertical = if (tv) 12.dp else 10.dp),
         ) {
-            BasicText(
-                stringResource(R.string.end_back),
-                style = TypeScale.labelLarge.copy(color = if (focused) Look.Ground else Look.Text, fontSize = if (tv) 16.sp else 15.sp),
-            )
+            BasicText(stringResource(R.string.end_back), style = style)
         }
     }
 
     @Composable
     private fun Suggestion(video: Video, modifier: Modifier, onClick: () -> Unit) {
         var focused by remember { mutableStateOf(false) }
-        val shape = RoundedCornerShape(12.dp)
+        val duration = remember(video.durationMs) { video.durationMs.takeIf { it > 0 }?.let(::formatDuration) }
+        val channel = remember(video.channelName, video.info) { spacedDots(channelLine(video)) }
         Column(
             modifier
                 .onFocusChanged { focused = it.isFocused }
@@ -255,9 +266,9 @@ internal class EndScreen(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
-                    .clip(shape)
+                    .clip(CARD_SHAPE)
                     .background(Look.Surface)
-                    .then(if (focused) Modifier.border(BorderStroke(2.5.dp, Look.Text), shape) else Modifier),
+                    .then(if (focused) Modifier.border(FOCUSED_BORDER, CARD_SHAPE) else Modifier),
             ) {
                 AsyncImage(
                     model = video.thumbnailUrl,
@@ -265,14 +276,14 @@ internal class EndScreen(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
-                if (video.durationMs > 0) {
+                if (duration != null) {
                     BasicText(
-                        formatDuration(video.durationMs),
-                        style = TypeScale.labelMedium.copy(color = Color.White),
+                        duration,
+                        style = BADGE_STYLE,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(6.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(BADGE_SHAPE)
                             .background(Look.Badge)
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
@@ -284,15 +295,15 @@ internal class EndScreen(
             // mudava de altura conforme rolava, e a tela inteira (centrada) pulava.
             BasicText(
                 video.title,
-                style = TypeScale.titleSmall.copy(color = Look.Text, fontSize = 13.sp, lineHeight = 17.sp),
+                style = SUGGESTION_TITLE,
                 maxLines = 2,
                 minLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(4.dp))
             BasicText(
-                spacedDots(channelLine(video)),
-                style = TypeScale.bodySmall.copy(color = Look.Sub),
+                channel,
+                style = SUGGESTION_CHANNEL,
                 maxLines = 1,
                 minLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -312,5 +323,21 @@ internal class EndScreen(
         /** O véu escuro por cima da miniatura: mais leve em cima, mais forte embaixo, onde ficam os títulos. */
         const val SCRIM_TOP = 0.3f
         const val SCRIM_BOTTOM = 0.55f
+
+        val SCRIM = Brush.verticalGradient(listOf(Color.Black.copy(alpha = SCRIM_TOP), Color.Black.copy(alpha = SCRIM_BOTTOM)))
+        val BACK_SHAPE = RoundedCornerShape(50)
+        val CARD_SHAPE = RoundedCornerShape(12.dp)
+        val BADGE_SHAPE = RoundedCornerShape(6.dp)
+        val FOCUSED_BORDER = BorderStroke(2.5.dp, Look.Text)
+        val TITLE_TV = TypeScale.headlineSmall.copy(color = Look.Text)
+        val TITLE_TOUCH = TypeScale.titleLarge.copy(color = Look.Text)
+        val COUNTDOWN_STYLE = TypeScale.bodyMedium.copy(color = Look.Sub)
+        val BACK_TV = TypeScale.labelLarge.copy(color = Look.Text, fontSize = 16.sp)
+        val BACK_TV_FOCUSED = TypeScale.labelLarge.copy(color = Look.Ground, fontSize = 16.sp)
+        val BACK_TOUCH = TypeScale.labelLarge.copy(color = Look.Text, fontSize = 15.sp)
+        val BACK_TOUCH_FOCUSED = TypeScale.labelLarge.copy(color = Look.Ground, fontSize = 15.sp)
+        val BADGE_STYLE = TypeScale.labelMedium.copy(color = Color.White)
+        val SUGGESTION_TITLE = TypeScale.titleSmall.copy(color = Look.Text, fontSize = 13.sp, lineHeight = 17.sp)
+        val SUGGESTION_CHANNEL = TypeScale.bodySmall.copy(color = Look.Sub)
     }
 }

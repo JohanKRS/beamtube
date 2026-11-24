@@ -3,8 +3,8 @@ package ytslim.data
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * As listas da biblioteca (playlists e Histórico) guardadas no aparelho (pedido do Johan,
@@ -23,16 +23,22 @@ object ListCache {
     /** A pasta, dentro da de cada usuário ([Users]). */
     const val DIR = "lists"
 
+    private val SAFE_KEY = Regex("[^A-Za-z0-9_-]")
     private val dir: File get() = Users.file(DIR)
-    private val json = Json { ignoreUnknownKeys = true }
-    private val mutex = Mutex()
+    private val locks = ConcurrentHashMap<String, Mutex>()
+    private val clearLock = Mutex()
+
+    private fun lockFor(file: File): Mutex = locks.computeIfAbsent(file.absolutePath) { Mutex() }
 
     /** A lista [key] guardada, se houver uma com menos de [MAX_AGE_MS]. */
-    suspend fun read(key: String, nowMs: Long = System.currentTimeMillis()): Saved? = mutex.withLock {
-        io {
-            runCatching { json.decodeFromString(Saved.serializer(), file(key).readText()) }.getOrNull()
-        }?.takeIf { nowMs - it.savedAt in 0..MAX_AGE_MS && it.videos.isNotEmpty() }
-            ?.let { saved ->
+    suspend fun read(key: String, nowMs: Long = System.currentTimeMillis()): Saved? {
+        val target = file(key)
+        return lockFor(target).withLock {
+            io {
+                if (!target.exists()) return@io null
+                val saved = runCatching { target.readJson(Saved.serializer()) }.getOrNull()
+                    ?.takeIf { nowMs - it.savedAt in 0..MAX_AGE_MS && it.videos.isNotEmpty() }
+                    ?: return@io null
                 // Listas guardadas antes da correção dos Recomendados podem estar sem channelName.
                 saved.copy(videos = saved.videos.map { v ->
                     val name = Handles.resolveChannelName(v.channelName, v.info)
@@ -40,20 +46,28 @@ object ListCache {
                     if (name == v.channelName && info == v.info) v else v.copy(channelName = name, info = info)
                 })
             }
+        }
     }
 
-    suspend fun save(key: String, title: String?, videos: List<Video>, nowMs: Long = System.currentTimeMillis()) = mutex.withLock {
+    suspend fun save(key: String, title: String?, videos: List<Video>, nowMs: Long = System.currentTimeMillis()) {
+        val targetDir = dir
+        val target = file(key, targetDir)
         val saved = Saved(nowMs, title, videos.take(MAX_VIDEOS))
-        runCatching {
-            io {
-                val dir = dir.also { it.mkdirs() }
-                file(key, dir).writeText(json.encodeToString(Saved.serializer(), saved))
+        lockFor(target).withLock {
+            runCatching {
+                io {
+                    targetDir.mkdirs()
+                    target.writeJson(Saved.serializer(), saved)
+                }
             }
         }
     }
 
     /** Apaga as listas guardadas do usuário aberto. */
-    suspend fun clear() = mutex.withLock { io { dir.deleteRecursively() } }
+    suspend fun clear() = clearLock.withLock {
+        val targetDir = dir
+        io { targetDir.deleteRecursively() }
+    }
 
-    private fun file(key: String, dir: File = this.dir) = File(dir, key.replace(Regex("[^A-Za-z0-9_-]"), "_") + ".json")
+    private fun file(key: String, dir: File = this.dir) = File(dir, key.replace(SAFE_KEY, "_") + ".json")
 }

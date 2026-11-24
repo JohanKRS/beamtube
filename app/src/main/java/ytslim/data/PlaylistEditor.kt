@@ -1,5 +1,6 @@
 package ytslim.data
 
+import androidx.compose.runtime.Immutable
 import com.liskovsoft.googlecommon.common.helpers.DefaultHeaders
 import com.liskovsoft.youtubeapi.common.helpers.PostDataHelper
 import kotlinx.coroutines.CancellationException
@@ -16,9 +17,9 @@ import kotlinx.serialization.json.put
 import okhttp3.MediaType
 import okhttp3.Request
 import okhttp3.RequestBody
-import kotlinx.serialization.json.Json as KJson
 
 /** Uma playlist do próprio usuário (inclui "Assistir mais tarde"), para o botão "Save". */
+@Immutable
 data class OwnPlaylist(val id: String, val title: String)
 
 /** Salvar com um toque e mudar vídeos de lugar nas playlists do usuário. */
@@ -29,13 +30,16 @@ object PlaylistEditor {
     /** Páginas lidas para achar a posição dos vídeos ao mover (playlists de milhares de vídeos). */
     private const val MAX_PAGES = 100
 
-    suspend fun ownPlaylists(): List<OwnPlaylist> =
-        io { Engine.mediaItems.getPlaylistsInfo(PROBE_VIDEO) }.orEmpty()
+    suspend fun ownPlaylists(): List<OwnPlaylist> = io {
+        Engine.mediaItems.getPlaylistsInfo(PROBE_VIDEO).orEmpty()
             .mapNotNull { info -> info.playlistId?.let { OwnPlaylist(it, info.title.orEmpty()) } }
+    }
 
     /** O vídeo está em [playlistId]? null se não deu para saber. */
     suspend fun isSaved(videoId: String, playlistId: String): Boolean? = runCatching {
-        io { Engine.mediaItems.getPlaylistsInfo(videoId) }.orEmpty().any { it.playlistId == playlistId && it.isSelected }
+        io {
+            Engine.mediaItems.getPlaylistsInfo(videoId).orEmpty().any { it.playlistId == playlistId && it.isSelected }
+        }
     }.getOrNull()
 
     suspend fun setSaved(videoId: String, playlistId: String, saved: Boolean) {
@@ -98,7 +102,8 @@ object PlaylistEditor {
         for (query in listOf<(String) -> String>(PostDataHelper::createQueryTV, PostDataHelper::createQueryWeb)) {
             var body = query("\"browseId\":${JsonPrimitive("VL$playlistId")}")
             for (page in 1..MAX_PAGES) {
-                val parsed = PlaylistItemIds.parse(runCatching { Innertube.post("browse", body) }.getOrNull() ?: break)
+                val root = runCatching { Innertube.post("browse", body) }.getOrNull() ?: break
+                val parsed = io { PlaylistItemIds.parse(root) }
                 parsed.setVideoIds.forEach { (video, set) -> found.putIfAbsent(video, set) }
                 if (found.keys.containsAll(needed)) return
                 // Esse cliente não traz a posição dos vídeos: tenta o próximo.
@@ -154,7 +159,7 @@ object PlaylistItemIds {
 /** POST direto no Innertube do YouTube, com o cliente HTTP (e o login) do motor. */
 internal object Innertube {
     private const val BASE = "https://www.youtube.com/youtubei/v1/"
-    private val json = KJson { ignoreUnknownKeys = true }
+    private val JSON_MEDIA_TYPE = MediaType.parse("application/json")
 
     /** O cliente de TV do motor manda o User-Agent e o Referer da TV junto: [TV_HEADERS]. */
     val TV_HEADERS = mapOf("User-Agent" to DefaultHeaders.USER_AGENT_TV, "Referer" to "https://www.youtube.com/tv")
@@ -162,13 +167,13 @@ internal object Innertube {
     suspend fun post(endpoint: String, body: String, headers: Map<String, String> = emptyMap()): JsonElement = io {
         val request = Request.Builder()
             .url(BASE + endpoint)
-            .post(RequestBody.create(MediaType.parse("application/json"), body))
+            .post(RequestBody.create(JSON_MEDIA_TYPE, body))
             .apply { headers.forEach { (name, value) -> header(name, value) } }
             .build()
         EngineHttp.client().newCall(request).execute().use { response ->
             val text = response.body()?.string().orEmpty()
             check(response.isSuccessful) { "YouTube error ${response.code()}" }
-            json.parseToJsonElement(text).jsonObject
+            AppJson.parseToJsonElement(text).jsonObject
         }
     }
 }
