@@ -256,6 +256,21 @@ Android TV).
 2. Open BeamTube and sign in with the code on [youtube.com/activate](https://youtube.com/activate)
    (on TV, scan the QR code). You sign in on Google's own page; BeamTube never sees your password.
 
+**If Play Protect blocks the install.** On some phones, Google Play Protect stops BeamTube with a
+message like "This app can request access to sensitive data". That's not because BeamTube is
+harmful. In some countries, Brazil among them, Play Protect
+[blocks any app installed from a browser, a messaging app or a file manager when it has an Accessibility service](https://developers.google.com/android/play-protect/warning-dev-guidance),
+because scam apps abuse that service. BeamTube has one only for the TV (turning the TV off at the
+end, and the remote's YouTube button). So it can install on one device and be blocked on another:
+it depends on the country, on how you install it and on whether Google has turned this on for that
+phone yet.
+
+- If Play Protect only asks to scan the app, let it scan and then install.
+- If it blocks it, turn Play Protect off for a moment: in the Play Store, tap your profile picture,
+  then Play Protect > Settings (⚙) and turn off "Scan apps with Play Protect". Install BeamTube and
+  turn it back on. Do the same if an update is blocked later.
+- From a computer, `adb install beamtube-X.Y.Z.apk` also works and isn't blocked this way.
+
 **Updates:** with [Obtainium](https://github.com/ImranR98/Obtainium), add
 `https://github.com/JohanKRS/beamtube` and BeamTube updates itself from the releases here.
 

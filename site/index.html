@@ -384,6 +384,11 @@
     </ol>
     <div class="more">
       <details>
+        <summary data-i18n="install.protectT">If Play Protect blocks the install</summary>
+        <p data-i18n="install.protectD">On some phones, Google Play Protect stops BeamTube with a message like “This app can request access to sensitive data”. That’s not because BeamTube is harmful. In some countries, Brazil among them, Play Protect blocks any app installed from a browser, a messaging app or a file manager when it has an Accessibility service, because scam apps abuse that service. BeamTube has one only for the TV: turning the TV off at the end, and the remote’s YouTube button. So it can install on one device and be blocked on another: it depends on the country, on how you install it and on whether Google has turned this on for that phone yet.</p>
+        <p data-i18n="install.protectHow">If Play Protect only asks to scan the app, let it scan and then install. If it blocks it, turn Play Protect off for a moment: in the Play Store, tap your profile picture, then Play Protect &gt; Settings (⚙) and turn off “Scan apps with Play Protect”. Install BeamTube and turn it back on. Do the same if an update is blocked later. From a computer, <code>adb install beamtube-X.Y.Z.apk</code> also works and isn’t blocked this way.</p>
+      </details>
+      <details>
         <summary data-i18n="install.linksT">Open YouTube links in BeamTube</summary>
         <p data-i18n="install.linksD">On Android 12 and newer, open the YouTube app’s page in the system settings, go to “Open by default” and turn off “Open supported links”. Then open BeamTube’s page there and add youtube.com, m.youtube.com and youtu.be.</p>
       </details>
