@@ -42,11 +42,14 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/beamtube.keystore"
           echo "BEAMTUBE_KEYSTORE=$RUNNER_TEMP/beamtube.keystore" >> "$GITHUB_ENV"
 
-      # O snippet vem por variável de ambiente, nunca colado no script.
+      # O snippet é lido do evento, nunca colado no script nem numa variável de ambiente do passo:
+      # o repositório é público, e o log mostraria os dois. Cada linha também é mascarada.
       - name: Arquivo de registro
-        env:
-          SNIPPET: ${{ inputs.snippet }}
         run: |
+          SNIPPET=$(jq -r '.inputs.snippet' "$GITHUB_EVENT_PATH")
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::add-mask::$line"
+          done <<< "$SNIPPET"
           if [ -z "$(printf '%s' "$SNIPPET" | tr -d '[:space:]')" ]; then
             echo "::error::O snippet está vazio."
             exit 1
@@ -82,4 +85,4 @@ jobs:
         with:
           name: beamtube-registro
           path: beamtube-registro.apk
-          retention-days: 3
+          retention-days: 1
