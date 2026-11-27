@@ -311,6 +311,7 @@ O YouTube só tem inscrição em canais; "salvar playlist" não gera feed. O Bea
 - **A 0.7.0 trocou o id do app** (`app.beamtube`): o Android trata como outro app. É preciso instalar a 0.7.0 pelo Obtainium como um app novo, entrar na conta, refazer os ajustes que ficam no aparelho (tópicos excluídos e preferidos, canais bloqueados, a playlist do botão Save, as categorias da Explore, a cor do ícone e a de destaque; as playlists inscritas ficam na conta do YouTube e continuam), ligar de novo a Acessibilidade nas TVs e desinstalar o app antigo.
 - O repositório é privado, então o Obtainium precisa de um token do GitHub com leitura do repositório.
 - Em cada PR, o workflow `build.yml` compila e roda os testes de unidade.
+- **Registro na verificação de desenvolvedor do Android** (pedido do Johan, 2026-11-27): desde 30/09/2026, no Brasil, apps de desenvolvedor não verificado só instalam fora da Play pelo fluxo avançado ou pelo ADB. Para o BeamTube instalar normalmente, o pacote `app.beamtube` e a chave das releases (o `CERT_SHA256` do `release.yml`) são registrados na conta verificada do Johan no Play Console, sem publicar na Play. A prova de posse da chave é um APK de release com o snippet do console em `assets/adi-registration.properties`: o workflow manual `registro-verificacao.yml` gera esse APK como artefato, com o snippet colado na hora de rodar, sem mudar o repositório nem as releases. O Google não diz se o registro tira os avisos do Play Protect.
 
 ## Site do projeto
 
